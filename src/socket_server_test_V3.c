@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -7,14 +8,15 @@
 #include <ctype.h>
 #include <netinet/tcp.h>
 
-
+//response messages
 const char *error1 = "HTTP/1.1 405 Method Not Allowed\nContent-Type: text/plain\nContent-Length: 103\n\nServer received invalid command, only configured to respond to 'POST' commands. No data transferred.\n";
 const char *error2 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 57\n\nServer received invalid command, No data transferred.\n";
 char invalidcommands[9][10] = {"GET","HEAD","PUT","DELETE","CONNECT","OPTIONS","TRACE","PATCH"};
 const char *error3 = "HTTP/1.1 415 Unsupported Media Type\nContent-Type: text/plain\nContent-Length: 93\n\nServer received invalid content type, requires 'multipart/form-data', No data transferred.\n";
 const char *error4 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 50\n\nServer received empty file, No data transferred.\n";
 const char *success = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 14\n\nFile Received\n";
-const char *expectresponse = "HTTP/1.1 100 Continue";
+const char *expectresponse = "HTTP/1.1 100 Continue\n";
+
 //HTTP REQUEST STRUCTURE: This struct will be populated with header values from the client request
 struct REQUEST {
 	char Host[32];
@@ -392,8 +394,13 @@ int main() {
                         //for (int j = 0; j < nframes; j++)
 			//FILE *tmpstdin;
 			//tmpstdin = fopen("tmpstdin","a");
+			int loops = 0;
+			int totallength = valread;
 			while (hit_boundary == 0)
 			{
+				fprintf(logfile,"loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
+				//printf("loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
+				loops ++;
 				//open file
 				fp = fopen(fullfname,"a");
 				
@@ -401,18 +408,7 @@ int main() {
 				for (int i = 0; i < valread; i++)
 				{
 					fprintf(fp,"%c",data_buffer[i]);
-					//printf("%x",data_buffer[i]);
-					//printf("%c",data_buffer[i]);
-					if (valread == 0)
-					{
-						hit_boundary = 1;
-					}
-					/*
-					else
-					{
-						fprintf(logfile,"%2.2x",data_buffer[i]);
-						//printf("%2.2x",data_buffer[i]);
-					}*/
+					printf("%2.2x",data_buffer[i]);
 
 				}
 
@@ -420,10 +416,30 @@ int main() {
 				fclose(fp);	
 
 
+				if (valread < framesize)
+				{
+					//check for an error
+					valread = read(new_socket,data_buffer,0);
+					if (valread == -1)
+					{
+						printf("Read returned this error: %s\n",strerror(errno));
+						close(new_socket);
+						fclose(logfile);
+						exit(EXIT_FAILURE);
+					
+					}
+					//check if more data
+					valread = read(new_socket,data_buffer,framesize);
+					if (valread == 0)
+					{
+						hit_boundary = 1;
+					}
+				}
 				if (hit_boundary == 0)
 				{
 					memset(data_buffer, 0, sizeof(data_buffer));
                                         valread = read(new_socket,data_buffer,framesize);
+					totallength += valread;
                                         //printf("%s \n",data_buffer);
                                         startdata = &data_buffer[0];
 				}
@@ -442,12 +458,13 @@ int main() {
                         
 			//fflush(logfile);
 			//fclose(tmpstdin);
+			//printf("right here\n");
 			fprintf(logfile,"%p\n",data_buffer);
 			fprintf(logfile,"%s",success);
 			//fprintf(logfile,"%d bytes written\n",numbytes);
                         ssize_t writeout = write(new_socket, success, strlen(success));
-			printf("%ld\n",writeout);
-
+			//printf("%ld\n",writeout);
+			fprintf(logfile,"data read: %d bytes\n",totallength);
                         fprintf(logfile,"------------------Success message sent-------------------\n");
                         //close socket
                         

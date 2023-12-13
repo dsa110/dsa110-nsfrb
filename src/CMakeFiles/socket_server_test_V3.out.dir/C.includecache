@@ -9,6 +9,8 @@
 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_server_test_V3.c
 stdio.h
 -
+errno.h
+-
 sys/socket.h
 -
 unistd.h
