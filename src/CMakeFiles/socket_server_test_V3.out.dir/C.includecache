@@ -1,0 +1,26 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_server_test_V3.c
+stdio.h
+-
+sys/socket.h
+-
+unistd.h
+-
+stdlib.h
+-
+netinet/in.h
+-
+string.h
+-
+ctype.h
+-
+netinet/tcp.h
+-
+
