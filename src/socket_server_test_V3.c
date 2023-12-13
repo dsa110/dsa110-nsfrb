@@ -14,6 +14,7 @@ char invalidcommands[9][10] = {"GET","HEAD","PUT","DELETE","CONNECT","OPTIONS","
 const char *error3 = "HTTP/1.1 415 Unsupported Media Type\nContent-Type: text/plain\nContent-Length: 93\n\nServer received invalid content type, requires 'multipart/form-data', No data transferred.\n";
 const char *error4 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 50\n\nServer received empty file, No data transferred.\n";
 const char *success = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 14\n\nFile Received\n";
+const char *expectresponse = "HTTP/1.1 100 Continue";
 //HTTP REQUEST STRUCTURE: This struct will be populated with header values from the client request
 struct REQUEST {
 	char Host[32];
@@ -91,7 +92,7 @@ int main() {
 		//set no delay flag
 		int one = 1;
 		setsockopt(new_socket, SOL_TCP, TCP_NODELAY, &one, sizeof(one));
-
+		//printf("started connection ok\n");
 		//first find the header
 		char buffer[1024];
 		char response[1024];
@@ -127,7 +128,7 @@ int main() {
 		else
 		{
 			fprintf(logfile,"Received good command, proceeding...\n");
-
+			//printf("valid command\n");
 			//create REQUEST struct
                         struct REQUEST client_request;
 			
@@ -167,8 +168,26 @@ int main() {
 			int ticker = 0;
 			char *enddest;
 			char arg[128];
+			char *boundcomp ="boundary";
+			//printf("starting arg reading...\n");
 			while (strstr(&field[count],delim) != NULL)
 			{
+				//printf("----%s\n",&field[count]);
+				int i = 1;
+				while (i < 9)	
+				{
+					if (boundcomp[i-1] != field[count+i])
+					{
+						break;
+					}
+					i ++;
+				}
+				if (i == 9)
+				{
+					//printf("hit boundary\n");
+					break;
+				}
+
 				//reset array
 				memset(dest, 0, sizeof(dest));
 				memset(arg, 0, sizeof(arg));
@@ -194,7 +213,7 @@ int main() {
 				}
 				
 				fprintf(logfile,"%s\n",arg);
-				
+				//printf("%s\n",arg);				
 				//increment
 				count += eline - &field[count] + 1;
 				ticker ++;
@@ -228,10 +247,12 @@ int main() {
 				else
 				{
 					fprintf(logfile,"Invalid Header--> %s: %s\n",dest,arg);
+					//printf("Invalid Header--> %s: %s\n",dest,arg);
 				}
 			}
 			fprintf(logfile,"finished obtaining arguments\n");
-
+			//printf("finished getting args\n");
+			
 			char *ctype = "multipart/form-data";
 			if (strstr(client_request.ContentType, ctype) == NULL)
 			{
@@ -276,8 +297,17 @@ int main() {
 			}
 			fprintf(logfile,"finished getting boundary\n");
 			//fprintf(logfile,"\nReceived Boundary: %s\n",client_request.boundary);
-			
-				
+			//printf("finished getting boundary\n");	
+			//check if an Expect 100 continue message is present
+			//printf("%s\n",&field[count]);	
+			if (strstr(&field[count],"Expect: 100-continue") != NULL)
+			{
+				fprintf(logfile,"sending 100-continue...\n");
+				//printf("sending 100-continue...\n");
+				write(new_socket, expectresponse, strlen(expectresponse));
+
+			}
+	
 			//Next message should be the file data
 			unsigned char data_buffer[4096];
 			//char data[4096];
@@ -333,7 +363,7 @@ int main() {
 			int nframes = 16*51; //each frame is 4096 bytes//client_request.ContentLength/framesize + 1;
 			fprintf(logfile,"number of frames to read: %d \n",nframes);
 			unsigned char fullfname[128];
-                        strcpy(fullfname,"/dataz/dsa110/imaging/NSFRB_storage/NSFRB_buffer/");
+                        strcpy(fullfname,"./");///dataz/dsa110/imaging/NSFRB_storage/NSFRB_buffer/");
                         strcat(fullfname,client_request.fname);
                         fprintf(logfile,"Here's the filename:%s\n",fullfname);
 			FILE *fp;			
