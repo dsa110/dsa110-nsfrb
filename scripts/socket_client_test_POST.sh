@@ -7,7 +7,7 @@
 
 TIMEFORMAT='It took %R seconds.'
 time {
-curl -F "file=@simulated1test.npy;type=application/octet-stream" http://10.41.182:8080/simulated1test.npy --verbose --trace-ascii here.txt --keepalive-time 5
+curl -F "file=@empty_sent.npy;type=application/octet-stream" http://10.41.0.94:8080/empty_sent.npy --verbose --trace-ascii /media/ubuntu/ssd/sherman/code/here.txt --keepalive-time 5 --http0.9
 
 }
 
