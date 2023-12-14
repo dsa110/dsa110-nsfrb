@@ -16,7 +16,7 @@ const char *error3 = "HTTP/1.1 415 Unsupported Media Type\nContent-Type: text/pl
 const char *error4 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 50\n\nServer received empty file, No data transferred.\n";
 const char *success = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 14\n\nFile Received\n";
 const char *expectresponse = "HTTP/1.1 100 Continue\n";
-
+const unsigned char STARTBYTES[] = {0x93,0x4e,0x55,0x4d,0x50,0x59}; //Data starts with '\nNUMPY'
 //HTTP REQUEST STRUCTURE: This struct will be populated with header values from the client request
 struct REQUEST {
 	char Host[32];
@@ -317,15 +317,52 @@ int main() {
 			//fprintf(logfile,"%s\n",data_buffer);
 			
 			//check if the data is here
-			unsigned char *startdata = strstr(data_buffer,"stream") + 7;
+			unsigned char *startdata = &data_buffer[0];//strstr(data_buffer,"stream") + 7;
 			int idx = 0;
+			for (idx = 0; idx < 512; idx ++)
+			{
+				int j = 0;
+				for (j = 0; j < sizeof(STARTBYTES); j++)
+				{
+					printf("%x-%x ,",startdata[idx+j],STARTBYTES[j]);
+					if (startdata[idx+j] != STARTBYTES[j])
+					{
+						break;
+					}
+					
+				}
+				if (j == sizeof(STARTBYTES))
+				{
+					printf("FOUND START STRING!! %d\n",idx);
+					break;
+				}
+			}
+			if (idx == 512)
+			{
+				printf("DIDNT FIND IT\n");
+			}
+
+
 			//printf("firststuff %c \n",startdata[0]);
+			printf("about to start iterating %x\n",startdata[idx]);
+			/*
+			for (int i = 0; i < 10; i ++)
+			{
+				printf("%x ",startdata[i]);
+			}
+			unsigned char tmp;
+			tmp = startdata[20];
+			startdata[20] = '\0';
+			printf("ITER %s\n",startdata);
+			startdata[20] = tmp;
 			while ((isspace(startdata[idx])) && (strchr(&startdata[idx],'\0') == NULL))
 			{
 				idx++;
 			}
 			fprintf(logfile,"iterate until you reach data\n");
+			*/
 			//printf("nextstuff %c \n",startdata[idx]);
+			/*
 			if ((strchr(&startdata[idx],'\0') != NULL) || (strstr(startdata+idx,client_request.boundary) != NULL))
 			{
 				//keep reading until we get data
@@ -357,7 +394,7 @@ int main() {
 			}
 
 			//printf("%s \n", startdata);
-
+			*/
 			
 			//ok we found the starting point, now get the full dataset
 			int framesize = 4096;
@@ -399,7 +436,7 @@ int main() {
 			while (hit_boundary == 0)
 			{
 				fprintf(logfile,"loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
-				//printf("loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
+				printf("loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
 				loops ++;
 				//open file
 				fp = fopen(fullfname,"a");
@@ -407,10 +444,11 @@ int main() {
 				//loop through data buffer 
 				for (int i = 0; i < valread; i++)
 				{
-					fprintf(fp,"%c",data_buffer[i]);
-					printf("%2.2x",data_buffer[i]);
+					fprintf(fp,"%c",data_buffer[idx + i]);
+					//printf("%2.2x",data_buffer[i]);
 
 				}
+				idx = 0;
 
 				//close file
 				fclose(fp);	
@@ -418,6 +456,8 @@ int main() {
 
 				if (valread < framesize)
 				{
+					hit_boundary = 1;
+					/*
 					//check for an error
 					valread = read(new_socket,data_buffer,0);
 					if (valread == -1)
@@ -433,7 +473,7 @@ int main() {
 					if (valread == 0)
 					{
 						hit_boundary = 1;
-					}
+					}*/
 				}
 				if (hit_boundary == 0)
 				{
