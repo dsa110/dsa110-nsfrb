@@ -14,23 +14,30 @@ def server_handler(datasize,headersize,chunksize,output_shape,verbose=False):
     alldat = np.array([]).tobytes()
     statusstring = ""
     dat = np.array([1,2,3]).tobytes() #dummy data
-    while len(statusstring) < datasize and len(dat) > 0:
+    while len(alldat) < datasize:#len(statusstring) < datasize and len(dat) > 0:
         #read data chunk
+        #print(".",end=" ")
         dat = os.read(0,chunksize)
-        #if verbose:
-        #    print(len(alldat))
+        if verbose:
+            #print(len(alldat))
+            if len(alldat)%128000 == 0:
+                print("...",end="")
+            if len(alldat)%512000 == 0:
+                print("read " + str(len(alldat))+" bytes",end="")
         alldat = alldat + dat
         statusstring += str(dat[2:-1])
+        sys.stdout.flush()    
+
 
     #decode hex data
     if verbose:
-        print(alldat,len(dat),len(alldat))
+        print(len(dat),len(alldat))
     alldatstr = alldat.decode('utf-8')
 
     #convert to bytes
     bytedat = bytes.fromhex(alldatstr)
     if verbose:
-        print(bytedat)
+        print(len(bytedat))
         print(np.frombuffer(bytedat[headersize:datasize+headersize]))
     #convert to numpy array
     arrdat = np.frombuffer(bytedat[headersize:datasize+headersize]).reshape(output_shape)#(32,32,25,16))
@@ -40,8 +47,8 @@ def server_handler(datasize,headersize,chunksize,output_shape,verbose=False):
 
 
 def main():
-    datasize = 209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
-    headersize = 0
+    datasize = 2*3276928#209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
+    headersize = 128
     chunksize = 128
     output_shape = (32,32,25,16)
 

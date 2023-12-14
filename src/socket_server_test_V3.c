@@ -11,12 +11,15 @@
 //response messages
 const char *error1 = "HTTP/1.1 405 Method Not Allowed\nContent-Type: text/plain\nContent-Length: 103\n\nServer received invalid command, only configured to respond to 'POST' commands. No data transferred.\n";
 const char *error2 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 57\n\nServer received invalid command, No data transferred.\n";
-char invalidcommands[9][10] = {"GET","HEAD","PUT","DELETE","CONNECT","OPTIONS","TRACE","PATCH"};
+char invalidcommands[9][10] = {"GET","HEAD","DELETE","CONNECT","OPTIONS","TRACE","PATCH"};
 const char *error3 = "HTTP/1.1 415 Unsupported Media Type\nContent-Type: text/plain\nContent-Length: 93\n\nServer received invalid content type, requires 'multipart/form-data', No data transferred.\n";
 const char *error4 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 50\n\nServer received empty file, No data transferred.\n";
 const char *success = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 14\n\nFile Received\n";
 const char *expectresponse = "HTTP/1.1 100 Continue\n";
 const unsigned char STARTBYTES[] = {0x93,0x4e,0x55,0x4d,0x50,0x59}; //Data starts with '\nNUMPY'
+const unsigned char TESTSTRING[] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0x01, 0xcd, 0x24, 0xa7, 0x34, 0xcf, 0x6e, 0xc0, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x0c, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0xc1, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd0, 0x1f, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x48, 0x3c, 0xa7, 0x9e, 0x7f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x58, 0xc1, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0xa0, 0x3c, 0x99, 0xa7, 0x01, 0x00, 0x00, 0x00, 0xd6, 0x0d, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0x32, 0x8f, 0x3b, 0x47, 0x68, 0x2e, 0x3c, 0xe0, 0x0c, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0xc1, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0x32, 0x2f, 0x85, 0x96, 0x5f};
+
+
 //HTTP REQUEST STRUCTURE: This struct will be populated with header values from the client request
 struct REQUEST {
 	char Host[32];
@@ -100,7 +103,8 @@ int main() {
 		char response[1024];
 		valread = read(new_socket,buffer,1024);
 		char *command = strstr(buffer,"POST");
-		if (command == NULL)
+		char *commandalt = strstr(buffer,"PUT");
+		if (command == NULL && commandalt == NULL)
 		{
 
 			fprintf(logfile,"Error, sending response:\n");
@@ -135,7 +139,15 @@ int main() {
                         struct REQUEST client_request;
 			
 			//command should point to start of POST; parse the header
-			char *field = strstr(buffer,"POST") + 6;
+			char *field;
+			if (commandalt == NULL)
+			{
+				field = strstr(buffer,"POST") + 6;
+			}
+			else
+			{
+				field = strstr(buffer,"PUT") + 5;
+			}
 			//get the filename
 			//char fname[128];
 			int count = 0;
@@ -255,53 +267,64 @@ int main() {
 			fprintf(logfile,"finished obtaining arguments\n");
 			//printf("finished getting args\n");
 			
-			char *ctype = "multipart/form-data";
-			if (strstr(client_request.ContentType, ctype) == NULL)
+			
+			if (commandalt == NULL) //received POST command
 			{
-				fprintf(logfile,"%s\n",error3);
-				strcpy(response,error3);
-				write(new_socket, response, strlen(response));
-
-                        	fprintf(logfile,"------------------Response sent-------------------\n");
-				fclose(logfile);
-                        	//close socket
-                        	close(new_socket);
-				exit(EXIT_FAILURE);
-			}
-
-
-			//get boundary
-			fprintf(logfile,"searching for boundary\n");
-			char *bound = "boundary";
-			char *delimnewline = "\n\n";
-			if (strstr(&field[count],bound) != NULL)
-			{
-				
-				memset(dest, 0, sizeof(dest));
-				memset(arg, 0, sizeof(arg));
-
-				//eline = strchr(&field[count],'\n');
-				//for (int i = 0; i < 2+eline - &field[count+10]; i++)
-				int idx = 0;
-				for (int i = 0; i < 48; i++)
+				char *ctype = "multipart/form-data";
+				if (strstr(client_request.ContentType, ctype) == NULL)
 				{
-					if ((field[count+10] != '\n'))// && (field[count+10] != '-'))//strchr(&field[count],'\n')==NULL)
-					{
-						client_request.boundary[idx] = field[count+10];//field[count+10+i];
-						//fprintf(logfile,"%c",client_request.boundary[idx]);
-						idx++;
-					}
-					count++;
+					fprintf(logfile,"%s\n",error3);
+					strcpy(response,error3);
+					write(new_socket, response, strlen(response));
+
+                        		fprintf(logfile,"------------------Response sent-------------------\n");
+					fclose(logfile);
+                        		//close socket
+                        		close(new_socket);
+					exit(EXIT_FAILURE);
 				}
 
+
+				//get boundary
+				fprintf(logfile,"searching for boundary\n");
+				char *bound = "boundary";
+				char *delimnewline = "\n\n";
+				if (strstr(&field[count],bound) != NULL)
+				{
 				
-				//count += eline - &field[count] + 1;
+					memset(dest, 0, sizeof(dest));
+					memset(arg, 0, sizeof(arg));
+
+					//eline = strchr(&field[count],'\n');
+					//for (int i = 0; i < 2+eline - &field[count+10]; i++)
+					int idx = 0;
+					for (int i = 0; i < 48; i++)
+					{
+						if ((field[count+10] != '\n'))// && (field[count+10] != '-'))//strchr(&field[count],'\n')==NULL)
+						{
+							client_request.boundary[idx] = field[count+10];//field[count+10+i];
+							//fprintf(logfile,"%c",client_request.boundary[idx]);
+							idx++;
+						}
+						count++;
+					}
+
+				
+					//count += eline - &field[count] + 1;
+				}
+				fprintf(logfile,"finished getting boundary\n");
+				//fprintf(logfile,"\nReceived Boundary: %s\n",client_request.boundary);
+				//printf("finished getting boundary\n");	
+				//check if an Expect 100 continue message is present
+				//printf("%s\n",&field[count]);	
 			}
-			fprintf(logfile,"finished getting boundary\n");
-			//fprintf(logfile,"\nReceived Boundary: %s\n",client_request.boundary);
-			//printf("finished getting boundary\n");	
-			//check if an Expect 100 continue message is present
-			//printf("%s\n",&field[count]);	
+			else //received PUT command
+			{	
+				fprintf(logfile,"received a PUT command, no boundary\n");
+				//printf("PUT COMMAND CASE\n");
+			}
+				
+			//look for expect-100 continue
 			if (strstr(&field[count],"Expect: 100-continue") != NULL)
 			{
 				fprintf(logfile,"sending 100-continue...\n");
@@ -324,7 +347,7 @@ int main() {
 				int j = 0;
 				for (j = 0; j < sizeof(STARTBYTES); j++)
 				{
-					printf("%x-%x ,",startdata[idx+j],STARTBYTES[j]);
+					//printf("%x-%x ,",startdata[idx+j],STARTBYTES[j]);
 					if (startdata[idx+j] != STARTBYTES[j])
 					{
 						break;
@@ -333,18 +356,18 @@ int main() {
 				}
 				if (j == sizeof(STARTBYTES))
 				{
-					printf("FOUND START STRING!! %d\n",idx);
+					//printf("FOUND START STRING!! %d\n",idx);
 					break;
 				}
 			}
 			if (idx == 512)
 			{
-				printf("DIDNT FIND IT\n");
+				//printf("DIDNT FIND IT\n");
 			}
 
 
 			//printf("firststuff %c \n",startdata[0]);
-			printf("about to start iterating %x\n",startdata[idx]);
+			//printf("about to start iterating %x\n",startdata[idx]);
 			/*
 			for (int i = 0; i < 10; i ++)
 			{
@@ -435,8 +458,27 @@ int main() {
 			int totallength = valread;
 			while (hit_boundary == 0)
 			{
+				if (data_buffer[idx] == TESTSTRING[0])
+				{
+					int j = 0;
+					for (j = 0; j < sizeof(TESTSTRING); j ++)
+					{
+						if (data_buffer[idx+j] != TESTSTRING[j])
+						{
+							break;
+						}
+
+					}
+					if (j == sizeof(TESTSTRING))
+					{
+						fprintf(logfile,"FOUND THE BAD STRING, WHY IS IT HERE\n");
+
+					}
+
+				}
+				
 				fprintf(logfile,"loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
-				printf("loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
+				//printf("loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
 				loops ++;
 				//open file
 				fp = fopen(fullfname,"a");
@@ -445,7 +487,7 @@ int main() {
 				for (int i = 0; i < valread; i++)
 				{
 					fprintf(fp,"%c",data_buffer[idx + i]);
-					//printf("%2.2x",data_buffer[i]);
+					printf("%2.2x",data_buffer[i]);
 
 				}
 				idx = 0;

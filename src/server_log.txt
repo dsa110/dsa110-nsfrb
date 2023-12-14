@@ -20,19 +20,16 @@ P
 FINISHED: Host: 10.41.0.94:8080
 User-Agent: curl/7.78.0
 Accept: */*
-Content-Length: 3277142
-Content-Type: multipart/form-data; boundary=------------------------e91065bc761af214
+Content-Length: 3276928
 Expect: 100-continue
 
 Reading Argument Host:  10.41.0.94:8080
 Reading Argument User-Agent:  curl/7.78.0
 Reading Argument Accept:  */*
-Reading Argument Content-Length:  3277142
-Reading Argument Content-Type:  multipart/form-data
+Reading Argument Content-Length:  3276928
+Reading Argument Expect:  100-continue
 finished obtaining arguments
-searching for boundary
-finished getting boundary
-sending 100-continue...
+received a PUT command, no boundary
 number of frames to read: 816 
 Here's the filename:./simulated1test_rev.npy
 loop: 0, 0, 4096
@@ -835,13 +832,13 @@ loop: 796, 0, 4096
 loop: 797, 0, 4096
 loop: 798, 0, 4096
 loop: 799, 0, 4096
-loop: 800, 0, 342
+loop: 800, 0, 128
 breaking...
-0x7ffe9ba8b030
+0x7fffd5a1aaa0
 HTTP/1.1 200 OK
 Content-Type: text/plain
 Content-Length: 14
 
 File Received
-data read: 3277142 bytes
+data read: 3276928 bytes
 ------------------Success message sent-------------------
