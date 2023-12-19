@@ -43,9 +43,10 @@ Myles Sherman
 """
 Directory for output data
 """
-output_dir = "/media/ubuntu/ssd/sherman/NSFRB_search_output/"
-output_dir = "./NSFRB_search_output/"
-
+#output_dir = "/media/ubuntu/ssd/sherman/NSFRB_search_output/"
+#output_dir = "./NSFRB_search_output/"
+output_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
+coordfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 
 """
 Search parameters
@@ -120,11 +121,11 @@ import csv
 ANTENNALONS = []
 ANTENNALATS = []
 ANTENNAELEVS = []
-with open('../DSA110_Station_Coordinates.csv','r') as csvfile:
+with open(coordfile,'r') as csvfile:
     rdr = csv.reader(csvfile,delimiter=',')
     i = 0
     for row in rdr:
-        print(row)
+        #print(row)
         if row[1][:3] == 'DSA' and row[1] != 'DSA-110 Station Coordinates':
             ANTENNALATS.append(float(row[2]))
             ANTENNALONS.append(float(row[3]))
@@ -368,7 +369,8 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
     print("Threshold searching for candidates with SNR > " + str(SNRthresh))
     
     #find indices
-    flat_cands = np.arange(len(image_tesseract_binned.flatten()))[image_tesseract_binned.flatten()>SNRthresh]
+    snrcondition = np.logical_and(image_tesseract_binned.flatten()>SNRthresh,~np.isinf(image_tesseract_binned.flatten()))
+    flat_cands = np.arange(len(image_tesseract_binned.flatten()))[snrcondition]
     unravel_cands = []
     for i in range(len(flat_cands)):
         unravel_cands.append(np.unravel_index(flat_cands[i],image_tesseract_binned.shape))

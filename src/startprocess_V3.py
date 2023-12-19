@@ -3,11 +3,11 @@ import sys
 import numpy as np
 import os
 
-
-
+sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+from nsfrb import pipeline
 ##defines function to handle output from server piped to standard in
 
-
+"""
 def server_handler(datasize,headersize,chunksize,output_shape,verbose=False):
 
     #define empty byte array and status string to keep track of data size
@@ -43,7 +43,7 @@ def server_handler(datasize,headersize,chunksize,output_shape,verbose=False):
     arrdat = np.frombuffer(bytedat[headersize:datasize+headersize]).reshape(output_shape)#(32,32,25,16))
     return arrdat
 
-
+"""
 
 
 def main():
@@ -60,7 +60,7 @@ def main():
     chunksize = 128
     output_shape = (32,32,25,16)
 
-    data = server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
+    data = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
     print(data)
     print(data.shape)
     return
