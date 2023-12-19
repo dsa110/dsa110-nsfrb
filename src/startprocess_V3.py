@@ -47,6 +47,14 @@ def server_handler(datasize,headersize,chunksize,output_shape,verbose=False):
 
 
 def main():
+    #first check that previous pipe finished
+    f = open(".pipestatus.txt","r")
+    pipestatus = f.read()
+    f.close()
+    if len(pipestatus) > 0:
+        print(pipestatus)
+        return 1
+        
     datasize = 2*3276928#209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
     headersize = 128
     chunksize = 128

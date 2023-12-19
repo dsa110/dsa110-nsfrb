@@ -18,7 +18,7 @@ const char *success = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length
 const char *expectresponse = "HTTP/1.1 100 Continue\n";
 const unsigned char STARTBYTES[] = {0x93,0x4e,0x55,0x4d,0x50,0x59}; //Data starts with '\nNUMPY'
 const unsigned char TESTSTRING[] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0x01, 0xcd, 0x24, 0xa7, 0x34, 0xcf, 0x6e, 0xc0, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x0c, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0xc1, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd0, 0x1f, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x48, 0x3c, 0xa7, 0x9e, 0x7f, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x58, 0xc1, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0xa0, 0x3c, 0x99, 0xa7, 0x01, 0x00, 0x00, 0x00, 0xd6, 0x0d, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0x32, 0x8f, 0x3b, 0x47, 0x68, 0x2e, 0x3c, 0xe0, 0x0c, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0xc1, 0xa8, 0x9b, 0xfe, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0x32, 0x2f, 0x85, 0x96, 0x5f};
-
+const char *pipestatusfname = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt";
 
 //HTTP REQUEST STRUCTURE: This struct will be populated with header values from the client request
 struct REQUEST {
@@ -33,7 +33,47 @@ struct REQUEST {
 	char fname[128];
 };
 
-int main() {
+
+int update_pipestatus(char *fname) {
+	FILE *pipestatus;
+	pipestatus = fopen(pipestatusfname,"w");
+	fprintf(pipestatus,"%s failed\n",fname);
+	fclose(pipestatus);
+	return 0;
+}
+
+
+int main(int argc, char *argv[]) {
+	//create status file to report if command failed
+	FILE *pipestatus;
+	
+
+
+	//check arguments
+	int tofile = 0;	
+	if (argc == 2)
+	{
+		if (strcmp(argv[1],"-f") == 0)
+		{
+			tofile = 1;
+		}
+		else
+		{
+			printf("invalid argument, use -f to write to file\n");
+			//return 1;
+			//pipestatus = fopen(pipestatusfname,"w");
+			//fprintf(pipestatus,"%s failed\n",argv[0]);
+			update_pipestatus(argv[0]);
+			exit(EXIT_FAILURE);
+		}
+	}
+	else if (argc > 2)
+	{
+		printf("invalid argument, use -f to write to file\n");
+		//return 1;
+		update_pipestatus(argv[0]);
+		exit(EXIT_FAILURE);
+	}	
 	//make log file to write output to, only want data written to stdout
 	FILE *logfile;
 	logfile = fopen("server_log.txt","w");
@@ -52,6 +92,7 @@ int main() {
 		fprintf(logfile,"cannot create socket");
 		perror("cannot create socket");
 		fclose(logfile);
+		update_pipestatus(argv[0]);
 		return 0;
 	}
 	fprintf(logfile,"server socket created...\n");
@@ -71,6 +112,7 @@ int main() {
 	{
 		perror("bind failed");
 		fclose(logfile);
+		update_pipestatus(argv[0]);
 		return 0;
 	}
 	fprintf(logfile,"socket bound...\n");	
@@ -80,6 +122,7 @@ int main() {
 	{
 		perror("In listen");
 		fclose(logfile);
+		update_pipestatus(argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	fprintf(logfile,"opened server for listening...\n");
@@ -92,6 +135,7 @@ int main() {
 		{
 			perror("In accept");
 			fclose(logfile);
+			update_pipestatus(argv[0]);
 			exit(EXIT_FAILURE);
 		}
 		//set no delay flag
@@ -281,6 +325,7 @@ int main() {
 					fclose(logfile);
                         		//close socket
                         		close(new_socket);
+					update_pipestatus(argv[0]);
 					exit(EXIT_FAILURE);
 				}
 
