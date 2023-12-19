@@ -47,6 +47,11 @@ Directory for output data
 #output_dir = "./NSFRB_search_output/"
 output_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
+output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
+f=open(output_file,"w")
+f.close()
+
+
 
 """
 Search parameters
@@ -230,12 +235,19 @@ def make_2D_PSF(gridsize=gridsize,ANTENNALONS=ANTENNALONS,ANTENNALATS=ANTENNALAT
 
 
 #snr calculation code
-def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[0,0]):
+def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[0,0],output_file=output_file):
     #plot=False
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+        
+
+
     
     #step 1: average over frequency
     image_tesseract_freq = np.nanmean(image_tesseract,axis=3)#.mean(3)
-    print("off pulse noise: " + str(np.mean(np.std(image_tesseract[:,:,10:],axis=2))*np.sqrt(np.sum(boxcar**2))/np.sum(boxcar)))
+    print("off pulse noise: " + str(np.mean(np.std(image_tesseract[:,:,10:],axis=2))*np.sqrt(np.sum(boxcar**2))/np.sum(boxcar)),file=fout)
     if plot:
         plt.figure(figsize=(12,6))
     #plt.plot(boxcar)
@@ -250,8 +262,8 @@ def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[
             noise = np.std(np.concatenate([signal_time[:np.argmax(signal_time)-width*3],signal_time[np.argmax(signal_time)+width*3:]]))
             signal = np.nanmax(signal_time)
             if i == TMPCOORDS[0] and j == TMPCOORDS[1]:
-                print("sig: ", signal)
-                print("noise: ",noise)
+                print("sig: ", signal,file=fout)
+                print("noise: ",noise,file=fout)
             image_tesseract_time[i,j] = signal/noise#np.nanmax(np.convolve(image_tesseract_freq[i,j,:],boxcar,'same')/np.sum(boxcar))/noiseest#/np.sum(boxcar))
             #print(boxcar)
             if plot:
@@ -270,14 +282,18 @@ def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[
                                linewidth=0, antialiased=False)
         fig.colorbar(surf, shrink=0.5, aspect=5)
         plt.show()
-        
+    if output_file != "":
+        fout.close()
     return image_tesseract_snr
 
 
 #run search pipeline with desired DM, width trial range; output candidates to a csv? pkl? txt?
 #takes 4D cube (RA,DEC,TIME,FREQUENCY)
-def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,off=10,widthmode="gaussian",PSF=None,offpnoise=0.3,verbose=False):
-    
+def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,off=10,widthmode="gaussian",PSF=None,offpnoise=0.3,verbose=False,output_file=output_file):
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
     
     time_axis_long = np.arange(image_tesseract.shape[2])*tsamp
     
@@ -296,7 +312,7 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
         plt.close() 
     #de-disperse all beams
     nDMtrials = len(DM_trials)
-    print("Starting dedispersion with " + str(nDMtrials) + " trials")
+    print("Starting dedispersion with " + str(nDMtrials) + " trials",file=fout)
     image_tesseract_dedisp = np.zeros((gridsize,gridsize,nsamps,nDMtrials))
 
     for i in range(gridsize):
@@ -317,7 +333,7 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
                 
     #boxcar search over pulse width
     nwidths=len(widthtrials)
-    print("Boxcar searching over width with " + str(nwidths) + " trials")
+    print("Boxcar searching over width with " + str(nwidths) + " trials",file=fout)
     image_tesseract_binned = np.zeros((gridsize,gridsize,nwidths,nDMtrials))
 
     for i in range(nwidths):
@@ -348,7 +364,11 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
                     image_tesseract_binned[j1,j2,i,k] = sigest/noiseest#np.max(convolve(image_tesseract_dedisp[j1,j2,:,k],boxcar,mode="constant"))/np.sqrt(np.sum(boxcar))
         """
         for k in range(nDMtrials):
-            image_tesseract_binned[:,:,i,k] = snr_vs_RA_DEC(image_tesseract_dedisp[:,:,:,k:k+1],boxcar=boxcar,gridsize=gridsize,width=widthtrials[i])
+            if output_file != "":
+                fout.close()
+            image_tesseract_binned[:,:,i,k] = snr_vs_RA_DEC(image_tesseract_dedisp[:,:,:,k:k+1],boxcar=boxcar,gridsize=gridsize,width=widthtrials[i],output_file=output_file)
+            if output_file != "":
+                fout = open(output_file,"a")
         #print(image_tesseract_binned.shape)
         #print(image_tesseract_binned)
         
@@ -390,16 +410,16 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
     cluster_cands = []
     k = 0
     for spot in unique_spots:
-        print(spot)
-        print(image_tesseract_binned[spot[0],spot[1],spot[2],spot[3]])
+        print(spot,file=fout)
+        print(image_tesseract_binned[spot[0],spot[1],spot[2],spot[3]],file=fout)
         #find DM and width indices
         dms_all = []
         wids_all = []
         snrs_all = []
         if verbose:
-            print("Candidate " + str(k) +":")
-            print("RA: " + str(np.around(RA_axis[spot[0]]*180/np.pi,2)) + " deg")
-            print("DEC: " + str(np.around(DEC_axis[spot[1]]*180/np.pi,2)) + " deg")
+            print("Candidate " + str(k) +":",file=fout)
+            print("RA: " + str(np.around(RA_axis[spot[0]]*180/np.pi,2)) + " deg",file=fout)
+            print("DEC: " + str(np.around(DEC_axis[spot[1]]*180/np.pi,2)) + " deg",file=fout)
         ftxt.write("Candidate " + str(k) +":\n")
         ftxt.write("RA: " + str(np.around(RA_axis[spot[0]]*180/np.pi,2)) + " deg\n")
         ftxt.write("DEC: " + str(np.around(DEC_axis[spot[1]]*180/np.pi,2)) + " deg\n")
@@ -422,10 +442,10 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
         cluster_cands.append((spot[0],spot[1],bestdmidx,bestwididx,bestsnr))
         csvwriter2.writerow((spot[0],spot[1],bestdmidx,bestwididx,bestsnr))
         if verbose:
-            print("BEST SNR: " + str(np.around(bestsnr,2)) + "")
-            print("BEST WIDTH: " + str(np.around(widthtrials[bestwididx]*tsamp,2)) + " ms")
-            print("BEST DM: " + str(np.around(DM_trials[bestdmidx],2)) + " pc/cc")
-            print("")
+            print("BEST SNR: " + str(np.around(bestsnr,2)) + "",file=fout)
+            print("BEST WIDTH: " + str(np.around(widthtrials[bestwididx]*tsamp,2)) + " ms",file=fout)
+            print("BEST DM: " + str(np.around(DM_trials[bestdmidx],2)) + " pc/cc",file=fout)
+            print("",file=fout)
         ftxt.write("BEST SNR: " + str(np.around(bestsnr,2)) + "\n")
         ftxt.write("BEST WIDTH: " + str(np.around(widthtrials[bestwididx]*tsamp,2)) + " ms\n")
         ftxt.write("BEST DM: " + str(np.around(DM_trials[bestdmidx],2)) + " pc/cc\n")
@@ -459,8 +479,10 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
     ftxt.close()
     fcsv.close()
     fcsv2.close()
-    print(str(len(cands)) + " total candidates")
-    print(str(len(cluster_cands)) + " initial clusters")
+    print(str(len(cands)) + " total candidates",file=fout)
+    print(str(len(cluster_cands)) + " initial clusters",file=fout)
+    if output_file != "":
+        fout.close()
     return cands,cluster_cands,image_tesseract_binned
 
 #get cands and clusters from csv file
@@ -596,7 +618,11 @@ def update_noisemap(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_s
 
 
 #normalize using noisemap
-def normalize_image(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix.npy",noisemap_info_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix_info.pkl"):
+def normalize_image(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix.npy",noisemap_info_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix_info.pkl",output_file=output_file):
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
 
     #get previous noise map
     noisemap = np.load(noisemap_file)
@@ -607,18 +633,28 @@ def normalize_image(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_s
     f.close()
 
     if noiseinfo['iterations']==0:
-        print("Noise map not initialized")
+        print("Noise map not initialized",file=fout)
+        if output_file != "":
+            fout.close()
         return image_tesseract
     else:
+        if output_file != "":
+            fout.close()
         return image_tesseract/noisemap
 
 
 #code to cutout subimages
-def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=130,subimgpix=11,save=False,prefix="candidate_stamp",plot=False):
+def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=130,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=output_file):
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
     gridsize = image_tesseract.shape[0]
     fname = "/dataz/dsa110/imaging/NSFRB_storage/NSFRB_candidates/" + prefix + "_" + str(ra_idx) + "_" + str(dec_idx)
     if subimgpix%2 == 0:
-        print("subimgpix must be odd")
+        print("subimgpix must be odd",file=fout)
+        if output_file != "":
+            fout.close()
         return None
 
 
@@ -660,7 +696,7 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=
     maxdecidx = gridsize + dec_idx + subimgpix//2#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
 
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
-    print(minraidx,maxraidx,mindecidx,maxdecidx)
+    print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)
 
     image_cutout = image_tesseract_dm[minraidx:maxraidx,mindecidx:maxdecidx,:,:]
 
@@ -671,6 +707,8 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=
         plt.figure(figsize=(12,12))
         plt.imshow(image_cutout.mean((2,3)),aspect='auto')
         plt.show()
+    if output_file != "":
+        fout.close()
     return image_cutout
 
 

@@ -51,47 +51,61 @@ from nsfrb import pipeline
 Directory for output data
 """
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
-pipestatus = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
+pipestatusfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 
 """
 Arguments: data file
 """
-time1 = time.time()
+#time1 = time.time()
 #read arguments
 #parser = argparse.ArgumentParser()
 #parser.add_argument('--fname',type=str,help='File name of 4D numpy array containing image with indices in order (RA,DEC,TIME,FREQ)',default=100)#1000)
 #args = parser.parse_args()
 #print(args)
 
-#get image input from stdin
-datasize = 2*3276928#209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
-headersize = 128
-chunksize = 128
-output_shape = (32,32,25,16)
 
-image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
+def main():
+    #first check that previous pipe finished
+    f = open(pipestatusfile,"r")
+    pipestatus = f.read()
+    f.close()
+    if len(pipestatus) > 0:
+        print(pipestatus)
+        return 1
 
-print(image_tesseract)
 
-#run search
-cands,cluster_cands,image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=30)
+    #get image input from stdin
+    datasize = 2*3276928#209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
+    headersize = 128
+    chunksize = 128
+    output_shape = (32,32,25,16)
 
-#convert clustered cands to np array
-cluster_cands_arr = np.zeros((len(cluster_cands),len(cluster_cands[0])))
-for i in range(len(cluster_cands)):
-    cluster_cands_arr[i,:] = np.array(cluster_cands[0])
+    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
 
-print(cluster_cands_arr)
+    print(image_tesseract)
 
-#output as bytes
-#cluster_cands_bytes = cluster_cands_arr.tobytes().hex()
-#print(cluster_cands_bytes)
-stat = pipeline.pipeout(cluster_cands_arr)
-if stat == -1:
-	print("output failed")
-	f = open(pipestatus,"w")
-	f.write(sys.argv[0] + " failed")
-	f.close()
+    #run search
+    cands,cluster_cands,image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=30)
+
+    #convert clustered cands to np array
+    cluster_cands_arr = np.zeros((len(cluster_cands),len(cluster_cands[0])))
+    for i in range(len(cluster_cands)):
+        cluster_cands_arr[i,:] = np.array(cluster_cands[0])
+
+    print(cluster_cands_arr)
+
+    #output as bytes
+    #cluster_cands_bytes = cluster_cands_arr.tobytes().hex()
+    #print(cluster_cands_bytes)
+    stat = pipeline.pipeout(cluster_cands_arr)
+    if stat == -1:
+        print("output failed")
+        f = open(pipestatusfile,"w")
+        f.write(sys.argv[0] + " failed")
+        f.close()
+    return 0
+if __name__=="__main__":
+    main()
 """
 sl.search_plots(cands,cluster_cands)
 
@@ -104,4 +118,4 @@ for i in range(len(cluster_cands)):
 #classes,centroid_raidxs,centroid_decidxs,centroid_dmidxs,centroid_wididxs,centroid_snrs=hdbscan_cluster(cluster_cands,min_cluster_size=100,plot=True)
 """
 
-print("Total execution time: " + str(time.time()-time1) + " s")
+#print("Total execution time: " + str(time.time()-time1) + " s")
