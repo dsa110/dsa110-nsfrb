@@ -78,15 +78,10 @@ def main():
     datasize = 2*3276928#209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
     headersize = 128
     chunksize = 128
-    #output_shape = (32,32,25,16)
+    output_shape = (32,32,25,16)
 
-    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=-1,verbose=True)
-    if image_tesseract == -1:
-        print("read failed")
-        f = open(pipestatusfile,"w")
-        f.write(sys.argv[0] + " failed")
-        f.close()
-        return 1
+    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
+
     print(image_tesseract)
 
     #run search

@@ -8,6 +8,8 @@
 #include <ctype.h>
 #include <netinet/tcp.h>
 
+extern int errno ;
+
 //response messages
 const char *error1 = "HTTP/1.1 405 Method Not Allowed\nContent-Type: text/plain\nContent-Length: 103\n\nServer received invalid command, only configured to respond to 'POST' commands. No data transferred.\n";
 const char *error2 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 57\n\nServer received invalid command, No data transferred.\n";
@@ -501,6 +503,8 @@ int main(int argc, char *argv[]) {
 			//tmpstdin = fopen("tmpstdin","a");
 			int loops = 0;
 			int totallength = valread;
+			//off_t thing = lseek(new_socket,0,SEEK_CUR);//tell(new_socket);
+			//fprintf(logfile,"THIS IS THE CURRENT FILE OFFSET: %ld\n",thing);//ftell(new_socket)); 
 			while (hit_boundary == 0)
 			{
 				if (data_buffer[idx] == TESTSTRING[0])
@@ -521,8 +525,12 @@ int main(int argc, char *argv[]) {
 					}
 
 				}
-				
+				//thing = lseek(new_socket,0,SEEK_CUR);
 				fprintf(logfile,"loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
+				//if (thing == -1)
+				//{
+				//	fprintf(logfile,"Error during read, returned -1; value of errno: %d\n%s\n",errno,strerror(errno));
+				//}
 				//printf("loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
 				loops ++;
 				//open file
@@ -566,6 +574,16 @@ int main(int argc, char *argv[]) {
 				{
 					memset(data_buffer, 0, sizeof(data_buffer));
                                         valread = read(new_socket,data_buffer,framesize);
+					if (valread == -1)
+					{
+						fprintf(logfile,"Error during read, returned -1; value of errno: %d\n%s\n",errno,strerror(errno));
+						fclose(logfile);
+                        			close(new_socket);
+						update_pipestatus(argv[0]);
+                                        	exit(EXIT_FAILURE);
+
+
+					}
 					totallength += valread;
                                         //printf("%s \n",data_buffer);
                                         startdata = &data_buffer[0];
@@ -573,6 +591,14 @@ int main(int argc, char *argv[]) {
 				else
 				{
 					fprintf(logfile,"breaking...\n");
+					fprintf(logfile,"%s\n",data_buffer);
+					for (int m = 0; m < valread; m++)
+					{
+						fprintf(logfile,"%.2x",data_buffer[m]);
+					}
+					//thing = lseek(new_socket,0,SEEK_CUR);//tell(new_socket);
+					//fprintf(logfile,"THIS IS THE OFFSET NOW: %ld\n",thing);
+					
 					break;
 				}
 
