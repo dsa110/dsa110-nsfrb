@@ -8,9 +8,8 @@ def get_shape_from_raw(data,headersize=128):
     #input is data as bytes
 
     #get header string
-    header = data[1:headersize].decode('utf-8')
+    header = bytes.fromhex(data[:2*headersize].decode('utf-8'))[1:].decode('utf-8')#data[1:headersize].decode('utf-8')
     print(header)
-
     if not ('shape' in header): #no shape available
         return -1
 
@@ -62,25 +61,27 @@ def server_handler(datasize,headersize,chunksize,output_shape=-1,verbose=False):
         statusstring += str(dat[2:-1])
         sys.stdout.flush()
 
-    #find shape of array
+    print(bytes.fromhex(alldat[:2*headersize].decode('utf-8')))#find shape of array
     if output_shape == -1:
-        output_shape = get_shape_from_raw(dat[:headersize],headersize=headersize)
+        output_shape = get_shape_from_raw(alldat[:headersize*2],headersize=headersize)
         if output_shape == -1:
-            print("Invalid output shape")
+            print("Invalid output shape",output_shape)
             return -1
 
     #decode hex data
     if verbose:
         print(len(dat),len(alldat))
     alldatstr = alldat.decode('utf-8')
+    if verbose:
+        print("after decode:",len(alldatstr))
 
     #convert to bytes
     bytedat = bytes.fromhex(alldatstr)
     if verbose:
-        print(len(bytedat))
-        print(np.frombuffer(bytedat[headersize:datasize+headersize]))
+        print("after hex to bytes:",len(bytedat))
+        print(np.frombuffer(bytedat[headersize:]))#datasize+headersize]))
     #convert to numpy array
-    arrdat = np.frombuffer(bytedat[headersize:datasize+headersize]).reshape(output_shape)#(32,32,25,16))
+    arrdat = np.frombuffer(bytedat[headersize:]).reshape(output_shape)#datasize+headersize]).reshape(output_shape)#(32,32,25,16))
     return arrdat
 
 

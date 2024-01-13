@@ -58,7 +58,7 @@ def main():
     datasize = 2*3276928#209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
     headersize = 128
     chunksize = 128
-    output_shape = (32,32,25,16)
+    output_shape = -1#(32,32,25,16)
 
     data = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
     print(data)

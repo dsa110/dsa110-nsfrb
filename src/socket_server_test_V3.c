@@ -7,6 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <netinet/tcp.h>
+#include <fcntl.h>
 
 extern int errno ;
 
@@ -381,9 +382,10 @@ int main(int argc, char *argv[]) {
 			}
 	
 			//Next message should be the file data
-			unsigned char data_buffer[4096];
+			int framesize = 512;//64;
+			unsigned char data_buffer[framesize];
 			//char data[4096];
-			valread = read(new_socket,data_buffer,4096);
+			valread = read(new_socket,data_buffer,framesize);
 			//fprintf(logfile,"%s\n",data_buffer);
 			
 			//check if the data is here
@@ -467,7 +469,7 @@ int main(int argc, char *argv[]) {
 			*/
 			
 			//ok we found the starting point, now get the full dataset
-			int framesize = 4096;
+			//int framesize = 512;//64;//4096;
 			unsigned char data[framesize];//client_request.ContentLength];
 			int nframes = 16*51; //each frame is 4096 bytes//client_request.ContentLength/framesize + 1;
 			fprintf(logfile,"number of frames to read: %d \n",nframes);
@@ -502,6 +504,7 @@ int main(int argc, char *argv[]) {
 			//FILE *tmpstdin;
 			//tmpstdin = fopen("tmpstdin","a");
 			int loops = 0;
+			//fcntl(new_socket, F_SETFL, O_NONBLOCK);
 			int totallength = valread;
 			//off_t thing = lseek(new_socket,0,SEEK_CUR);//tell(new_socket);
 			//fprintf(logfile,"THIS IS THE CURRENT FILE OFFSET: %ld\n",thing);//ftell(new_socket)); 
@@ -537,7 +540,14 @@ int main(int argc, char *argv[]) {
 				fp = fopen(fullfname,"a");
 				
 				//loop through data buffer 
-				for (int i = 0; i < valread; i++)
+				int offset = 0;
+				if (strstr(data_buffer,"ENDFILE") != NULL)
+				{
+					offset = 7;
+					hit_boundary = 1;
+					
+				}
+				for (int i = 0; i < valread-offset; i++)
 				{
 					fprintf(fp,"%c",data_buffer[idx + i]);
 					printf("%2.2x",data_buffer[i]);
@@ -549,9 +559,14 @@ int main(int argc, char *argv[]) {
 				fclose(fp);	
 
 
-				if (valread < framesize)
+				/*if (valread > 0 && valread < framesize)
+				{
+					fprintf(logfile,"Only read%ld bytes, but expected%d\n",valread,framesize);
+				}
+				else if (strstr(data_buffer,"ENDFILE") != NULL)//(valread == 0)
 				{
 					hit_boundary = 1;
+				*/
 					/*
 					//check for an error
 					valread = read(new_socket,data_buffer,0);
@@ -569,20 +584,35 @@ int main(int argc, char *argv[]) {
 					{
 						hit_boundary = 1;
 					}*/
-				}
+				//}
 				if (hit_boundary == 0)
 				{
 					memset(data_buffer, 0, sizeof(data_buffer));
                                         valread = read(new_socket,data_buffer,framesize);
 					if (valread == -1)
 					{
-						fprintf(logfile,"Error during read, returned -1; value of errno: %d\n%s\n",errno,strerror(errno));
+					/*	fprintf(logfile,"Error during read, returned -1; value of errno: %d\n%s\n",errno,strerror(errno));
+						if (errno==11)//strcmp(strerror(errno),"EAGAIN") == 0 || strcmp(strerror(errno),"EWOULDBLOCK") == 0)
+						{
+							while (valread == -1)
+							{
+								valread = read(new_socket,data_buffer,framesize);
+							}
+						}
+
+						else
+						{
+							fclose(logfile);
+                        				close(new_socket);
+							update_pipestatus(argv[0]);
+                                        		exit(EXIT_FAILURE);
+						}
+
+					}*/
 						fclose(logfile);
-                        			close(new_socket);
-						update_pipestatus(argv[0]);
-                                        	exit(EXIT_FAILURE);
-
-
+                                                close(new_socket);
+                                                update_pipestatus(argv[0]);
+                                                exit(EXIT_FAILURE);
 					}
 					totallength += valread;
                                         //printf("%s \n",data_buffer);

@@ -76,12 +76,12 @@ def main():
 
     #get image input from stdin
     datasize = 2*3276928#209408#6553600#6553600#6553600#6553600#6553600#6553600#6553472#3276928*2#409600
-    headersize = 128
+    headersize = 128#128#256#128
     chunksize = 128
-    #output_shape = (32,32,25,16)
+    output_shape = -1#(32,32,25,16)
 
-    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=-1,verbose=True)
-    if image_tesseract == -1:
+    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
+    if np.all(image_tesseract == -1):
         print("read failed")
         f = open(pipestatusfile,"w")
         f.write(sys.argv[0] + " failed")
@@ -89,7 +89,7 @@ def main():
         return 1
     print(image_tesseract)
 
-    #run search
+    """#run search
     cands,cluster_cands,image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=30)
 
     #convert clustered cands to np array
@@ -107,7 +107,7 @@ def main():
         print("output failed")
         f = open(pipestatusfile,"w")
         f.write(sys.argv[0] + " failed")
-        f.close()
+        f.close()"""
     return 0
 if __name__=="__main__":
     main()
