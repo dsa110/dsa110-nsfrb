@@ -52,7 +52,7 @@ Directory for output data
 """
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
-
+searchflagsfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/searchlog_flags.txt"
 """
 Arguments: data file
 """
@@ -65,12 +65,17 @@ Arguments: data file
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--verbose',action='store_true')
+    args = parser.parse_args()
+
     #first check that previous pipe finished
     f = open(pipestatusfile,"r")
     pipestatus = f.read()
     f.close()
     if len(pipestatus) > 0:
-        print(pipestatus)
+        if args.verbose:
+            print(pipestatus)
         return 1
 
 
@@ -80,35 +85,46 @@ def main():
     chunksize = 128
     output_shape = -1#(32,32,25,16)
 
-    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
+    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=args.verbose)
     if np.all(image_tesseract == -1):
-        print("read failed")
+        if args.verbose:
+            print("read failed")
         f = open(pipestatusfile,"w")
         f.write(sys.argv[0] + " failed")
         f.close()
         return 1
-    print(image_tesseract)
+    #print(image_tesseract)
 
-    """#run search
+    #run search
     cands,cluster_cands,image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=30)
 
     #convert clustered cands to np array
     cluster_cands_arr = np.zeros((len(cluster_cands),len(cluster_cands[0])))
     for i in range(len(cluster_cands)):
         cluster_cands_arr[i,:] = np.array(cluster_cands[0])
+    if args.verbose:
+        print(cluster_cands_arr)
 
-    print(cluster_cands_arr)
 
     #output as bytes
     #cluster_cands_bytes = cluster_cands_arr.tobytes().hex()
     #print(cluster_cands_bytes)
+
+    #write length to flag file
+    f = open(searchflagsfile,"w")
+    f.write("datasize: " + str(len(cluster_cands_arr.tobytes().hex())) + ";")
+    f.write("outputshape: " + str(cluster_cands_arr.shape) + ";")
+    f.close()
+
     stat = pipeline.pipeout(cluster_cands_arr)
     if stat == -1:
-        print("output failed")
+        if args.verbose:
+            print("output failed")
         f = open(pipestatusfile,"w")
         f.write(sys.argv[0] + " failed")
-        f.close()"""
+        f.close()
     return 0
+    
 if __name__=="__main__":
     main()
 """

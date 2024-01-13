@@ -382,11 +382,11 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
             for j in range(nDMtrials):
                 image_tesseract_binned[:,:,i,j] = np.sqrt(convolve2d(image_tesseract_binned[:,:,i,j],PSF,mode='same',boundary='fill',fillvalue=0))#/initnoise)
     else:
-        print("skip smoothing")
+        print("skip smoothing",file=fout)
     
     
     #threshold search for candidates
-    print("Threshold searching for candidates with SNR > " + str(SNRthresh))
+    print("Threshold searching for candidates with SNR > " + str(SNRthresh),file=fout)
     
     #find indices
     snrcondition = np.logical_and(image_tesseract_binned.flatten()>SNRthresh,~np.isinf(image_tesseract_binned.flatten()))

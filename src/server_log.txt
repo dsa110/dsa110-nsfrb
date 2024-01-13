@@ -7,7 +7,7 @@ opened server for listening...
 +++++++ Waiting for new connection ++++++++
 
 Received good command, proceeding...
-simulated1_noisy.npy¸ 
+simulated1_noisy.npy 
 H
 T
 T
@@ -34,7 +34,7 @@ Reading Argument Expect:  100-continue
 finished obtaining arguments
 received a PUT command, no boundary
 number of frames to read: 816 
-Here's the filename:./simulated1_noisy.npy¸
+Here's the filename:./simulated1_noisy.npy
 loop: 0, 0, 512
 loop: 1, 0, 512
 loop: 2, 0, 512
@@ -276,7 +276,7 @@ loop: 237, 0, 512
 loop: 238, 0, 512
 loop: 239, 0, 512
 loop: 240, 0, 512
-loop: 241, 0, 256
+loop: 241, 0, 512
 loop: 242, 0, 512
 loop: 243, 0, 512
 loop: 244, 0, 512
@@ -676,7 +676,7 @@ loop: 637, 0, 512
 loop: 638, 0, 512
 loop: 639, 0, 512
 loop: 640, 0, 512
-loop: 641, 0, 256
+loop: 641, 0, 512
 loop: 642, 0, 512
 loop: 643, 0, 512
 loop: 644, 0, 512
@@ -1989,7 +1989,7 @@ loop: 1950, 0, 512
 loop: 1951, 0, 512
 loop: 1952, 0, 512
 loop: 1953, 0, 512
-loop: 1954, 0, 256
+loop: 1954, 0, 512
 loop: 1955, 0, 512
 loop: 1956, 0, 512
 loop: 1957, 0, 512
@@ -3296,7 +3296,7 @@ loop: 3257, 0, 512
 loop: 3258, 0, 512
 loop: 3259, 0, 512
 loop: 3260, 0, 512
-loop: 3261, 0, 256
+loop: 3261, 0, 512
 loop: 3262, 0, 512
 loop: 3263, 0, 512
 loop: 3264, 0, 512
@@ -3775,7 +3775,7 @@ loop: 3736, 0, 512
 loop: 3737, 0, 512
 loop: 3738, 0, 512
 loop: 3739, 0, 512
-loop: 3740, 0, 256
+loop: 3740, 0, 512
 loop: 3741, 0, 512
 loop: 3742, 0, 512
 loop: 3743, 0, 512
@@ -3997,7 +3997,7 @@ loop: 3958, 0, 512
 loop: 3959, 0, 512
 loop: 3960, 0, 512
 loop: 3961, 0, 512
-loop: 3962, 0, 256
+loop: 3962, 0, 512
 loop: 3963, 0, 512
 loop: 3964, 0, 512
 loop: 3965, 0, 512
@@ -4470,7 +4470,7 @@ loop: 4431, 0, 512
 loop: 4432, 0, 512
 loop: 4433, 0, 512
 loop: 4434, 0, 512
-loop: 4435, 0, 256
+loop: 4435, 0, 512
 loop: 4436, 0, 512
 loop: 4437, 0, 512
 loop: 4438, 0, 512
@@ -5783,7 +5783,7 @@ loop: 5744, 0, 512
 loop: 5745, 0, 512
 loop: 5746, 0, 512
 loop: 5747, 0, 512
-loop: 5748, 0, 256
+loop: 5748, 0, 512
 loop: 5749, 0, 512
 loop: 5750, 0, 512
 loop: 5751, 0, 512
@@ -6297,7 +6297,7 @@ loop: 6258, 0, 512
 loop: 6259, 0, 512
 loop: 6260, 0, 512
 loop: 6261, 0, 512
-loop: 6262, 0, 256
+loop: 6262, 0, 512
 loop: 6263, 0, 512
 loop: 6264, 0, 512
 loop: 6265, 0, 512
@@ -6435,16 +6435,11 @@ loop: 6396, 0, 512
 loop: 6397, 0, 512
 loop: 6398, 0, 512
 loop: 6399, 0, 512
-loop: 6400, 0, 512
-loop: 6401, 0, 512
-loop: 6402, 0, 512
-loop: 6403, 0, 512
-loop: 6404, 0, 391
+loop: 6400, 0, 135
 breaking...
-‡óu´∂öø/bÙ?ù™ø5xã‰÷*≤?/Cç*éÄøÃá0,ïîøêWÒ‹Ôõøÿ±Øyπ±¥?◊âÑ÷Tt?óJÿSc?¡9ÙiÕ®?'TÏpyK±?Ωék•‰∞øûÌi≠-5•?EE &≠∆ñ?˜2Ù@„Æø?K¸ÉÜÙ´øF~«ÖG¯∞?Ò|3Zõø:óâõŸØøøΩ	°+Is∞ø˛LïÓÚÄSø4J
-ΩÊ⁄•?ı"ËeC©ø\~ùqÜ◊ã?4»∂÷|»úøÖ‚ùTÒ´øˆkçT—U∑øcÇΩd‹!©øæã∆?˚ë?ÑÜRDÉî™?˙ˆUå§º?¯º:|ìø(”w£?û¬2::∂?‰¨róg¿±?6jX‡ëø™Ûá)!o≠ø8%je
+(”w£?û¬2::∂?‰¨róg¿±?6jX‡ëø™Ûá)!o≠ø8%je
 Q≠?»ˆ¨§h∞ørÑä€!\íøºªj=È≠kø+à"«ﬂZ¥?OKÚ:ë?ÔÃı@™ì?¿îf|Å£?ÿ¬‘≠Ô§?Ω¥=Ø˘r^ø∏{Î6Zzú?ENDFILE
-e09775abb6189abf2f62f47f3f9daabf35788be4d62ab23f2f438d2a8e1f80bfcc8730082c9594bf9057f1dc08ef9bbfd8b1af79b9b1b43f1cd78984d654743f07974ad81453633fc139f469cd13a83f2754ec70794bb13fbd168e6ba5e4b0bf9eed69ad2d35a53f4545ca26adc6963f1af732f440e3aebf3f4bfc8386f4abbf467ec78547f8b03f10f17c335a1d9bbf3a97899bd9afbfbfbd09a12b4973b0bffe4c95eef28053bf344a0abde6daa53ff522e8026543a9bf5c7e9d7186d78b3f34c8b6d67cc89cbf85e29d54f10eabbff66b8d54d155b7bf6382bd64dc21a9bfbe8bc63f0dfb913f848652448394aa3f07faf6558ca4bc3ff8bc0b3a137c93bf28d306067707a33f9e0cc2323a3ab63fe4ac729767c0b13f12366a1258e091bfaaf38729216fadbf38256a650a51ad3fc8f619aca468b0bf72848adb215c92bfbcbb6a3de9ad6bbf2b8822c7df5ab43f4f4bf212073a913fefccf51a40aa933fc01e94667c81a33fd8c2d41aadefa43fbdb43daff9725ebfb87beb365a7a9c3f454e4446494c450x7ffc6d9d85c0
+28d306067707a33f9e0cc2323a3ab63fe4ac729767c0b13f12366a1258e091bfaaf38729216fadbf38256a650a51ad3fc8f619aca468b0bf72848adb215c92bfbcbb6a3de9ad6bbf2b8822c7df5ab43f4f4bf212073a913fefccf51a40aa933fc01e94667c81a33fd8c2d41aadefa43fbdb43daff9725ebfb87beb365a7a9c3f454e4446494c450x7fff14cf2a50
 HTTP/1.1 200 OK
 Content-Type: text/plain
 Content-Length: 14

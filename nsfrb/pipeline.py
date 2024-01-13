@@ -9,7 +9,7 @@ def get_shape_from_raw(data,headersize=128):
 
     #get header string
     header = bytes.fromhex(data[:2*headersize].decode('utf-8'))[1:].decode('utf-8')#data[1:headersize].decode('utf-8')
-    print(header)
+    #print(header)
     if not ('shape' in header): #no shape available
         return -1
 
@@ -31,7 +31,7 @@ def get_shape_from_raw(data,headersize=128):
         shapearr.append(dim)
 
         startidx = upto + 1
-    print(tuple(shapearr))
+    #print(tuple(shapearr))
     #return shape as tuple
     return tuple(shapearr)
 
@@ -61,7 +61,7 @@ def server_handler(datasize,headersize,chunksize,output_shape=-1,verbose=False):
         statusstring += str(dat[2:-1])
         sys.stdout.flush()
 
-    print(bytes.fromhex(alldat[:2*headersize].decode('utf-8')))#find shape of array
+    #print(bytes.fromhex(alldat[:2*headersize].decode('utf-8')))#find shape of array
     if output_shape == -1:
         output_shape = get_shape_from_raw(alldat[:headersize*2],headersize=headersize)
         if output_shape == -1:
@@ -93,7 +93,7 @@ def pipeout(arr):
         print("must be np.ndarray")
         return -1
     print(arr.tobytes().hex())
-    return 0
+    return len(arr.tobytes().hex())
 
 
 
