@@ -41,7 +41,7 @@ def get_shape_from_raw(data,headersize=128):
 ##defines function to handle output from server piped to standard in
 
 
-def server_handler(datasize,headersize,chunksize,output_shape=-1,verbose=False):
+def server_handler(datasize,headersize,chunksize,output_shape=-1,verbose=False,bytesize=-1):
 
     #define empty byte array and status string to keep track of data size
     alldat = np.array([]).tobytes()
@@ -76,12 +76,22 @@ def server_handler(datasize,headersize,chunksize,output_shape=-1,verbose=False):
         print("after decode:",len(alldatstr))
 
     #convert to bytes
+    #if bytesize==16:
+    #    print(alldatstr)
     bytedat = bytes.fromhex(alldatstr)
+    if bytesize == 16:
+        dtype = np.float16
+    elif bytesize == 32:
+        dtype = np.float32
+    elif bytesize == 64:
+        dtype = np.float64
+    else:
+        dtype = float
     if verbose:
         print("after hex to bytes:",len(bytedat))
-        print(np.frombuffer(bytedat[headersize:]))#datasize+headersize]))
+        print(np.frombuffer(bytedat[headersize:],dtype=dtype))#datasize+headersize]))
     #convert to numpy array
-    arrdat = np.frombuffer(bytedat[headersize:]).reshape(output_shape)#datasize+headersize]).reshape(output_shape)#(32,32,25,16))
+    arrdat = np.frombuffer(bytedat[headersize:],dtype=dtype).reshape(output_shape)#datasize+headersize]).reshape(output_shape)#(32,32,25,16))
     return arrdat
 
 

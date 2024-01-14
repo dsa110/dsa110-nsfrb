@@ -99,7 +99,7 @@ def main():
     cands,cluster_cands,image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=30)
 
     #convert clustered cands to np array
-    cluster_cands_arr = np.zeros((len(cluster_cands),len(cluster_cands[0])))
+    cluster_cands_arr = np.zeros((len(cluster_cands),len(cluster_cands[0])),dtype=np.float16)
     for i in range(len(cluster_cands)):
         cluster_cands_arr[i,:] = np.array(cluster_cands[0])
     if args.verbose:
@@ -114,6 +114,7 @@ def main():
     f = open(searchflagsfile,"w")
     f.write("datasize: " + str(len(cluster_cands_arr.tobytes().hex())) + ";")
     f.write("outputshape: " + str(cluster_cands_arr.shape) + ";")
+    f.write("size: 16;")
     f.close()
 
     stat = pipeline.pipeout(cluster_cands_arr)

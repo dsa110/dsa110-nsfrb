@@ -95,14 +95,18 @@ def main():
     #output_shape = tuple(datasizestr[dshapeidx+11:dshapeidx + datasizestr[dshapeidx:].index(";")])
     datasizestr = datasizestr[dshapeidx + datasizestr[dshapeidx:].index(";")+1:]
 
+    sizeidx = datasizestr.index('size:')
+    bytesize = int(datasizestr[sizeidx+5:sizeidx + datasizestr[sizeidx:].index(";")])#tuple(map(int, datasizestr[dshapeidx+14:dshapeidx + datasizestr[dshapeidx:].index(";")-1].split(',')))
+    #output_shape = tuple(datasizestr[dshapeidx+11:dshapeidx + datasizestr[dshapeidx:].index(";")])
+    datasizestr = datasizestr[sizeidx + datasizestr[sizeidx:].index(";")+1:]
+
     #print(datasize,output_shape)  
     #get image input from stdin
-    headersize = 128
+    headersize = 0#128
     chunksize = 128
-    cluster_cands = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=args.verbose)
+    cluster_cands = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=args.verbose,bytesize=bytesize)
 
-    print(cluster_cands)
-
+    print(cluster_cands,cluster_cands.shape)
     """stat = pipeline.pipeout(cluster_cands_arr)
     if stat == -1:
         print("output failed")
