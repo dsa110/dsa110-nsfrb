@@ -691,9 +691,9 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=
 
     #cut out subimage
     minraidx = gridsize + ra_idx - subimgpix//2#np.max([ra_idx - subimgpix//2,0])
-    maxraidx = gridsize + ra_idx + subimgpix//2#np.min([ra_idx + subimgpix//2 + 1,gridsize-1])
+    maxraidx = gridsize + ra_idx + subimgpix//2 + 1#np.min([ra_idx + subimgpix//2 + 1,gridsize-1])
     mindecidx = gridsize + dec_idx - subimgpix//2#np.max([dec_idx - subimgpix//2,0])
-    maxdecidx = gridsize + dec_idx + subimgpix//2#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
+    maxdecidx = gridsize + dec_idx + subimgpix//2 + 1#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
 
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
     print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)

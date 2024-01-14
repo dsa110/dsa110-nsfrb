@@ -473,16 +473,18 @@ int main(int argc, char *argv[]) {
 			unsigned char data[framesize];//client_request.ContentLength];
 			int nframes = 16*51; //each frame is 4096 bytes//client_request.ContentLength/framesize + 1;
 			fprintf(logfile,"number of frames to read: %d \n",nframes);
-			unsigned char fullfname[128];
-                        strcpy(fullfname,"./");///dataz/dsa110/imaging/NSFRB_storage/NSFRB_buffer/");
-                        strcat(fullfname,client_request.fname);
-                        fprintf(logfile,"Here's the filename:%s\n",fullfname);
-			FILE *fp;			
-			//clear the file
-			fp = fopen(fullfname,"w");
-			//fprintf(fp, "");
-			fclose(fp);
-
+			FILE *fp;
+			unsigned char fullfname[strlen(client_request.fname) + 2];
+			if (tofile == 1)
+			{
+                        	strcpy(fullfname,"./");///dataz/dsa110/imaging/NSFRB_storage/NSFRB_buffer/");
+                        	strcat(fullfname,client_request.fname);
+                        	fprintf(logfile,"Here's the filename:%s\n",fullfname);
+				//clear the file
+				fp = fopen(fullfname,"w");
+				//fprintf(fp, "");
+				fclose(fp);
+			}
 			/*
 			fprintf(logfile,"printingstuff...\n");
 
@@ -536,9 +538,11 @@ int main(int argc, char *argv[]) {
 				//}
 				//printf("loop: %d, %d, %ld\n",loops,hit_boundary & 0x01,valread);
 				loops ++;
-				//open file
-				fp = fopen(fullfname,"a");
-				
+				if (tofile == 1)
+				{
+					//open file
+					fp = fopen(fullfname,"a");
+				}
 				//loop through data buffer 
 				int offset = 0;
 				if (strstr(data_buffer,"ENDFILE") != NULL)
@@ -549,15 +553,20 @@ int main(int argc, char *argv[]) {
 				}
 				for (int i = 0; i < valread-offset; i++)
 				{
-					fprintf(fp,"%c",data_buffer[idx + i]);
+					if (tofile == 1)
+					{
+						fprintf(fp,"%c",data_buffer[idx + i]);
+					}
 					printf("%2.2x",data_buffer[i]);
 
 				}
 				idx = 0;
-
-				//close file
-				fclose(fp);	
-
+	
+				if (tofile == 1)
+				{
+					//close file
+					fclose(fp);	
+				}
 
 				/*if (valread > 0 && valread < framesize)
 				{
