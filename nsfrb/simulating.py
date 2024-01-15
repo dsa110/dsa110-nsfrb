@@ -7,6 +7,8 @@ import os
 import pandas as pd
 import random
 from antpos.utils import get_itrf
+from nsfrb.config import IMAGE_SIZE, c    
+
 
 def get_core_coordinates():
     """
@@ -36,6 +38,7 @@ def get_core_coordinates():
     z_core = z_m[core_mask]
 
     return x_core, y_core, z_core
+
 def compute_uvw(x_m, y_m, z_m, HA, Dec):
 
     """
@@ -94,12 +97,14 @@ def plot_uv_coverage(u, v, title='u-v Coverage'):
     plt.show()
     return
 
-def apply_phase_shift(visibilities, u_shift_rad, v_shift_rad):
+def apply_phase_shift(visibilities, u_core, v_core, u_shift_rad, v_shift_rad):
     """
     Apply a phase shift to the visibility data.
 
     Parameters:
     visibilities (array): Array of complex visibilities.
+    u_core (array): Array of u-coordinates of the visibility points.
+    v_core (array): Array of v-coordinates of the visibility points.
     u_shift_rad (float): Phase shift in the u-direction (radians).
     v_shift_rad (float): Phase shift in the v-direction (radians).
 
@@ -199,4 +204,59 @@ def simulate_near_field_rfi(x, y, z, visibilities, rfi_position, rfi_amplitude, 
 
     return visibilities
 
+def apply_phase_shift_to_rfi(rfi, u, v, u_shift_pixels, v_shift_pixels, pixel_resolution):
+    """
+    Applies a phase shift to the given data.
+
+    Parameters:
+    - rfi (ndarray): The RFI data to apply the phase shift to.
+    - u (ndarray): The u-coordinates of the RFI data.
+    - v (ndarray): The v-coordinates of the RFI data.
+    - u_shift_pixels (float): The amount of shift in u-direction in pixels.
+    - v_shift_pixels (float): The amount of shift in v-direction in pixels.
+    - pixel_resolution (float): The resolution of each pixel.
+
+    Returns:
+    - ndarray: The RFI data after applying the phase shift.
+    """
+    u_shift = u_shift_pixels * pixel_resolution
+    v_shift = v_shift_pixels * pixel_resolution
+
+    u_shift_rad = 2 * np.pi * u * u_shift
+    v_shift_rad = 2 * np.pi * v * v_shift
+
+    shift_phase = np.exp(1j * (u_shift_rad + v_shift_rad))
+    return rfi * shift_phase
+
+def simulate_far_field_rfi(u, v, NUM_CHANNELS, num_baselines, pixel_resolution, noise_std_dev=5, desired_snr=7):
+    """
+    Simulates the far-field RFI for a given set of parameters.
+
+    Args:
+        u (array-like): The u-coordinates of the baselines.
+        v (array-like): The v-coordinates of the baselines.
+        NUM_CHANNELS (int): The number of frequency channels.
+        num_baselines (int): The number of baselines.
+        pixel_resolution (float): The pixel resolution of the image.
+        noise_std_dev (float, optional): The standard deviation of the noise. Defaults to 5.
+        desired_snr (float, optional): The desired signal-to-noise ratio (SNR) of the RFI. Defaults to 7.
+
+    Returns:
+        array-like: The simulated RFI with shape (NUM_CHANNELS, num_baselines).
+
+    """
+    rfi_amplitude = noise_std_dev * desired_snr
+    rfi = np.zeros((NUM_CHANNELS, num_baselines), dtype=complex)
+
+    num_affected_channels = np.random.randint(5, 15)  # Reasonable number of affected channels
+    affected_freqs = np.random.choice(NUM_CHANNELS, size=num_affected_channels, replace=False)
+    rfi[affected_freqs, :] = np.full((len(affected_freqs), num_baselines), rfi_amplitude)
+
+    #u_shift_pixels = np.random.randint(-IMAGE_SIZE//2, IMAGE_SIZE//2)
+    #v_shift_pixels = np.random.randint(-IMAGE_SIZE//2, IMAGE_SIZE//2)
+    u_shift_pixels = 0
+    v_shift_pixels = 0
+    rfi = apply_phase_shift_to_rfi(rfi, u, v, u_shift_pixels, v_shift_pixels, pixel_resolution)
+
+    return rfi
 
