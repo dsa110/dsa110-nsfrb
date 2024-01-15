@@ -1,1 +1,1 @@
-datasize: 252067200;outputshape: (2, 651, 11, 11, 25, 16);size: 16;
+datasize: 1161600;outputshape: (2, 3, 11, 11, 25, 16);size: 16;

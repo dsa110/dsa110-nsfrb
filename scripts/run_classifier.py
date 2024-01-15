@@ -104,18 +104,15 @@ def main():
     #get image input from stdin
     headersize = 0#128
     chunksize = 128
-    cluster_cands = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=args.verbose,bytesize=bytesize)
+    subimgall = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=args.verbose,bytesize=bytesize)
 
-    print(cluster_cands,cluster_cands.shape)
+    subimgs = subimgall[0,:,:,:,:,:]
+    subimgs_dm = subimgall[1,:,:,:,:,:]
+
+    print(subimgs,subimgs.shape)
+    print(subimgs_dm,subimgs_dm.shape)
     
-    #save image cutouts
-    subimgpix = 11
-    subimgs_dm = np.zeros((cluster_cands.shape[0], pixsize,pixsize))
-    subimgs = np.zeros((cluster_cands.shape[0],pixsize,pixsize))
-    for i in range(len(cluster_cands)):
-        subimgs_dm[i,:,:] = sl.get_subimage(image_tesseract,cluster_cands[i][0],cluster_cands[i][1],dm=sl.DM_trials[cluster_cands[i][2]],save=False,subimgpix=subimgpix)
-        subimgs[i,:,:] = sl.get_subimage(image_tesseract,cluster_cands[i][0],cluster_cands[i][1],save=False,subimgpix=subimgpix)
-
+    #****INSERT CODE FOR ML CLASSIFIER HERE****#
     
 
     """stat = pipeline.pipeout(cluster_cands_arr)
@@ -127,16 +124,3 @@ def main():
     return 0
 if __name__=="__main__":
     main()
-"""
-sl.search_plots(cands,cluster_cands)
-
-#save image cutouts
-for i in range(len(cluster_cands)):
-    sl.get_subimage(image_tesseract,cluster_cands[i][0],cluster_cands[i][1],dm=sl.DM_trials[cluster_cands[i][2]],save=True)
-    sl.get_subimage(image_tesseract,cluster_cands[i][0],cluster_cands[i][1],save=True)
-
-#cluster
-#classes,centroid_raidxs,centroid_decidxs,centroid_dmidxs,centroid_wididxs,centroid_snrs=hdbscan_cluster(cluster_cands,min_cluster_size=100,plot=True)
-"""
-
-#print("Total execution time: " + str(time.time()-time1) + " s")

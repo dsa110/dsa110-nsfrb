@@ -96,7 +96,7 @@ def main():
     #print(image_tesseract)
 
     #run search
-    cands,cluster_cands,image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=30)
+    cands,cluster_cands,image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=30000)
 
     #get the image cutouts
     #print(cluster_cands,cluster_cands.shape)
@@ -114,13 +114,14 @@ def main():
     subimgpix = 11
     subimgs_dm = np.zeros((len(unique_cands_dm),subimgpix,subimgpix,image_tesseract.shape[2],image_tesseract.shape[3]),dtype=np.float16)
     subimgs = np.zeros((len(unique_cands),subimgpix,subimgpix,image_tesseract.shape[2],image_tesseract.shape[3]),dtype=np.float16)
-    for i in range(10):#range(len(unique_cands)):
+    for i in range(len(unique_cands)):
         subimgs[i,:,:,:,:] = sl.get_subimage(image_tesseract,unique_cands[i][0],unique_cands[i][1],save=False,subimgpix=subimgpix)
-    for i in range(10):#range(len(unique_cands_dm)):
+    for i in range(len(unique_cands_dm)):
         subimgs_dm[i,:,:,:,:] = sl.get_subimage(image_tesseract,unique_cands_dm[i][0],unique_cands_dm[i][1],dm=sl.DM_trials[unique_cands_dm[i][2]],save=False,subimgpix=subimgpix)
-
-    print(subimgs_dm.shape)
-    print(subimgs.shape)
+    
+    if args.verbose:
+        print(subimgs_dm.shape)
+        print(subimgs.shape)
     
     #combine full subimage output
     subimgs_all = np.zeros((2,len(unique_cands_dm),subimgpix,subimgpix,image_tesseract.shape[2],image_tesseract.shape[3]),dtype=np.float16)
@@ -142,45 +143,7 @@ def main():
         f.write(sys.argv[0] + " failed")
         f.close()
 
-    """
-    #convert clustered cands to np array
-    #cluster_cands_arr = np.zeros((len(cluster_cands),len(cluster_cands[0])),dtype=np.float16)
-    #for i in range(len(cluster_cands)):
-    #    cluster_cands_arr[i,:] = np.array(cluster_cands[0])
-    #if args.verbose:
-    #    print(cluster_cands_arr)
-
-
-    #write length to flag file
-    f = open(searchflagsfile,"w")
-    f.write("datasize: " + str(len(cluster_cands_arr.tobytes().hex())) + ";")
-    f.write("outputshape: " + str(cluster_cands_arr.shape) + ";")
-    f.write("size: 16;")
-    f.close()
-    """
-    """
-    stat = pipeline.pipeout(cluster_cands_arr)
-    if stat == -1:
-        if args.verbose:
-            print("output failed")
-        f = open(pipestatusfile,"w")
-        f.write(sys.argv[0] + " failed")
-        f.close()
-    """
     return 0
     
 if __name__=="__main__":
     main()
-"""
-sl.search_plots(cands,cluster_cands)
-
-#save image cutouts
-for i in range(len(cluster_cands)):
-    sl.get_subimage(image_tesseract,cluster_cands[i][0],cluster_cands[i][1],dm=sl.DM_trials[cluster_cands[i][2]],save=True)
-    sl.get_subimage(image_tesseract,cluster_cands[i][0],cluster_cands[i][1],save=True)
-
-#cluster
-#classes,centroid_raidxs,centroid_decidxs,centroid_dmidxs,centroid_wididxs,centroid_snrs=hdbscan_cluster(cluster_cands,min_cluster_size=100,plot=True)
-"""
-
-#print("Total execution time: " + str(time.time()-time1) + " s")
