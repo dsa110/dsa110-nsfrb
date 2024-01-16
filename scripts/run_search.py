@@ -53,6 +53,7 @@ Directory for output data
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 searchflagsfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/searchlog_flags.txt"
+output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
 """
 Arguments: data file
 """
@@ -63,8 +64,10 @@ Arguments: data file
 #args = parser.parse_args()
 #print(args)
 
+from nsfrb.printlog import printlog
 
 def main():
+    printlog("Begin run_search.py...")
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--verbose',action='store_true')
     args = parser.parse_args()
@@ -75,7 +78,7 @@ def main():
     f.close()
     if len(pipestatus) > 0:
         if args.verbose:
-            print(pipestatus)
+            printlog(pipestatus)
         return 1
 
 
@@ -84,11 +87,14 @@ def main():
     headersize = 128#128#256#128
     chunksize = 128
     output_shape = -1#(32,32,25,16)
-
-    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=args.verbose)
+    
+    printlog("Reading data from pipe...",end='')
+    image_tesseract = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape)
+    printlog("Finished, got data of shape " + str(image_tesseract.shape))
+    
     if np.all(image_tesseract == -1):
         if args.verbose:
-            print("read failed")
+            printlog("read failed")
         f = open(pipestatusfile,"w")
         f.write(sys.argv[0] + " failed")
         f.close()
@@ -120,8 +126,8 @@ def main():
         subimgs_dm[i,:,:,:,:] = sl.get_subimage(image_tesseract,unique_cands_dm[i][0],unique_cands_dm[i][1],dm=sl.DM_trials[unique_cands_dm[i][2]],save=False,subimgpix=subimgpix)
     
     if args.verbose:
-        print(subimgs_dm.shape)
-        print(subimgs.shape)
+        printlog(subimgs_dm.shape)
+        printlog(subimgs.shape)
     
     #combine full subimage output
     subimgs_all = np.zeros((2,len(unique_cands_dm),subimgpix,subimgpix,image_tesseract.shape[2],image_tesseract.shape[3]),dtype=np.float16)
@@ -138,7 +144,7 @@ def main():
     stat = pipeline.pipeout(subimgs_all)
     if stat == -1:
         if args.verbose:
-            print("output failed")
+            printlog("output failed")
         f = open(pipestatusfile,"w")
         f.write(sys.argv[0] + " failed")
         f.close()

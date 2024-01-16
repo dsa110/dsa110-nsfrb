@@ -104,7 +104,7 @@ def main():
     #get image input from stdin
     headersize = 0#128
     chunksize = 128
-    subimgall = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=args.verbose,bytesize=bytesize)
+    subimgall = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,bytesize=bytesize)
 
     subimgs = subimgall[0,:,:,:,:,:]
     subimgs_dm = subimgall[1,:,:,:,:,:]
