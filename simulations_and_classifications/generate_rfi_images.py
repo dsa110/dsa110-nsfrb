@@ -136,8 +136,8 @@ if __name__ == "__main__":
     parser.add_argument('--azimuth_high', type=float, default=360, help='Upper bound for azimuth')
     parser.add_argument('--elevation_low', type=float, default=0, help='Lower bound for elevation')
     parser.add_argument('--elevation_high', type=float, default=10, help='Upper bound for elevation')
-    parser.add_argument('--dist_low', type=float, default=1e3, help='Lower bound for distance')
-    parser.add_argument('--dist_high', type=float, default=1e7, help='Upper bound for distance')
+    parser.add_argument('--dist_low', type=float, default=1e3, help='Lower bound for distance (in meters)')
+    parser.add_argument('--dist_high', type=float, default=1e7, help='Upper bound for distance (in meters)')
     parser.add_argument('--zoom_pix', type=int, default=25, help='Number of pixels for zooming')
     args = parser.parse_args()
 
