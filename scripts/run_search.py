@@ -52,7 +52,7 @@ Directory for output data
 """
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
-searchflagsfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/searchlog_flags.txt"
+searchflagsfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
 output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
 """
 Arguments: data file
@@ -64,7 +64,7 @@ Arguments: data file
 #args = parser.parse_args()
 #print(args)
 
-from nsfrb.printlog import printlog
+from nsfrb.logging import printlog
 
 def main():
     printlog("Begin run_search.py...")

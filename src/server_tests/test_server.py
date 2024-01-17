@@ -45,10 +45,11 @@ def server_handler(datasize,headersize,chunksize,output_shape,verbose=False):
 
 """
 
+from nsfrb.logging import printlog
 
 def main():
     #first check that previous pipe finished
-    f = open(".pipestatus.txt","r")
+    f = open("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt","r")
     pipestatus = f.read()
     f.close()
     if len(pipestatus) > 0:
@@ -60,9 +61,9 @@ def main():
     chunksize = 128
     output_shape = -1#(32,32,25,16)
 
-    data = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape,verbose=True)
-    print(data)
-    print(data.shape)
+    data = pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape) #pipeline.server_handler(datasize=datasize,headersize=headersize,chunksize=chunksize,output_shape=output_shape)
+    printlog(data)
+    printlog(data.shape)
     return
 
 if __name__=="__main__":

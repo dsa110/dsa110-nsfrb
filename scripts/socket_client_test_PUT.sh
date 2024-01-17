@@ -1,9 +1,13 @@
 #!/bin/bash
 
+echo http://10.41.0.94:8080/$1
 
 TIMEFORMAT='It took %R seconds.'
 time {
-curl --upload-file simulated1test_rev.npy http://10.41.0.94:8080/simulated1test_rev.npy --verbose --trace-ascii /media/ubuntu/ssd/sherman/code/here.txt --keepalive-time 5 --http0.9
+#curl --upload-file simulated1test_rev.npy http://10.41.0.94:8080/simulated1test_rev.npy --verbose --trace-ascii /media/ubuntu/ssd/sherman/code/here.txt --keepalive-time 5 --http0.9
+echo -n "ENDFILE" >> $1
+curl --upload-file $1 http://10.41.0.94:8080/$1 -verbose --trace-ascii /media/ubuntu/ssd/sherman/code/here.txt --keepalive-time 15 --http0.9
+truncate -s -7 $1 
 }
 
 #etcd status keys
