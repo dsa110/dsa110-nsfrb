@@ -1,0 +1,8 @@
+/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/searching.py:267: RuntimeWarning: divide by zero encountered in double_scalars
+  image_tesseract_time[i,j] = signal/noise#np.nanmax(np.convolve(image_tesseract_freq[i,j,:],boxcar,'same')/np.sum(boxcar))/noiseest#/np.sum(boxcar))
+/home/ubuntu/anaconda3/envs/casa38/lib/python3.8/site-packages/numpy/core/_methods.py:262: RuntimeWarning: Degrees of freedom <= 0 for slice
+  ret = _var(a, axis=axis, dtype=dtype, out=out, ddof=ddof,
+/home/ubuntu/anaconda3/envs/casa38/lib/python3.8/site-packages/numpy/core/_methods.py:222: RuntimeWarning: invalid value encountered in true_divide
+  arrmean = um.true_divide(arrmean, div, out=arrmean, casting='unsafe',
+/home/ubuntu/anaconda3/envs/casa38/lib/python3.8/site-packages/numpy/core/_methods.py:254: RuntimeWarning: invalid value encountered in double_scalars
+  ret = ret.dtype.type(ret / rcount)
