@@ -1,0 +1,1 @@
+/usr/bin/cc     CMakeFiles/simpletestclient.out.dir/simpletestclient.c.o  -o simpletestclient.out 

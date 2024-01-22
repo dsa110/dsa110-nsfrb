@@ -111,6 +111,19 @@ depend:
 .PHONY : depend
 
 #=============================================================================
+# Target rules for targets named socket_subclient_test_V3.out
+
+# Build rule for target.
+socket_subclient_test_V3.out: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 socket_subclient_test_V3.out
+.PHONY : socket_subclient_test_V3.out
+
+# fast build rule for target.
+socket_subclient_test_V3.out/fast:
+	$(MAKE) -f CMakeFiles/socket_subclient_test_V3.out.dir/build.make CMakeFiles/socket_subclient_test_V3.out.dir/build
+.PHONY : socket_subclient_test_V3.out/fast
+
+#=============================================================================
 # Target rules for targets named socket_server_test_V3.out
 
 # Build rule for target.
@@ -122,6 +135,46 @@ socket_server_test_V3.out: cmake_check_build_system
 socket_server_test_V3.out/fast:
 	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/build
 .PHONY : socket_server_test_V3.out/fast
+
+#=============================================================================
+# Target rules for targets named simpletestclient.out
+
+# Build rule for target.
+simpletestclient.out: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 simpletestclient.out
+.PHONY : simpletestclient.out
+
+# fast build rule for target.
+simpletestclient.out/fast:
+	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/build
+.PHONY : simpletestclient.out/fast
+
+simpletestclient.o: simpletestclient.c.o
+
+.PHONY : simpletestclient.o
+
+# target to build an object file
+simpletestclient.c.o:
+	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/simpletestclient.c.o
+.PHONY : simpletestclient.c.o
+
+simpletestclient.i: simpletestclient.c.i
+
+.PHONY : simpletestclient.i
+
+# target to preprocess a source file
+simpletestclient.c.i:
+	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/simpletestclient.c.i
+.PHONY : simpletestclient.c.i
+
+simpletestclient.s: simpletestclient.c.s
+
+.PHONY : simpletestclient.s
+
+# target to generate assembly for a file
+simpletestclient.c.s:
+	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/simpletestclient.c.s
+.PHONY : simpletestclient.c.s
 
 socket_server_test_V3.o: socket_server_test_V3.c.o
 
@@ -150,18 +203,53 @@ socket_server_test_V3.c.s:
 	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/socket_server_test_V3.c.s
 .PHONY : socket_server_test_V3.c.s
 
+socket_subclient_test_V3.o: socket_subclient_test_V3.c.o
+
+.PHONY : socket_subclient_test_V3.o
+
+# target to build an object file
+socket_subclient_test_V3.c.o:
+	$(MAKE) -f CMakeFiles/socket_subclient_test_V3.out.dir/build.make CMakeFiles/socket_subclient_test_V3.out.dir/socket_subclient_test_V3.c.o
+.PHONY : socket_subclient_test_V3.c.o
+
+socket_subclient_test_V3.i: socket_subclient_test_V3.c.i
+
+.PHONY : socket_subclient_test_V3.i
+
+# target to preprocess a source file
+socket_subclient_test_V3.c.i:
+	$(MAKE) -f CMakeFiles/socket_subclient_test_V3.out.dir/build.make CMakeFiles/socket_subclient_test_V3.out.dir/socket_subclient_test_V3.c.i
+.PHONY : socket_subclient_test_V3.c.i
+
+socket_subclient_test_V3.s: socket_subclient_test_V3.c.s
+
+.PHONY : socket_subclient_test_V3.s
+
+# target to generate assembly for a file
+socket_subclient_test_V3.c.s:
+	$(MAKE) -f CMakeFiles/socket_subclient_test_V3.out.dir/build.make CMakeFiles/socket_subclient_test_V3.out.dir/socket_subclient_test_V3.c.s
+.PHONY : socket_subclient_test_V3.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
 	@echo "... all (the default if no target is provided)"
 	@echo "... clean"
 	@echo "... depend"
+	@echo "... socket_subclient_test_V3.out"
 	@echo "... edit_cache"
-	@echo "... rebuild_cache"
 	@echo "... socket_server_test_V3.out"
+	@echo "... simpletestclient.out"
+	@echo "... rebuild_cache"
+	@echo "... simpletestclient.o"
+	@echo "... simpletestclient.i"
+	@echo "... simpletestclient.s"
 	@echo "... socket_server_test_V3.o"
 	@echo "... socket_server_test_V3.i"
 	@echo "... socket_server_test_V3.s"
+	@echo "... socket_subclient_test_V3.o"
+	@echo "... socket_subclient_test_V3.i"
+	@echo "... socket_subclient_test_V3.s"
 .PHONY : help
 
 
