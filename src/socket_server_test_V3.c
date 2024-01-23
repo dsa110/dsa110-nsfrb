@@ -8,9 +8,10 @@
 #include <ctype.h>
 #include <netinet/tcp.h>
 #include <fcntl.h>
-
+#include "server_helper.h"
+#include "subclient.h"
 extern int errno ;
-
+/*
 //response messages
 const char *error1 = "HTTP/1.1 405 Method Not Allowed\nContent-Type: text/plain\nContent-Length: 103\n\nServer received invalid command, only configured to respond to 'POST' commands. No data transferred.\n";
 const char *error2 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 57\n\nServer received invalid command, No data transferred.\n";
@@ -44,7 +45,7 @@ int update_pipestatus(char *fname) {
 	fclose(pipestatus);
 	return 0;
 }
-
+*/
 
 int main(int argc, char *argv[]) {
 	//create status file to report if command failed

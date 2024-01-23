@@ -9,13 +9,24 @@
 #include <netinet/tcp.h>
 #include <fcntl.h>
 #include <sys/types.h>
-
+#include "subclient.h"
 
 // test implementation of a subclient that sends data to a python server
 
 
 int main(int argc, char const*argv[])
 {
+
+	FILE *logfile;
+        logfile = fopen("TESTLOG.txt","w");
+
+        fprintf(logfile,"Hello, World!\n");
+	char testmessage[255] = "Message from the server to the client \'Hello Client\' ";
+	int out = subclient_send(testmessage,255, 8843,logfile);
+	fclose(logfile);
+	return out;
+}
+	/*
 	//create a socket
         int subclient_fd,subclient_socket,connectStatus,sendStatus;
         struct sockaddr_in outserveraddress;
@@ -70,4 +81,5 @@ int main(int argc, char const*argv[])
 	printf("Done\n");
 	//close(subclient_socket);	
 	return 0;
-}
+	*/
+
