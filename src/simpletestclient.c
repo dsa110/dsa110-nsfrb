@@ -19,10 +19,10 @@ int main(int argc, char const* argv[])
     // create server socket similar to what was done in 
     // client program 
     int servSockD = socket(AF_INET, SOCK_STREAM, 0);         
-    struct linger sl;
-    sl.l_onoff = 1;
-    sl.l_linger = 0;  
-    setsockopt(servSockD,SOL_SOCKET,SO_LINGER,&sl,sizeof(sl));
+    //struct linger sl;
+    //sl.l_onoff = 1;
+    //sl.l_linger = 0;  
+    //setsockopt(servSockD,SOL_SOCKET,SO_LINGER,&sl,sizeof(sl));
 
     // string store data to send to client 
     char serMsg[255] = "Message from the server to the "
@@ -32,7 +32,7 @@ int main(int argc, char const* argv[])
     struct sockaddr_in servAddr; 
   
     servAddr.sin_family = AF_INET; 
-    servAddr.sin_port = htons(8600); 
+    servAddr.sin_port = htons(8843); 
     servAddr.sin_addr.s_addr = INADDR_ANY; 
   
     // bind socket to the specified IP and port 

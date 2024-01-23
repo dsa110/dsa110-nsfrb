@@ -22,13 +22,13 @@ int main(int argc, char const*argv[])
 	
 	//make variables for out server
 	outserveraddress.sin_family = AF_INET;
-	const int subclientPORT = 8600;
+	const int subclientPORT = 8843;
 	outserveraddress.sin_port = htons(subclientPORT);
 	outserveraddress.sin_addr.s_addr = htonl(INADDR_ANY);
 
-	struct linger sl;
-	sl.l_onoff = 1;
-	sl.l_linger = 0;
+	//struct linger sl;
+	//sl.l_onoff = 1;
+	//sl.l_linger = 0;
 
 	printf("Opening Socket...");
         if ((subclient_fd = socket(AF_INET,SOCK_STREAM,0))<0)
@@ -40,7 +40,7 @@ int main(int argc, char const*argv[])
                 return 0;
         }
 	printf("Done\n");
-	setsockopt(subclient_fd,SOL_SOCKET,SO_LINGER,&sl,sizeof(sl));
+	//setsockopt(subclient_fd,SOL_SOCKET,SO_LINGER,&sl,sizeof(sl));
 	//int stat = fcntl(subclient_fd,F_SETFL,fcntl(subclient_fd,F_GETFL,0) | O_NONBLOCK);
 	//printf("%d\n",stat);
 	printf("Connecting to Server...");
@@ -57,8 +57,9 @@ int main(int argc, char const*argv[])
 
 	//send message
 	printf("Sending message...");
-	char testmessage[255] = "Hello World";
-	if ((sendStatus = (subclient_fd,testmessage,sizeof(testmessage),0)) < 0)
+	char testmessage[255] = "Message from the server to the "
+                       "client \'Hello Client\' ";
+	if ((sendStatus = send(subclient_fd,testmessage,sizeof(testmessage),0)) < 0)
 	{
 		printf("message send failed");
 		//perror("message send failed");
