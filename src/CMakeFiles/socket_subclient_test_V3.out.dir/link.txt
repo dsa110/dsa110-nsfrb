@@ -1,1 +1,1 @@
-/usr/bin/cc     CMakeFiles/socket_subclient_test_V3.out.dir/socket_subclient_test_V3.c.o  -o socket_subclient_test_V3.out 
+/usr/bin/cc     CMakeFiles/socket_subclient_test_V3.out.dir/socket_subclient_test_V3.c.o  -o socket_subclient_test_V3.out -lm 

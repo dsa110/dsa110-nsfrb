@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include "server_helper.h"
 #include "subclient.h"
+#include <math.h>
 extern int errno ;
 /*
 //response messages
@@ -47,42 +48,36 @@ int update_pipestatus(char *fname) {
 }
 */
 
+
 int main(int argc, char *argv[]) {
 	//create status file to report if command failed
 	//FILE *pipestatus;
 	
-
-
-	//check arguments
-	int tofile = 0;	
-	if (argc == 2)
-	{
-		if (strcmp(argv[1],"-f") == 0)
-		{
-			tofile = 1;
-		}
-		else
-		{
-			printf("invalid argument, use -f to write to file\n");
-			//return 1;
-			//pipestatus = fopen(pipestatusfname,"w");
-			//fprintf(pipestatus,"%s failed\n",argv[0]);
-			update_pipestatus(argv[0]);
-			exit(EXIT_FAILURE);
-		}
-	}
-	else if (argc > 2)
-	{
-		printf("invalid argument, use -f to write to file\n");
-		//return 1;
-		update_pipestatus(argv[0]);
-		exit(EXIT_FAILURE);
-	}	
 	//make log file to write output to, only want data written to stdout
-	FILE *logfile;
-	logfile = fopen(serverlogfname,"w");
+        FILE *logfile;
+        logfile = fopen(serverlogfname,"w");
 
         fprintf(logfile,"Hello, World!\n");//printf("Hello, World!\n");
+
+	//check arguments
+	int flags[2] = {0,0};
+	
+	const int subclientPORT = server_parse_args(logfile,argc,argv,flags);//subclientPORT_tmp;
+	if (subclientPORT < 1000)
+	{                                
+		printf("invalid argument\n");
+                printf("%s\n",usage);
+                update_pipestatus(argv[0]);
+                fclose(logfile);
+                exit(EXIT_FAILURE);
+	}
+	int tofile = flags[0];
+	int toport = flags[1];
+
+        //printf("%d %d %d\n",subclientPORT,tofile,toport);
+        //fclose(logfile);
+        //exit(0);
+	//make log file to write output to, only want data written to stdout
         //return 0;
 
 	//Create server socket

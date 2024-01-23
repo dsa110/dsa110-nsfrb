@@ -7,7 +7,7 @@ opened server for listening...
 +++++++ Waiting for new connection ++++++++
 
 Received good command, proceeding...
-simulated1_noisy.npy˝ 
+simulated1_noisy.npy 
 H
 T
 T
@@ -479,7 +479,7 @@ loop: 441, 0, 512
 loop: 442, 0, 512
 loop: 443, 0, 512
 loop: 444, 0, 512
-loop: 445, 0, 256
+loop: 445, 0, 512
 loop: 446, 0, 512
 loop: 447, 0, 512
 loop: 448, 0, 512
@@ -502,7 +502,7 @@ loop: 464, 0, 512
 loop: 465, 0, 512
 loop: 466, 0, 512
 loop: 467, 0, 512
-loop: 468, 0, 512
+loop: 468, 0, 256
 loop: 469, 0, 512
 loop: 470, 0, 512
 loop: 471, 0, 512
@@ -2422,7 +2422,7 @@ loop: 2384, 0, 512
 loop: 2385, 0, 512
 loop: 2386, 0, 512
 loop: 2387, 0, 512
-loop: 2388, 0, 256
+loop: 2388, 0, 512
 loop: 2389, 0, 512
 loop: 2390, 0, 512
 loop: 2391, 0, 512
@@ -2644,7 +2644,7 @@ loop: 2606, 0, 512
 loop: 2607, 0, 512
 loop: 2608, 0, 512
 loop: 2609, 0, 512
-loop: 2610, 0, 256
+loop: 2610, 0, 512
 loop: 2611, 0, 512
 loop: 2612, 0, 512
 loop: 2613, 0, 512
@@ -3044,7 +3044,7 @@ loop: 3006, 0, 512
 loop: 3007, 0, 512
 loop: 3008, 0, 512
 loop: 3009, 0, 512
-loop: 3010, 0, 256
+loop: 3010, 0, 512
 loop: 3011, 0, 512
 loop: 3012, 0, 512
 loop: 3013, 0, 512
@@ -3485,7 +3485,7 @@ loop: 3447, 0, 512
 loop: 3448, 0, 512
 loop: 3449, 0, 512
 loop: 3450, 0, 512
-loop: 3451, 0, 256
+loop: 3451, 0, 512
 loop: 3452, 0, 512
 loop: 3453, 0, 512
 loop: 3454, 0, 512
@@ -4378,7 +4378,7 @@ loop: 4340, 0, 512
 loop: 4341, 0, 512
 loop: 4342, 0, 512
 loop: 4343, 0, 512
-loop: 4344, 0, 256
+loop: 4344, 0, 512
 loop: 4345, 0, 512
 loop: 4346, 0, 512
 loop: 4347, 0, 512
@@ -5691,7 +5691,7 @@ loop: 5653, 0, 512
 loop: 5654, 0, 512
 loop: 5655, 0, 512
 loop: 5656, 0, 512
-loop: 5657, 0, 256
+loop: 5657, 0, 512
 loop: 5658, 0, 512
 loop: 5659, 0, 512
 loop: 5660, 0, 512
@@ -6434,15 +6434,12 @@ loop: 6396, 0, 512
 loop: 6397, 0, 512
 loop: 6398, 0, 512
 loop: 6399, 0, 512
-loop: 6400, 0, 512
-loop: 6401, 0, 512
-loop: 6402, 0, 512
-loop: 6403, 0, 391
+loop: 6400, 0, 391
 breaking...
 ‡óu´∂öø/bÙ?ù™ø5xã‰÷*≤?/Cç*éÄøÃá0,ïîøêWÒ‹Ôõøÿ±Øyπ±¥?◊âÑ÷Tt?óJÿSc?¡9ÙiÕ®?'TÏpyK±?Ωék•‰∞øûÌi≠-5•?EE &≠∆ñ?˜2Ù@„Æø?K¸ÉÜÙ´øF~«ÖG¯∞?Ò|3Zõø:óâõŸØøøΩ	°+Is∞ø˛LïÓÚÄSø4J
 ΩÊ⁄•?ı"ËeC©ø\~ùqÜ◊ã?4»∂÷|»úøÖ‚ùTÒ´øˆkçT—U∑øcÇΩd‹!©øæã∆?˚ë?ÑÜRDÉî™?˙ˆUå§º?¯º:|ìø(”w£?û¬2::∂?‰¨róg¿±?6jX‡ëø™Ûá)!o≠ø8%je
 Q≠?»ˆ¨§h∞ørÑä€!\íøºªj=È≠kø+à"«ﬂZ¥?OKÚ:ë?ÔÃı@™ì?¿îf|Å£?ÿ¬‘≠Ô§?Ω¥=Ø˘r^ø∏{Î6Zzú?ENDFILE
-e09775abb6189abf2f62f47f3f9daabf35788be4d62ab23f2f438d2a8e1f80bfcc8730082c9594bf9057f1dc08ef9bbfd8b1af79b9b1b43f1cd78984d654743f07974ad81453633fc139f469cd13a83f2754ec70794bb13fbd168e6ba5e4b0bf9eed69ad2d35a53f4545ca26adc6963f1af732f440e3aebf3f4bfc8386f4abbf467ec78547f8b03f10f17c335a1d9bbf3a97899bd9afbfbfbd09a12b4973b0bffe4c95eef28053bf344a0abde6daa53ff522e8026543a9bf5c7e9d7186d78b3f34c8b6d67cc89cbf85e29d54f10eabbff66b8d54d155b7bf6382bd64dc21a9bfbe8bc63f0dfb913f848652448394aa3f07faf6558ca4bc3ff8bc0b3a137c93bf28d306067707a33f9e0cc2323a3ab63fe4ac729767c0b13f12366a1258e091bfaaf38729216fadbf38256a650a51ad3fc8f619aca468b0bf72848adb215c92bfbcbb6a3de9ad6bbf2b8822c7df5ab43f4f4bf212073a913fefccf51a40aa933fc01e94667c81a33fd8c2d41aadefa43fbdb43daff9725ebfb87beb365a7a9c3f454e4446494c450x7ffd52ba7c10
+e09775abb6189abf2f62f47f3f9daabf35788be4d62ab23f2f438d2a8e1f80bfcc8730082c9594bf9057f1dc08ef9bbfd8b1af79b9b1b43f1cd78984d654743f07974ad81453633fc139f469cd13a83f2754ec70794bb13fbd168e6ba5e4b0bf9eed69ad2d35a53f4545ca26adc6963f1af732f440e3aebf3f4bfc8386f4abbf467ec78547f8b03f10f17c335a1d9bbf3a97899bd9afbfbfbd09a12b4973b0bffe4c95eef28053bf344a0abde6daa53ff522e8026543a9bf5c7e9d7186d78b3f34c8b6d67cc89cbf85e29d54f10eabbff66b8d54d155b7bf6382bd64dc21a9bfbe8bc63f0dfb913f848652448394aa3f07faf6558ca4bc3ff8bc0b3a137c93bf28d306067707a33f9e0cc2323a3ab63fe4ac729767c0b13f12366a1258e091bfaaf38729216fadbf38256a650a51ad3fc8f619aca468b0bf72848adb215c92bfbcbb6a3de9ad6bbf2b8822c7df5ab43f4f4bf212073a913fefccf51a40aa933fc01e94667c81a33fd8c2d41aadefa43fbdb43daff9725ebfb87beb365a7a9c3f454e4446494c450x7ffc4e3bd990
 HTTP/1.1 200 OK
 Content-Type: text/plain
 Content-Length: 14
