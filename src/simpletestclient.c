@@ -47,7 +47,19 @@ int main(int argc, char const* argv[])
   
     char strData[255];
     int recstatus;
-    if ((recstatus = recv(clientSocket,strData,sizeof(strData),0))<0)
+    int totalbytes = 0;
+    while ((recstatus = recv(clientSocket,strData,sizeof(strData),0)) > 0)
+    {
+    	totalbytes += recstatus;
+	printf("Received message size %d, total %d:\n",recstatus,totalbytes);
+	for (int i = 0; i < recstatus; i++)
+	{
+		printf("%2.2x",strData[i]);
+	}
+	printf("\n");
+    }
+
+    if (recstatus < 0)//((recstatus = recv(clientSocket,strData,sizeof(strData),0))<0)
     {
         printf("Failed\n");
 	close(clientSocket);
@@ -57,8 +69,8 @@ int main(int argc, char const* argv[])
     //{
 	//recstatus = recv(clientSocket,strData,sizeof(strData),0);
     //}
-    printf("Received message size %d: %s\n",recstatus,strData);
-  
+    //printf("Received message size %d: %s\n",recstatus,strData);
+    printf("END MESSAGE\n");
     //close(clientSocket);
     return 0; 
 }

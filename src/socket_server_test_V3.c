@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
         fprintf(logfile,"Hello, World!\n");//printf("Hello, World!\n");
 
 	//check arguments
-	int flags[2] = {0,0};
+	int flags[3] = {0,0,0};
 	
 	const int subclientPORT = server_parse_args(logfile,argc,argv,flags);//subclientPORT_tmp;
 	if (subclientPORT < 1000)
@@ -73,8 +73,8 @@ int main(int argc, char *argv[]) {
 	}
 	int tofile = flags[0];
 	int toport = flags[1];
-
-        //printf("%d %d %d\n",subclientPORT,tofile,toport);
+	int tostdout = flags[2];
+        //printf("%d %d %d %d\n",subclientPORT,tofile,toport,tostdout);
         //fclose(logfile);
         //exit(0);
 	//make log file to write output to, only want data written to stdout
@@ -494,6 +494,8 @@ int main(int argc, char *argv[]) {
                         } */      
 
 
+
+
                         char *boundpoint = &client_request.boundary[0];
                         //fp = fopen(fullfname, "a");
 			char hit_boundary = 0;
@@ -504,6 +506,7 @@ int main(int argc, char *argv[]) {
 			int loops = 0;
 			//fcntl(new_socket, F_SETFL, O_NONBLOCK);
 			int totallength = valread;
+			int subclient_fd = -1;
 			//off_t thing = lseek(new_socket,0,SEEK_CUR);//tell(new_socket);
 			//fprintf(logfile,"THIS IS THE CURRENT FILE OFFSET: %ld\n",thing);//ftell(new_socket)); 
 			while (hit_boundary == 0)
@@ -547,14 +550,25 @@ int main(int argc, char *argv[]) {
 					hit_boundary = 1;
 					
 				}
-				for (int i = 0; i < valread-offset; i++)
+				if (toport == 1)
 				{
-					if (tofile == 1)
+					//subclient_send(data_buffer,valread,subclientPORT,logfile);
+					subclient_fd = subclient_send_persistent(data_buffer,valread,subclientPORT,logfile,subclient_fd);
+				}
+				if (tofile ==1 || tostdout==1)
+				{
+					for (int i = 0; i < valread-offset; i++)
 					{
-						fprintf(fp,"%c",data_buffer[idx + i]);
+						if (tofile == 1)
+						{
+							fprintf(fp,"%c",data_buffer[idx + i]);
+						}
+					
+						if (tostdout == 1)
+						{
+							printf("%2.2x",data_buffer[i]);
+						}
 					}
-					printf("%2.2x",data_buffer[i]);
-
 				}
 				idx = 0;
 	
@@ -643,7 +657,7 @@ int main(int argc, char *argv[]) {
 
 			}
 
-                        
+			
 			//fflush(logfile);
 			//fclose(tmpstdin);
 			//printf("right here\n");
