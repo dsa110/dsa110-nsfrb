@@ -1,0 +1,21 @@
+Candidate 0:
+RA: 0.0 deg
+DEC: 0.0 deg
+BEST SNR: 53478.07
+BEST WIDTH: 1040 ms
+BEST DM: 560.14 pc/cc
+
+Candidate 1:
+RA: 0.0 deg
+DEC: 0.0 deg
+BEST SNR: 62274.87
+BEST WIDTH: 520 ms
+BEST DM: 1834.7 pc/cc
+
+Candidate 2:
+RA: 0.0 deg
+DEC: 0.0 deg
+BEST SNR: 30116.67
+BEST WIDTH: 1040 ms
+BEST DM: 309.5 pc/cc
+

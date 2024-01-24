@@ -1,0 +1,7 @@
+matplotlib==3.8.2
+numpy==1.26.2
+scipy==1.11.4
+pandas==2.1.4
+astropy==6.0.0
+tqdm==4.62.3
+git+https://github.com/dsa110/dsa110-antpos.git
