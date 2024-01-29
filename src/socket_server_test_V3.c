@@ -553,7 +553,7 @@ int main(int argc, char *argv[]) {
 				if (toport == 1)
 				{
 					//subclient_send(data_buffer,valread,subclientPORT,logfile);
-					subclient_fd = subclient_send_persistent(data_buffer,valread,subclientPORT,logfile,subclient_fd);
+					subclient_fd = subclient_send_persistent(data_buffer,valread-offset,subclientPORT,logfile,subclient_fd);
 				}
 				if (tofile ==1 || tostdout==1)
 				{
