@@ -11,6 +11,7 @@
 #include "server_helper.h"
 #include "subclient.h"
 #include <math.h>
+#include <arpa/inet.h>
 extern int errno ;
 /*
 //response messages
@@ -85,7 +86,7 @@ int main(int argc, char *argv[]) {
 	long valread;
 	struct sockaddr_in address;
 	int addrlen = sizeof(address);
-	
+		
 	if ((server_fd = socket(AF_INET,SOCK_STREAM,0))<0)	
 	{
 		fprintf(logfile,"cannot create socket");
@@ -125,8 +126,8 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	fprintf(logfile,"opened server for listening...\n");
-	int run = 0;
-	while(run == 0)
+	//int run = 0;
+	while (1)//run == 0)
 	{
 		fprintf(logfile,"\n+++++++ Waiting for new connection ++++++++\n\n");
 		//accept connection
@@ -137,6 +138,9 @@ int main(int argc, char *argv[]) {
 			update_pipestatus(argv[0]);
 			exit(EXIT_FAILURE);
 		}
+		unsigned char *addrstring = inet_ntoa(address.sin_addr);
+		fprintf(logfile,"\nMade connection with ip address: %s",addrstring);
+
 		//set no delay flag
 		int one = 1;
 		setsockopt(new_socket, SOL_TCP, TCP_NODELAY, &one, sizeof(one));
@@ -509,6 +513,30 @@ int main(int argc, char *argv[]) {
 			int subclient_fd = -1;
 			//off_t thing = lseek(new_socket,0,SEEK_CUR);//tell(new_socket);
 			//fprintf(logfile,"THIS IS THE CURRENT FILE OFFSET: %ld\n",thing);//ftell(new_socket)); 
+			
+			//first send the address of the corr node we received it from
+			if (toport == 1)
+			{
+				fprintf(logfile,"Sending address of client...\n");
+				subclient_fd = subclient_send_persistent(addrstring,strlen(addrstring),subclientPORT,logfile,subclient_fd);
+				subclient_fd = subclient_send_persistent("ENDADDR",7,subclientPORT,logfile,subclient_fd);
+
+				//get img ID from file name
+				unsigned char *id_delim = "ID";
+				unsigned char *img_id_str = strstr(client_request.fname,id_delim);
+				img_id_str = img_id_str + 2;
+				img_id_str[4] = 0;
+				fprintf(logfile, "%s,%ld\n",img_id_str,strlen(img_id_str));
+				//uint16_t img_id = 0;//next_id;
+
+				//unsigned char img_id_str[4];
+				//sprintf(img_id_str,"%04x",img_id);
+				subclient_fd = subclient_send_persistent(img_id_str,strlen(img_id_str),subclientPORT,logfile,subclient_fd);
+				subclient_fd = subclient_send_persistent("ENDIMGID",8,subclientPORT,logfile,subclient_fd);
+				
+				
+			}
+
 			while (hit_boundary == 0)
 			{
 				if (data_buffer[idx] == TESTSTRING[0])
@@ -672,14 +700,17 @@ int main(int argc, char *argv[]) {
                         
 			//flush log file
 			fflush(logfile);
-			fclose(logfile);
+			//fclose(logfile);
                         close(new_socket);
-			run ++;
+			//run ++;
 			//free(buffer2);
 		}
 		//fclose(logfile);
 		//run += 1;
 	}
 	//fclose(logfile);
+	fflush(logfile);
+	fclose(logfile);
+	//close(new_socket);
 	return 0;
 }

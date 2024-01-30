@@ -1,0 +1,358 @@
+creating socket...Done!
+binding to port 8843...Done!
+listening for connections...Made connection
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:0
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 0
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:1
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 1
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:2
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 2
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:3
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 3
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:4
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 4
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:5
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 5
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:6
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 6
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:7
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 7
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:8
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 8
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:9
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 9
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:10
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 10
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:11
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 11
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:12
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 12
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:13
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 13
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:14
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 14
+Shape (32, 32, 25)
+img_id 0
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:15
+img_id:0
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 15
+Shape (32, 32, 25)
+img_id 0
+starting search here
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:0
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 0
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:1
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 1
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:2
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 2
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:3
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 3
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:4
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 4
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:5
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 5
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:6
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 6
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:7
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 7
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:8
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 8
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:9
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 9
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:10
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 10
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:11
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 11
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:12
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 12
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:13
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 13
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:14
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 14
+Shape (32, 32, 25)
+img_id 15
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204958
+address:10.41.0.182
+corr:15
+img_id:15
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+Received data from corr 15
+Shape (32, 32, 25)
+img_id 15
+starting search here
+accepting connection...

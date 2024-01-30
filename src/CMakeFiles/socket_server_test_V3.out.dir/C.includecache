@@ -61,6 +61,8 @@ subclient.h
 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/subclient.h
 math.h
 -
+arpa/inet.h
+-
 
 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/subclient.h
 stdio.h

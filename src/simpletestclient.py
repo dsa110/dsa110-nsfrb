@@ -26,7 +26,7 @@ while True:
     clientSocket,address = servSockD.accept()
     recstatus = 1
     fullMsg = ""
-    print("Done!")
+    print("Done! Address:",address)
     print("Receiving data...")
     while recstatus > 0:
         (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
@@ -38,15 +38,18 @@ while True:
     print("Done! Total bytes read:",totalbytes)
 
     #convert to numpy array
-    print(bytes.fromhex(fullMsg)[:128])
+    print(bytes.fromhex(fullMsg)[:128+12])
+    """
     fullMsgBytes = bytes.fromhex(fullMsg)
     #print(fullMsgBytes[7:256+7].decode('utf-8'))
     print(np.frombuffer(fullMsgBytes[128:]).reshape(32,32,25,16))
     #print(fullMsgBytes[:])
     #print(fullMsgBytes[:].decode('utf-8'))
-
+    
+    print(bytes.fromhex(fullMsg).decode('utf-8'))
+    print(address)
     clientSocket.close()
-
+	"""
     break
 
 print("done",totalbytes)

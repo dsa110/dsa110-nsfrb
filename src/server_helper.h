@@ -28,7 +28,8 @@ const unsigned char TESTSTRING[] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x
 const char *pipestatusfname = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt";
 const char *serverlogfname = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/server_log.txt";
 const char *accepted_args = "-f-p-h-s";
-const char *usage = "socket_server_test_V3.c usage:\n-h : print this message\n-f : output data to file provided by client\n-p [port] : send data to a server listening on the provided port number; if no port number is provided, the default port is 8843\n";
+const char *usage = "socket_server_test_V3.c usage:\n-h : print this message\n-f : output data to file provided by client\n-p [port] : send data to a server listening on the provided port number; if no port number is provided, the default port is 8843\n-s : pipes output data to stdout\n";
+uint16_t next_id = 0;
 //HTTP REQUEST STRUCTURE: This struct will be populated with header values from the client request
 struct REQUEST {
         char Host[32];
@@ -39,7 +40,7 @@ struct REQUEST {
         char ContentType[20];
         unsigned char boundary[40];
         char message[512];
-        char fname[128];
+        unsigned char fname[128];
 };
 
 int update_pipestatus(char *fname) {
