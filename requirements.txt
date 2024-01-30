@@ -5,3 +5,6 @@ pandas==2.1.4
 astropy==6.0.0
 tqdm==4.62.3
 git+https://github.com/dsa110/dsa110-antpos.git
+torch==2.1.2
+torchvision==0.16.2
+Pillow==10.2.0
