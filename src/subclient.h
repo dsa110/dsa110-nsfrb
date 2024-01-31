@@ -60,13 +60,17 @@ int subclient_send(unsigned char data_buffer[],
 	fprintf(logfile,"Sending message...");
 	//char testmessage[255] = "Message from the server to the "
         //              "client \'Hello Client\' ";
-	if ((sendStatus = send(subclient_fd,data_buffer,data_size,0)) < 0)
+	sendStatus = 0;
+	while (sendStatus > 0)
 	{
-		fprintf(logfile,"message send failed");
-		perror("message send failed");
-		fclose(logfile);
-		//update_pipestatus(argv[0]);
-		return 0;
+		if ((sendStatus = send(subclient_fd,data_buffer,data_size,0)) < 0)
+		{
+			fprintf(logfile,"message send failed");
+			perror("message send failed");
+			fclose(logfile);
+			//update_pipestatus(argv[0]);
+			return 0;
+		}
 	}
 	fprintf(logfile,"Done\n");
 	close(subclient_socket);	

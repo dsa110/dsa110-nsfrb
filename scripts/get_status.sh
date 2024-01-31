@@ -20,6 +20,11 @@ do
 	echo ">>>>>>>>>>>>>>> pipe_log.txt"
 	tail -10 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/pipe_log.txt
 	echo ">>>>>>>>>>>>>>>"
+
+        echo ""
+        echo ">>>>>>>>>>>>>>> process_log.txt"
+        tail -10 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
+        echo ">>>>>>>>>>>>>>>"
 	echo "------------------------------------------------------	End NSFRB Status Report		------------------------------------------------------"
 	sleep $1
 done
