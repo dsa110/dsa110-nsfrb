@@ -136,6 +136,7 @@ def parse_packet(fullMsg,headersize=128):
     printlog(bytes.fromhex(data[:2*headersize]),output_file=processfile)
     imgbytes = bytes.fromhex(data[2*headersize:])
     shape = pipeline.get_shape_from_raw(headerbytes,headersize)#bytedata[:headersize],headersize)
+    printlog(len(imgbytes),output_file=processfile)
     img_data = np.frombuffer(imgbytes,dtype=np.float64).reshape(shape)
     printlog(shape,output_file=processfile)
     return corr_node,img_id,shape,img_data
@@ -146,7 +147,8 @@ maxProcesses = 5
 def search_task(image_tesseract,SNRthresh,img_id):
     printlog("starting process " + str(img_id) + "...",output_file=processfile)
     print("starting process " + str(img_id) + "...")
-    return sl.run_search(image_tesseract,SNRthresh=30000)
+    #return np.ones(3),np.ones(3),np.ones(3)
+    return sl.run_search(image_tesseract,SNRthresh=SNRthresh)
 
 
 def main():
@@ -197,7 +199,7 @@ def main():
                 else:
                     raise
         printlog("Done! Total bytes read:" + str(totalbytes),output_file=processfile)
-        print(fullMsg)
+        #print(fullMsg)
         #parse to get address
         corr_node,img_id,shape,arrData = parse_packet(fullMsg)
         #printlog(arrData,output_file=processfile)
