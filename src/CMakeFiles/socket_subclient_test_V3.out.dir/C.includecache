@@ -34,7 +34,7 @@ subclient.h
 math.h
 -
 
-/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_server_test_V3.c
+/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_subclient_test_V3.c
 stdio.h
 -
 errno.h
@@ -55,12 +55,10 @@ netinet/tcp.h
 -
 fcntl.h
 -
-server_helper.h
-/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/server_helper.h
+sys/types.h
+-
 subclient.h
 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/subclient.h
-math.h
--
 
 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/subclient.h
 stdio.h

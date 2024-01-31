@@ -8,9 +8,11 @@
 #include <ctype.h>
 #include <netinet/tcp.h>
 #include <fcntl.h>
-
+#include "server_helper.h"
+#include "subclient.h"
+#include <math.h>
 extern int errno ;
-
+/*
 //response messages
 const char *error1 = "HTTP/1.1 405 Method Not Allowed\nContent-Type: text/plain\nContent-Length: 103\n\nServer received invalid command, only configured to respond to 'POST' commands. No data transferred.\n";
 const char *error2 = "HTTP/1.1 400 Bad Request\nContent-Type: text/plain\nContent-Length: 57\n\nServer received invalid command, No data transferred.\n";
@@ -44,44 +46,38 @@ int update_pipestatus(char *fname) {
 	fclose(pipestatus);
 	return 0;
 }
+*/
 
 
 int main(int argc, char *argv[]) {
 	//create status file to report if command failed
 	//FILE *pipestatus;
 	
-
-
-	//check arguments
-	int tofile = 0;	
-	if (argc == 2)
-	{
-		if (strcmp(argv[1],"-f") == 0)
-		{
-			tofile = 1;
-		}
-		else
-		{
-			printf("invalid argument, use -f to write to file\n");
-			//return 1;
-			//pipestatus = fopen(pipestatusfname,"w");
-			//fprintf(pipestatus,"%s failed\n",argv[0]);
-			update_pipestatus(argv[0]);
-			exit(EXIT_FAILURE);
-		}
-	}
-	else if (argc > 2)
-	{
-		printf("invalid argument, use -f to write to file\n");
-		//return 1;
-		update_pipestatus(argv[0]);
-		exit(EXIT_FAILURE);
-	}	
 	//make log file to write output to, only want data written to stdout
-	FILE *logfile;
-	logfile = fopen(serverlogfname,"w");
+        FILE *logfile;
+        logfile = fopen(serverlogfname,"w");
 
         fprintf(logfile,"Hello, World!\n");//printf("Hello, World!\n");
+
+	//check arguments
+	int flags[3] = {0,0,0};
+	
+	const int subclientPORT = server_parse_args(logfile,argc,argv,flags);//subclientPORT_tmp;
+	if (subclientPORT < 1000)
+	{                                
+		printf("invalid argument\n");
+                printf("%s\n",usage);
+                update_pipestatus(argv[0]);
+                fclose(logfile);
+                exit(EXIT_FAILURE);
+	}
+	int tofile = flags[0];
+	int toport = flags[1];
+	int tostdout = flags[2];
+        //printf("%d %d %d %d\n",subclientPORT,tofile,toport,tostdout);
+        //fclose(logfile);
+        //exit(0);
+	//make log file to write output to, only want data written to stdout
         //return 0;
 
 	//Create server socket
@@ -498,6 +494,8 @@ int main(int argc, char *argv[]) {
                         } */      
 
 
+
+
                         char *boundpoint = &client_request.boundary[0];
                         //fp = fopen(fullfname, "a");
 			char hit_boundary = 0;
@@ -508,6 +506,7 @@ int main(int argc, char *argv[]) {
 			int loops = 0;
 			//fcntl(new_socket, F_SETFL, O_NONBLOCK);
 			int totallength = valread;
+			int subclient_fd = -1;
 			//off_t thing = lseek(new_socket,0,SEEK_CUR);//tell(new_socket);
 			//fprintf(logfile,"THIS IS THE CURRENT FILE OFFSET: %ld\n",thing);//ftell(new_socket)); 
 			while (hit_boundary == 0)
@@ -551,14 +550,25 @@ int main(int argc, char *argv[]) {
 					hit_boundary = 1;
 					
 				}
-				for (int i = 0; i < valread-offset; i++)
+				if (toport == 1)
 				{
-					if (tofile == 1)
+					//subclient_send(data_buffer,valread,subclientPORT,logfile);
+					subclient_fd = subclient_send_persistent(data_buffer,valread,subclientPORT,logfile,subclient_fd);
+				}
+				if (tofile ==1 || tostdout==1)
+				{
+					for (int i = 0; i < valread-offset; i++)
 					{
-						fprintf(fp,"%c",data_buffer[idx + i]);
+						if (tofile == 1)
+						{
+							fprintf(fp,"%c",data_buffer[idx + i]);
+						}
+					
+						if (tostdout == 1)
+						{
+							printf("%2.2x",data_buffer[i]);
+						}
 					}
-					printf("%2.2x",data_buffer[i]);
-
 				}
 				idx = 0;
 	
@@ -647,7 +657,7 @@ int main(int argc, char *argv[]) {
 
 			}
 
-                        
+			
 			//fflush(logfile);
 			//fclose(tmpstdin);
 			//printf("right here\n");

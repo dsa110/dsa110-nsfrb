@@ -1,3 +1,5 @@
+/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/socket_subclient_test_V3.out.dir
 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/edit_cache.dir
-/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/rebuild_cache.dir
 /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/socket_server_test_V3.out.dir
+/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/simpletestclient.out.dir
+/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/rebuild_cache.dir
