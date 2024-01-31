@@ -16,7 +16,7 @@ import argparse
 
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
-
+from concurrent.futures import ProcessPoolExecutor
 
 
 fsize=45
@@ -140,7 +140,13 @@ def parse_packet(fullMsg,headersize=128):
     printlog(shape,output_file=processfile)
     return corr_node,img_id,shape,img_data
     
+maxProcesses = 5
 
+
+def search_task(image_tesseract,SNRthresh,img_id):
+    printlog("starting process " + str(img_id) + "...",output_file=processfile)
+    print("starting process " + str(img_id) + "...")
+    return sl.run_search(image_tesseract,SNRthresh=30000)
 
 
 def main():
@@ -160,6 +166,9 @@ def main():
     servSockD.listen(16)
     printlog("Made connection",output_file=processfile)
     
+    #initialize a pool of processes for concurent execution
+    executor = ProcessPoolExecutor(maxProcesses)
+   
     while True: # want to keep accepting connections
         printlog("accepting connection...",output_file=processfile,end='')
         clientSocket,address = servSockD.accept()
@@ -173,7 +182,7 @@ def main():
         maxbytes = 204958
         totalbytes = 0
 
-        while (recstatus > 0) and (totalbytes < maxbytes):
+        while (recstatus> 0) and (totalbytes < maxbytes):
             try:
                 (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
                 recstatus = len(strData)
@@ -188,7 +197,7 @@ def main():
                 else:
                     raise
         printlog("Done! Total bytes read:" + str(totalbytes),output_file=processfile)
-        #print(fullMsg[:256])
+        print(fullMsg)
         #parse to get address
         corr_node,img_id,shape,arrData = parse_packet(fullMsg)
         #printlog(arrData,output_file=processfile)
@@ -207,10 +216,11 @@ def main():
         fullimg_array[idx].add_corr_img(arrData,corr_node)
         #if the image is complete, start the search
         if fullimg_array[idx].is_full():
-            #later want to make this in a new thread, but for now run it here
-            printlog("starting search here",output_file=processfile)
-            #cands,cluster_cands,image_tesseract_searched = sl.run_search(fullimage_array[idx].image_tesseract,image_tesseract,SNRthresh=30000)
-
+            #submit a search task to the process pool
+            future = executor.submit(search_task,fullimg_array[idx].image_tesseract,30000,fullimg_array[idx].img_id)
+            fullimg_array[idx].future = future
+            fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched = future.result()
+            print(fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched)
         sys.stdout.flush()
     clientSocket.close()
 
