@@ -73,9 +73,10 @@ class fullimg:
         self.img_id = img_id
         self.shape = shape
 
-    def add_corr_img(self,data,corr_node):
+    def add_corr_img(self,data,corr_node,testmode=False):
         self.image_tesseract[:,:,:,corr_node] = data
-        self.corrstatus[corr_node] = 1
+        if testmode:
+            self.corrstatus[corr_node] = 1
         return
 	    
     def is_full(self):
@@ -144,28 +145,68 @@ def parse_packet(fullMsg,headersize=128):
 maxProcesses = 5
 
 
-def search_task(image_tesseract,SNRthresh,img_id):
-    printlog("starting process " + str(img_id) + "...",output_file=processfile)
-    print("starting process " + str(img_id) + "...")
-    #return np.ones(3),np.ones(3),np.ones(3)
-    return sl.run_search(image_tesseract,SNRthresh=SNRthresh)
+def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix):
+    printlog("starting search process " + str(img_id) + "...",output_file=processfile,end='')
+    #print("starting process " + str(img_id) + "...")
+    fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=SNRthresh)
+    printlog("done",output_file=processfile)
+    
+    printlog("basic clustering in RA, DEC...",output_file=processfile,end='')
+    fullimg_array[idx].unique_cands = [(fullimg_array[idx].cluster_cands[i][0],fullimg_array[idx].cluster_cands[i][1]) for i in range(len(fullimg_array[idx].cluster_cands))]
+    fullimg_array[idx].unique_cands = list(set(fullimg_array[idx].unique_cands))
+    printlog("{a} unique positions...".format(a=len(fullimg_array[idx].unique_cands)),output_file=processfile,end='')
+    fullimg_array[idx].unique_cands_dm = [(fullimg_array[idx].cluster_cands[i][0],fullimg_array[idx].cluster_cands[i][1],fullimg_array[idx].cluster_cands[i][2]) for i in range(len(fullimg_array[idx].cluster_cands))]
+    fullimg_array[idx].unique_cands_dm = list(set(fullimg_array[idx].unique_cands_dm))
+    printlog("{a} unique DMs...".format(a=len(fullimg_array[idx].unique_cands_dm)),output_file=processfile,end='')
+    printlog("done",output_file=processfile)
+
+    printlog("obtaining image cutouts...",output_file=processfile,end='')
+    fullimg_array[idx].subimgs_dm = np.zeros((len(fullimg_array[idx].unique_cands_dm),subimgpix,subimgpix,fullimg_array[idx].image_tesseract.shape[2],fullimg_array[idx].image_tesseract.shape[3]),dtype=np.float16)
+    fullimg_array[idx].subimgs = np.zeros((len(fullimg_array[idx].unique_cands),subimgpix,subimgpix,fullimg_array[idx].image_tesseract.shape[2],fullimg_array[idx].image_tesseract.shape[3]),dtype=np.float16)
+    for i in range(len(fullimg_array[idx].unique_cands)):
+        fullimg_array[idx].subimgs[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=False,subimgpix=subimgpix)
+    for i in range(len(fullimg_array[idx].unique_cands_dm)):
+        fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=False,subimgpix=subimgpix)
+
+    #if args.verbose:
+    printlog(fullimg_array[idx].subimgs_dm.shape)
+    printlog(fullimg_array[idx].subimgs.shape)
+    printlog("done",output_file=processfile)
+
+
+
+    
+
+    return fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,len(fullimg_array[idx].cluster_cands)#sl.run_search(image_tesseract,SNRthresh=SNRthresh)
 
 
 def main():
+    #argument parsing
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
+    parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8843',default=8843)
+    parser.add_argument('--maxbytes',type=int,help='Expected size of sub-band image data in bytes, default = 204958 (for 32x32x25 image)',default=204958)
+    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
+    parser.add_argument('-T','--testh23',action='store_true')
+    parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
+    parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 10',default=10)
+    args = parser.parse_args()    
+
+
     #create socket
     printlog("creating socket...",output_file=processfile,end='')
     servSockD = socket.socket(socket.AF_INET, socket.SOCK_STREAM,0)
     printlog("Done!",output_file=processfile)    
 
     #bind to port number
-    port = 8843
+    port = args.port
     printlog("binding to port " + str(port) + "...",output_file=processfile,end='')
     servSockD.bind(('', port))
     printlog("Done!",output_file=processfile)
 
     #listen for conections
     printlog("listening for connections...",output_file=processfile,end='')
-    servSockD.listen(16)
+    servSockD.listen(args.maxconnect)
     printlog("Made connection",output_file=processfile)
     
     #initialize a pool of processes for concurent execution
@@ -180,8 +221,8 @@ def main():
         printlog("Receiving data...",output_file=processfile)
         
         #set timeout and expected number of bytes to read
-        clientSocket.settimeout(10) 
-        maxbytes = 204958
+        clientSocket.settimeout(args.timeout) 
+        maxbytes = args.maxbytes #204958
         totalbytes = 0
 
         while (recstatus> 0) and (totalbytes < maxbytes):
@@ -215,14 +256,14 @@ def main():
             fullimg_array.append(fullimg(img_id))
 		
         #add image and update flags
-        fullimg_array[idx].add_corr_img(arrData,corr_node)
+        fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
         #if the image is complete, start the search
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            future = executor.submit(search_task,fullimg_array[idx].image_tesseract,30000,fullimg_array[idx].img_id)
+            future = executor.submit(search_task,fullimg_array[idx].image_tesseract,args.SNRthresh,fullimg_array[idx].img_id,idx,args.subimgpix)
             fullimg_array[idx].future = future
-            fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched = future.result()
-            print(fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched)
+            print(future.result())
+            printlog(future.result(),output_file=processfile)
         sys.stdout.flush()
     clientSocket.close()
 
