@@ -9,6 +9,7 @@ from scipy.stats import gamma
 from scipy.stats import truncnorm
 from scipy.signal import peak_widths
 from scipy.stats import norm
+from simulations_and_classifications.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
 
 #from gen_dmtrials_copy import gen_dm
 import argparse
@@ -114,7 +115,14 @@ def main():
     print(subimgs_dm,subimgs_dm.shape)
     
     #****INSERT CODE FOR ML CLASSIFIER HERE****#
-    
+    ## Assuming subimgs has shape (number of candidates, length in pixels, width in pixels, time samples, frequency samples) 
+    data_array = np.nan_to_num(data_array, nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
+    transposed_array = np.transpose(data_array, (0, 3, 4, 1, 2))
+    new_shape = (data_array.shape[0] * data_array.shape[3], data_array.shape[4], data_array.shape[1], data_array.shape[2])
+    merged_array = transposed_array.reshape(new_shape) 
+
+    predictions, probabilities = classify_images(merged_array, args.model_weights, verbose=args.verbose) 
+     
 
     """stat = pipeline.pipeout(cluster_cands_arr)
     if stat == -1:

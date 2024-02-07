@@ -63,7 +63,7 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
 
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
 
-    return dirty_image
+    return np.real(dirty_image)
 
 
 def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int) -> np.ndarray:
@@ -93,4 +93,4 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
 
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
 
-    return np.abs(dirty_image)
+    return np.real(dirty_image)
