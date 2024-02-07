@@ -173,8 +173,8 @@ def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix):
     printlog(fullimg_array[idx].subimgs.shape)
     printlog("done",output_file=processfile)
 
-
-
+    np.save("EXAMPLECUTOUTS.npy",fullimg_array[idx].subimgs)
+    np.save("EXAMPLECUTOUTS_BINNED.npy",fullimg_array[idx].subimgs_dm)
     
 
     return fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,len(fullimg_array[idx].cluster_cands)#sl.run_search(image_tesseract,SNRthresh=SNRthresh)
