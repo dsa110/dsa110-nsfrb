@@ -18,6 +18,10 @@ from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from concurrent.futures import ProcessPoolExecutor
 
+import sys
+sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+
+from simulations_and_classifications.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
 
 fsize=45
 fsize2=35
@@ -44,8 +48,6 @@ plt.rcParams.update({
 This file runs the process server which receives data from the RX server and buffers it until data from all 16 channels 
 is received; then it starts the search pipeline
 """
-
-import sys
 sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb import searching as sl
 from nsfrb import pipeline
@@ -167,6 +169,16 @@ def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix):
         fullimg_array[idx].subimgs[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=False,subimgpix=subimgpix)
     for i in range(len(fullimg_array[idx].unique_cands_dm)):
         fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=False,subimgpix=subimgpix)
+
+
+    data_array = np.nan_to_numpy_array(fullimg_array[idx].subimgs[0,:,:,:,:], nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
+    transposed_array = np.transpose(data_array, (0, 3, 4, 1, 2))
+    new_shape = (data_array.shape[0] * data_array.shape[3], data_array.shape[4], data_array.shape[1], data_array.shape[2])
+    merged_array = transposed_array.reshape(new_shape)
+
+    predictions, probabilities = classify_images(merged_array, args.model_weights, verbose=args.verbose)  
+
+    print(predictions,probabilities)
 
     #if args.verbose:
     printlog(fullimg_array[idx].subimgs_dm.shape)

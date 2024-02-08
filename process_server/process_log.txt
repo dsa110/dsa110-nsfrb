@@ -193,8 +193,4 @@ b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 3
 Received data from corr 15
 Shape (32, 32, 25)
 img_id 2
-starting search process 2...done
-basic clustering in RA, DEC...3 unique positions...3 unique DMs...done
-obtaining image cutouts...done
-([(11, 24, 3, 0, 14997.678650241687), (12, 15, 2, 7, 10792.88752893913), (31, 23, 2, 12, 6162.861560330676)], [(11, 24, 0, 3, 14997.678650241687), (12, 15, 7, 2, 10792.88752893913), (31, 23, 12, 2, 6162.861560330676)], 3)
 accepting connection...
