@@ -86,11 +86,11 @@ class fullimg:
 
 fullimg_array = []
 def find_id(img_id):
-	if len(fullimg_array) == 0: return -1
+    if len(fullimg_array) == 0: return -1
 	
-	for i in range(len(fullimg_array)):
-		if fullimg_array[i].img_id == img_id: return i
-	return -1
+    for i in range(len(fullimg_array)):
+	    if fullimg_array[i].img_id == img_id: return i
+    return -1
 
 """
 Dictionary that maps corr nodes to ip addresses
@@ -147,7 +147,7 @@ def parse_packet(fullMsg,headersize=128):
 maxProcesses = 5
 
 
-def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix):
+def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix,model_weights,verbose):
     printlog("starting search process " + str(img_id) + "...",output_file=processfile,end='')
     #print("starting process " + str(img_id) + "...")
     fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=SNRthresh)
@@ -171,12 +171,14 @@ def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix):
         fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=False,subimgpix=subimgpix)
 
 
-    data_array = np.nan_to_numpy_array(fullimg_array[idx].subimgs[0,:,:,:,:], nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
+    data_array = np.nan_to_num(fullimg_array[idx].subimgs[:,:,:,:,:], nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
+    print(data_array.shape)
     transposed_array = np.transpose(data_array, (0, 3, 4, 1, 2))
+    print(transposed_array.shape)
     new_shape = (data_array.shape[0] * data_array.shape[3], data_array.shape[4], data_array.shape[1], data_array.shape[2])
     merged_array = transposed_array.reshape(new_shape)
 
-    predictions, probabilities = classify_images(merged_array, args.model_weights, verbose=args.verbose)  
+    predictions, probabilities = classify_images(merged_array, model_weights, verbose=verbose)  
 
     print(predictions,probabilities)
 
@@ -202,6 +204,11 @@ def main():
     parser.add_argument('-T','--testh23',action='store_true')
     parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
     parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 10',default=10)
+
+    #arguments for classifier from classifier.py
+    #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')
+    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default="/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     args = parser.parse_args()    
 
 
@@ -270,9 +277,10 @@ def main():
         #add image and update flags
         fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
         #if the image is complete, start the search
+        print("corrstatus:",fullimg_array[idx].corrstatus)
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            future = executor.submit(search_task,fullimg_array[idx].image_tesseract,args.SNRthresh,fullimg_array[idx].img_id,idx,args.subimgpix)
+            future = executor.submit(search_task,fullimg_array[idx].image_tesseract,args.SNRthresh,fullimg_array[idx].img_id,idx,args.subimgpix,args.model_weights,args.verbose)
             fullimg_array[idx].future = future
             print(future.result())
             printlog(future.result(),output_file=processfile)
