@@ -48,6 +48,7 @@ Directory for output data
 output_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
+cand_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 f=open(output_file,"w")
 f.close()
 
@@ -644,13 +645,13 @@ def normalize_image(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_s
 
 
 #code to cutout subimages
-def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=130,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=output_file):
+def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=130,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=output_file,output_dir=cand_dir):
     if output_file != "":
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
     gridsize = image_tesseract.shape[0]
-    fname = "/dataz/dsa110/imaging/NSFRB_storage/NSFRB_candidates/" + prefix + "_" + str(ra_idx) + "_" + str(dec_idx)
+    fname = output_dir + prefix + "_" + str(ra_idx) + "_" + str(dec_idx)
     if subimgpix%2 == 0:
         print("subimgpix must be odd",file=fout)
         if output_file != "":

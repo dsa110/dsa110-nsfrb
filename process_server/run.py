@@ -20,6 +20,8 @@ from concurrent.futures import ProcessPoolExecutor
 
 import sys
 sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+import csv
+import copy
 
 from simulations_and_classifications.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
 
@@ -52,7 +54,7 @@ sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb import searching as sl
 from nsfrb import pipeline
 
-"""
+"""s
 Directory for output data
 """
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
@@ -60,6 +62,7 @@ pipestatusfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.tx
 searchflagsfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
 output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
 processfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
+cand_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 """
 Arguments: data file
 """
@@ -69,10 +72,11 @@ from nsfrb.logging import printlog
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id,shape=(32,32,25,16),dtype=np.float16):
+    def __init__(self,img_id,img_id_hex,shape=(32,32,25,16),dtype=np.float16):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
         self.img_id = img_id
+        self.img_id_hex = img_id_hex
         self.shape = shape
 
     def add_corr_img(self,data,corr_node,testmode=False):
@@ -129,6 +133,7 @@ def parse_packet(fullMsg,headersize=128):
         corraddrs[corr_address] = 0
     #***#
     #print(fullMsgStr[fullMsgStr.index("ENDADDR"):128])
+    img_id_hex = fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")]
     img_id = int(fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")],16)
     data = fullMsg[2*(fullMsgStr.index("ENDIMGID")+8):]
     printlog("address:"+str(corr_address),output_file=processfile)
@@ -142,7 +147,7 @@ def parse_packet(fullMsg,headersize=128):
     printlog(len(imgbytes),output_file=processfile)
     img_data = np.frombuffer(imgbytes,dtype=np.float64).reshape(shape)
     printlog(shape,output_file=processfile)
-    return corr_node,img_id,shape,img_data
+    return corr_node,img_id,img_id_hex,shape,img_data
     
 maxProcesses = 5
 
@@ -181,6 +186,31 @@ def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix,model_weights,ver
     predictions, probabilities = classify_images(merged_array, model_weights, verbose=verbose)  
 
     print(predictions,probabilities)
+    fullimg_array[idx].predictions = copy.deepcopy(predictions)
+    fullimg_array[idx].probabilities = copy.deepcopy(probabilities)
+    #save predictions/probabilities to a csv
+    with open(cand_dir + "/classification_ID" + fullimg_array[idx].img_id_hex + ".csv","w") as csvfile:
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(predictions)
+        wr.writerow(probabilities)
+    csvfile.close()
+
+    #find candidates most likely to be real; need to ask Nikita about conditions
+    condition = np.ones(data_array.shape[0],dtype=bool)
+    finalidxs = np.arange(data_array.shape[0])[condition]
+    finalcands = [fullimg_array[idx].cluster_cands[i] for i in finalidxs]#[condition]
+    with open(cand_dir + "candidates_ID" + fullimg_array[idx].img_id_hex + ".csv","w") as csvfile:
+        wr = csv.writer(csvfile,delimiter=',')
+        for finalcand in finalcands:
+            wr.writerow(np.array(finalcand))
+    csvfile.close()
+
+    #dump sub-images to numpy files
+    for i in finalidxs:#range(len(fullimg_array[idx].unique_cands)):
+        fullimg_array[idx].subimgs[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=True,prefix="candidate_subimage_ID" + fullimg_array[idx].img_id_hex,subimgpix=subimgpix,output_dir=cand_dir)
+    for i in finalidxs:#range(len(fullimg_array[idx].unique_cands_dm)):
+        fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=True,prefix="candidate_subimage_ID" + fullimg_array[idx].img_id_hex,subimgpix=subimgpix,output_dir=cand_dir)
+
 
     #if args.verbose:
     printlog(fullimg_array[idx].subimgs_dm.shape)
@@ -261,18 +291,19 @@ def main():
         printlog("Done! Total bytes read:" + str(totalbytes),output_file=processfile)
         #print(fullMsg)
         #parse to get address
-        corr_node,img_id,shape,arrData = parse_packet(fullMsg)
+        corr_node,img_id,img_id_hex,shape,arrData = parse_packet(fullMsg)
         #printlog(arrData,output_file=processfile)
         printlog("Received data from corr " + str(corr_node),output_file=processfile)
         printlog("Shape " + str(shape),output_file=processfile)
         printlog("img_id " + str(img_id),output_file=processfile)
-		
+        printlog("img_id_hex " + str(img_id_hex),output_file=processfile)
 
+        
         #if object corresponding to the image is in list
         idx = find_id(img_id)
         if idx == -1:
             #need to create new object
-            fullimg_array.append(fullimg(img_id))
+            fullimg_array.append(fullimg(img_id,img_id_hex))
 		
         #add image and update flags
         fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
