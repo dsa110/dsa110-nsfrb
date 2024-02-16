@@ -144,6 +144,7 @@ def parse_packet(fullMsg,headersize=128):
     printlog(bytes.fromhex(data[:2*headersize]),output_file=processfile)
     imgbytes = bytes.fromhex(data[2*headersize:])
     shape = pipeline.get_shape_from_raw(headerbytes,headersize)#bytedata[:headersize],headersize)
+    print(shape)
     printlog(len(imgbytes),output_file=processfile)
     img_data = np.frombuffer(imgbytes,dtype=np.float64).reshape(shape)
     printlog(shape,output_file=processfile)
@@ -155,32 +156,38 @@ maxProcesses = 5
 def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix,model_weights,verbose):
     printlog("starting search process " + str(img_id) + "...",output_file=processfile,end='')
     #print("starting process " + str(img_id) + "...")
-    fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched = sl.run_search(image_tesseract,SNRthresh=SNRthresh)
+    fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched,fullimg_array[idx].image_tesseract_binned = sl.run_search(image_tesseract,SNRthresh=SNRthresh)
     printlog("done",output_file=processfile)
     
     printlog("basic clustering in RA, DEC...",output_file=processfile,end='')
-    fullimg_array[idx].unique_cands = [(fullimg_array[idx].cluster_cands[i][0],fullimg_array[idx].cluster_cands[i][1]) for i in range(len(fullimg_array[idx].cluster_cands))]
+    fullimg_array[idx].unique_cands = [(fullimg_array[idx].cluster_cands[i][0],fullimg_array[idx].cluster_cands[i][1],fullimg_array[idx].cluster_cands[i][3]) for i in range(len(fullimg_array[idx].cluster_cands))]
     fullimg_array[idx].unique_cands = list(set(fullimg_array[idx].unique_cands))
-    printlog("{a} unique positions...".format(a=len(fullimg_array[idx].unique_cands)),output_file=processfile,end='')
-    fullimg_array[idx].unique_cands_dm = [(fullimg_array[idx].cluster_cands[i][0],fullimg_array[idx].cluster_cands[i][1],fullimg_array[idx].cluster_cands[i][2]) for i in range(len(fullimg_array[idx].cluster_cands))]
-    fullimg_array[idx].unique_cands_dm = list(set(fullimg_array[idx].unique_cands_dm))
-    printlog("{a} unique DMs...".format(a=len(fullimg_array[idx].unique_cands_dm)),output_file=processfile,end='')
+    printlog("{a} unique positions/widths...".format(a=len(fullimg_array[idx].unique_cands)),output_file=processfile,end='')
+    #fullimg_array[idx].unique_cands_dm = [(fullimg_array[idx].cluster_cands[i][0],fullimg_array[idx].cluster_cands[i][1],fullimg_array[idx].cluster_cands[i][2]) for i in range(len(fullimg_array[idx].cluster_cands))]
+    #fullimg_array[idx].unique_cands_dm = list(set(fullimg_array[idx].unique_cands_dm))
+    #printlog("{a} unique DMs...".format(a=len(fullimg_array[idx].unique_cands_dm)),output_file=processfile,end='')
     printlog("done",output_file=processfile)
 
     printlog("obtaining image cutouts...",output_file=processfile,end='')
-    fullimg_array[idx].subimgs_dm = np.zeros((len(fullimg_array[idx].unique_cands_dm),subimgpix,subimgpix,fullimg_array[idx].image_tesseract.shape[2],fullimg_array[idx].image_tesseract.shape[3]),dtype=np.float16)
-    fullimg_array[idx].subimgs = np.zeros((len(fullimg_array[idx].unique_cands),subimgpix,subimgpix,fullimg_array[idx].image_tesseract.shape[2],fullimg_array[idx].image_tesseract.shape[3]),dtype=np.float16)
+    #fullimg_array[idx].subimgs_dm = np.zeros((len(fullimg_array[idx].unique_cands_dm),subimgpix,subimgpix,fullimg_array[idx].image_tesseract.shape[2],fullimg_array[idx].image_tesseract.shape[3]),dtype=np.float16)
+    fullimg_array[idx].subimgs = np.zeros((len(fullimg_array[idx].unique_cands),subimgpix,subimgpix,fullimg_array[idx].image_tesseract_binned.shape[3]),dtype=np.float16)
     for i in range(len(fullimg_array[idx].unique_cands)):
-        fullimg_array[idx].subimgs[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=False,subimgpix=subimgpix)
-    for i in range(len(fullimg_array[idx].unique_cands_dm)):
-        fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=False,subimgpix=subimgpix)
+        fullimg_array[idx].subimgs[i,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract_binned,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=False,subimgpix=subimgpix)[:,:,fullimg_array[idx].unique_cands[i][2],:]
+    #for i in range(len(fullimg_array[idx].unique_cands_dm)):
+    #    fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=False,subimgpix=subimgpix)
 
 
-    data_array = np.nan_to_num(fullimg_array[idx].subimgs[:,:,:,:,:], nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
+    data_array = np.nan_to_num(fullimg_array[idx].subimgs,nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
+
+
+    #*** The classifier only classifies based on RA,DEC,frequency, so we should bin each candidate in time and just send the peak time sample. I'm going to modify sl.get_subimage to output an array that is Ncands x RA x DEC x frequency after binning in time for th emaximum pulse width for each candidate. ***#
+    # actually...we already output a de-dispersed and binned image tessearct from the search; let's also output one thats just been binned, then we can get argmax for each time series and use that.
+
+
     print(data_array.shape)
-    transposed_array = np.transpose(data_array, (0, 3, 4, 1, 2))
+    transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
     print(transposed_array.shape)
-    new_shape = (data_array.shape[0] * data_array.shape[3], data_array.shape[4], data_array.shape[1], data_array.shape[2])
+    new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
     merged_array = transposed_array.reshape(new_shape)
 
     predictions, probabilities = classify_images(merged_array, model_weights, verbose=verbose)  
@@ -196,8 +203,7 @@ def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix,model_weights,ver
     csvfile.close()
 
     #find candidates most likely to be real; need to ask Nikita about conditions
-    condition = np.ones(data_array.shape[0],dtype=bool)
-    finalidxs = np.arange(data_array.shape[0])[condition]
+    finalidxs = np.arange(data_array.shape[0])[~np.array(fullimg_array[idx].predictions,dtype=bool)]
     finalcands = [fullimg_array[idx].cluster_cands[i] for i in finalidxs]#[condition]
     with open(cand_dir + "candidates_ID" + fullimg_array[idx].img_id_hex + ".csv","w") as csvfile:
         wr = csv.writer(csvfile,delimiter=',')
@@ -206,14 +212,17 @@ def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix,model_weights,ver
     csvfile.close()
 
     #dump sub-images to numpy files
-    for i in finalidxs:#range(len(fullimg_array[idx].unique_cands)):
-        fullimg_array[idx].subimgs[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=True,prefix="candidate_subimage_ID" + fullimg_array[idx].img_id_hex,subimgpix=subimgpix,output_dir=cand_dir)
-    for i in finalidxs:#range(len(fullimg_array[idx].unique_cands_dm)):
-        fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=True,prefix="candidate_subimage_ID" + fullimg_array[idx].img_id_hex,subimgpix=subimgpix,output_dir=cand_dir)
+    prefix = "candidate_subimage_ID" + fullimg_array[idx].img_id_hex
+    for i in finalidxs:
+        np.save(cand_dir + prefix + "_RA" + str(fullimg_array[idx].unique_cands[i][0]) + "_DEC" + str(fullimg_array[idx].unique_cands[i][1]) + "_WIDTH" + str(fullimg_array[idx].unique_cands[i][2]) + ".npy",data_array[i,:,:,:])
+    #for i in finalidxs:#range(len(fullimg_array[idx].unique_cands)):
+    #    fullimg_array[idx].subimgs[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=True,prefix="candidate_subimage_ID" + fullimg_array[idx].img_id_hex,subimgpix=subimgpix,output_dir=cand_dir)
+    #for i in finalidxs:#range(len(fullimg_array[idx].unique_cands_dm)):
+    #    fullimg_array[idx].subimgs_dm[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands_dm[i][0],fullimg_array[idx].unique_cands_dm[i][1],dm=sl.DM_trials[fullimg_array[idx].unique_cands_dm[i][2]],save=True,prefix="candidate_subimage_ID" + fullimg_array[idx].img_id_hex,subimgpix=subimgpix,output_dir=cand_dir)
 
 
     #if args.verbose:
-    printlog(fullimg_array[idx].subimgs_dm.shape)
+    #printlog(fullimg_array[idx].subimgs_dm.shape)
     printlog(fullimg_array[idx].subimgs.shape)
     printlog("done",output_file=processfile)
 

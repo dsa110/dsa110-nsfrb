@@ -336,6 +336,7 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
     nwidths=len(widthtrials)
     print("Boxcar searching over width with " + str(nwidths) + " trials",file=fout)
     image_tesseract_binned = np.zeros((gridsize,gridsize,nwidths,nDMtrials))
+    image_tesseract_ONLYbinned = np.zeros((gridsize,gridsize,nwidths,nchans))
 
     for i in range(nwidths):
         if plot:
@@ -372,7 +373,16 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
                 fout = open(output_file,"a")
         #print(image_tesseract_binned.shape)
         #print(image_tesseract_binned)
-        
+       
+        for k in range(image_tesseract.shape[3]):
+            if output_file != "":
+                fout.close()
+            image_tesseract_ONLYbinned[:,:,i,k] = snr_vs_RA_DEC(image_tesseract[:,:,:,k:k+1],boxcar=boxcar,gridsize=gridsize,width=widthtrials[i],output_file=output_file)
+            if output_file != "":
+                fout = open(output_file,"a")
+        #print(image_tesseract_binned.shape)
+        #print(image_tesseract_binned)
+ 
         if plot:
             plt.show()
 
@@ -484,7 +494,7 @@ def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_
     print(str(len(cluster_cands)) + " initial clusters",file=fout)
     if output_file != "":
         fout.close()
-    return cands,cluster_cands,image_tesseract_binned
+    return cands,cluster_cands,image_tesseract_binned,image_tesseract_ONLYbinned
 
 #get cands and clusters from csv file
 def read_cands(fname):
