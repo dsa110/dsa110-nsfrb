@@ -131,7 +131,31 @@ def pipeout(arr,output_file=output_file):
 
 
 
+##defines function to set flags for process server
+pflagdict = dict()
+pflagdict['parse_error'] = 1
+pflagdict['invalid'] = 8
+pflagdict['all'] = 15
+flagfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
+def set_pflag(flag=None,on=True,reset=False):
+    if (flag != None) and (not (flag in pflagdict.keys())): return None
+    
+    with open(flagfile,"r") as flagfileio:
+        pflags = int(flagfileio.read()) 
+        flagfileio.close()
+    if (flag==None) and (not reset):
+        return pflags 
 
+    #make sure the invalid flag is unset
+    pflags = pflags & ~pflagdict['invalid']
+
+    if reset: pflags = 8
+    elif on: pflags = pflags | pflagdict[flag]
+    else: pflags = pflags & ~pflagdict[flag]
+    with open(flagfile,"w") as flagfileio:
+        flagfileio.write(str(int(pflags)))
+        flagfileio.close()
+    return pflags
 
     
 

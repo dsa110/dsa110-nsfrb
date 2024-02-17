@@ -62,6 +62,7 @@ pipestatusfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.tx
 searchflagsfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
 output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
 processfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
+flagfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
 cand_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 """
 Arguments: data file
@@ -118,7 +119,7 @@ corraddrs = {'10.41.0.91' : 0, #sb00/corr03
             '10.41.0.182' : 0 #h23, placeholder
              }
 
-def parse_packet(fullMsg,headersize=128):
+def parse_packet(fullMsg,headersize=128,testh23=False):
     #first need  bytestring representation to find metadata
     fullMsgStr = str(bytes.fromhex(fullMsg))[2:]
   
@@ -127,11 +128,6 @@ def parse_packet(fullMsg,headersize=128):
     corr_address = fullMsgStr[:fullMsgStr.index("ENDADDR")]
     corr_node = corraddrs[corr_address]
 
-    #***only keep this part while we test with h23***
-    corraddrs[corr_address] += 1
-    if corraddrs[corr_address] > 15:
-        corraddrs[corr_address] = 0
-    #***#
     #print(fullMsgStr[fullMsgStr.index("ENDADDR"):128])
     img_id_hex = fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")]
     img_id = int(fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")],16)
@@ -148,6 +144,13 @@ def parse_packet(fullMsg,headersize=128):
     printlog(len(imgbytes),output_file=processfile)
     img_data = np.frombuffer(imgbytes,dtype=np.float64).reshape(shape)
     printlog(shape,output_file=processfile)
+
+    #***only keep this part while we test with h23***
+    if testh23:
+        corraddrs[corr_address] += 1
+        if corraddrs[corr_address] > 15:
+            corraddrs[corr_address] = 0
+
     return corr_node,img_id,img_id_hex,shape,img_data
     
 maxProcesses = 5
@@ -299,8 +302,25 @@ def main():
                     raise
         printlog("Done! Total bytes read:" + str(totalbytes),output_file=processfile)
         #print(fullMsg)
-        #parse to get address
-        corr_node,img_id,img_id_hex,shape,arrData = parse_packet(fullMsg)
+        
+
+
+        #try to parse to get address
+        try:
+            corr_node,img_id,img_id_hex,shape,arrData = parse_packet(fullMsg,testh23=args.testh23)
+            if pipeline.set_pflag("all",on=False) == None:
+                printlog("Error setting flags, abort",processfile=processfile)
+                break
+        except UnicodeDecodeError as exc:
+            printlog("Error parsing data: " + str(exc),output_file=processfile)
+            printlog("Setting retry flag...",output_file=processfile,end='')
+            if pipeline.set_pflag("parse_error") == None: 
+                printlog("Error setting flags, abort",processfile=processfile)
+                break
+            printlog("Done, continue",output_file=processfile)
+            continue	        
+        
+            
         #printlog(arrData,output_file=processfile)
         printlog("Received data from corr " + str(corr_node),output_file=processfile)
         printlog("Shape " + str(shape),output_file=processfile)

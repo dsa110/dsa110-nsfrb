@@ -14,9 +14,9 @@ bdata = f.read()
 f.close()
 
 
-import nsfrb.TXclient as TXC
+import TXclient as TXC
 
-print(TXC.send_data("ID0000",bdata,ENDFILE='ENDFILE',headersize=128))
+print(TXC.send_data("ID0000",bdata,ENDFILE='ENDFILE',headersize=128,verbose=False))
 
 
 """

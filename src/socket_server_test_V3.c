@@ -54,6 +54,9 @@ int main(int argc, char *argv[]) {
 	//create status file to report if command failed
 	//FILE *pipestatus;
 	
+	//reset pflags
+	reset_pflags();
+	
 	//make log file to write output to, only want data written to stdout
         FILE *logfile;
         logfile = fopen(serverlogfname,"w");
@@ -684,15 +687,33 @@ int main(int argc, char *argv[]) {
 
 
 			}
-
 			
+
+			//Check to see if any errors were raised from process server
+			char pflags;
+			pflags = get_pflags();	
+			printf("%c\n",pflags);
+			while (pflags == 0x38) //strcmp(&pflags,"8") == 0)
+			{
+				pflags = get_pflags();
+			}			
+			printf("%c\n",pflags);
+			reset_pflags();
+		 	printf("%c\n",pflags);
+
+			char *nline = "\n";
+			char successall[strlen(success) + 2];
+			strcpy(successall,success);
+			strcat(successall,&pflags);
+			strcat(successall,nline);
+			printf("%s",successall);
 			//fflush(logfile);
 			//fclose(tmpstdin);
 			//printf("right here\n");
 			fprintf(logfile,"%p\n",data_buffer);
-			fprintf(logfile,"%s",success);
+			fprintf(logfile,"%s",successall);
 			//fprintf(logfile,"%d bytes written\n",numbytes);
-                        ssize_t writeout = write(new_socket, success, strlen(success));
+                        ssize_t writeout = write(new_socket, successall, strlen(successall));
 			//printf("%ld\n",writeout);
 			fprintf(logfile,"data read: %d bytes\n",totallength);
                         fprintf(logfile,"------------------Success message sent-------------------\n");
