@@ -66,7 +66,7 @@ cand_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 """
 Arguments: data file
 """
-from nsfrb.logging import printlog
+from nsfrb.outputlogging import printlog
 
 """
 Create a structure for full image
