@@ -525,7 +525,7 @@ int main(int argc, char *argv[]) {
 				subclient_fd = subclient_send_persistent("ENDADDR",7,subclientPORT,logfile,subclient_fd);
 
 				//get img ID from file name; each file should be named in ISOT format: "sbxx_IMGYYYY-MM-DDTHH:MM:SS.npy"
-				fprintf("%s\n",client_request.fname);
+				fprintf(logfile,"%s\n",client_request.fname);
 				unsigned char *id_delim = "IMG";
 				unsigned char *img_id_str = strstr(client_request.fname,id_delim);
 				img_id_str = img_id_str + 3;
@@ -693,21 +693,21 @@ int main(int argc, char *argv[]) {
 			//Check to see if any errors were raised from process server
 			char pflags;
 			pflags = get_pflags();	
-			printf("%c\n",pflags);
+			fprintf(logfile,"%c\n",pflags);
 			while (pflags == 0x38) //strcmp(&pflags,"8") == 0)
 			{
 				pflags = get_pflags();
 			}			
-			printf("%c\n",pflags);
+			fprintf(logfile,"%c\n",pflags);
 			reset_pflags();
-		 	printf("%c\n",pflags);
+		 	fprintf(logfile,"%c\n",pflags);
 
 			char *nline = "\n";
 			char successall[strlen(success) + 2];
 			strcpy(successall,success);
 			strcat(successall,&pflags);
 			strcat(successall,nline);
-			printf("%s",successall);
+			fprintf(logfile,"%s",successall);
 			//fflush(logfile);
 			//fclose(tmpstdin);
 			//printf("right here\n");

@@ -145,9 +145,8 @@ def parse_packet(fullMsg,headersize=128,testh23=False):
     printlog(bytes.fromhex(data[:2*headersize]),output_file=processfile)
     imgbytes = bytes.fromhex(data[2*headersize:])
     shape = pipeline.get_shape_from_raw(headerbytes,headersize)#bytedata[:headersize],headersize)
-    print(shape)
+    printlog(shape,output_file=processfile)
     printlog(len(imgbytes),output_file=processfile)
-    print(imgbytes[-6:])
     img_data = np.frombuffer(imgbytes,dtype=np.float64).reshape(shape)
     printlog(shape,output_file=processfile)
 
@@ -193,15 +192,16 @@ def search_task(image_tesseract,SNRthresh,img_id_isot,img_id_mjd,idx,subimgpix,m
     # actually...we already output a de-dispersed and binned image tessearct from the search; let's also output one thats just been binned, then we can get argmax for each time series and use that.
 
 
-    print(data_array.shape)
+    #print(data_array.shape)
     transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
-    print(transposed_array.shape)
+    #print(transposed_array.shape)
     new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
     merged_array = transposed_array.reshape(new_shape)
 
     predictions, probabilities = classify_images(merged_array, model_weights, verbose=verbose)  
 
-    print(predictions,probabilities)
+    printlog(predictions,output_file=processfile)
+    printlog(probabilities,output_file=processfile)
     fullimg_array[idx].predictions = copy.deepcopy(predictions)
     fullimg_array[idx].probabilities = copy.deepcopy(probabilities)
 
@@ -237,7 +237,7 @@ def search_task(image_tesseract,SNRthresh,img_id_isot,img_id_mjd,idx,subimgpix,m
 
     #if args.verbose:
     #printlog(fullimg_array[idx].subimgs_dm.shape)
-    printlog(fullimg_array[idx].subimgs.shape)
+    printlog(fullimg_array[idx].subimgs.shape,output_file=processfile)
     printlog("done",output_file=processfile)
 
 
@@ -307,7 +307,7 @@ def main():
                 totalbytes += recstatus
             except Exception as ex:
                 if type(ex) == socket.timeout:
-                    print("Timed out after reading",totalbytes," bytes; proceeding...")
+                    printlog("Timed out after reading " + str(totalbytes) + " bytes; proceeding...",output_file=processfile)
                     break
                 else:
                     raise
@@ -355,14 +355,14 @@ def main():
         #add image and update flags
         fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
         #if the image is complete, start the search
-        print("corrstatus:",fullimg_array[idx].corrstatus)
+        printlog("corrstatus:",output_file=processfile,end='')
+        printlog(fullimg_array[idx].corrstatus,output_file=processfile)
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
             future = executor.submit(search_task,fullimg_array[idx].image_tesseract,args.SNRthresh,fullimg_array[idx].img_id_isot,fullimg_array[idx].img_id_mjd,idx,args.subimgpix,args.model_weights,args.verbose)
             fullimg_array[idx].future = future
-            print(future.result())
             printlog(future.result(),output_file=processfile)
-        sys.stdout.flush()
+        #sys.stdout.flush()
     clientSocket.close()
 
         
