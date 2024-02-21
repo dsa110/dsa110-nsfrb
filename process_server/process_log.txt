@@ -35,6 +35,26 @@ corrstatus:[ True  True False False False False False False False False False Fa
  False False False False]
 accepting connection...Done!
 Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:2
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:2
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
 Done! Total bytes read:204973
 address:10.41.0.182
 corr:2
@@ -49,16 +69,6 @@ img_id (isot) 2024-02-20T22:34:50
 img_id (mjd) 60360.94085648148
 corrstatus:[ True  True  True False False False False False False False False False
  False False False False]
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:3
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
 Done! Total bytes read:204973
@@ -103,16 +113,6 @@ corrstatus:[ True  True  True  True  True False False False False False False Fa
  False False False False]
 accepting connection...Done!
 Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:5
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
 Done! Total bytes read:204973
 address:10.41.0.182
 corr:5
@@ -139,68 +139,6 @@ Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid 
 Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:6
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:6
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:6
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Done! Total bytes read:204970
-address:10.41.0.182
-corr:6
-img_id:2024-02-20T22:34:50
-b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
-(32, 32, 25)
-204797
-Invalid data size: buffer size must be a multiple of element size
-Setting truncated data size...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:6
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Done! Total bytes read:204972
-address:10.41.0.182
-corr:6
-img_id:2024-02-20T22:34:50
-b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
-(32, 32, 25)
-204799
-Invalid data size: buffer size must be a multiple of element size
-Setting truncated data size...Done, continue
-accepting connection...Done!
-Receiving data...
 Done! Total bytes read:204973
 address:10.41.0.182
 corr:6
@@ -215,6 +153,46 @@ img_id (isot) 2024-02-20T22:34:50
 img_id (mjd) 60360.94085648148
 corrstatus:[ True  True  True  True  True  True  True False False False False False
  False False False False]
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:7
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:7
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:7
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:7
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
 Done! Total bytes read:204973
@@ -233,6 +211,17 @@ corrstatus:[ True  True  True  True  True  True  True  True False False False Fa
  False False False False]
 accepting connection...Done!
 Receiving data...
+Done! Total bytes read:204972
+address:10.41.0.182
+corr:8
+img_id:2024-02-20T22:34:50
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+204799
+Invalid data size: buffer size must be a multiple of element size
+Setting truncated data size...Done, continue
+accepting connection...Done!
+Receiving data...
 Timed out after reading 204148 bytes; proceeding...
 Done! Total bytes read:204148
 address:10.41.0.182
@@ -252,6 +241,16 @@ b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 3
 204797
 Invalid data size: buffer size must be a multiple of element size
 Setting truncated data size...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:8
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
 Done! Total bytes read:204973
@@ -280,6 +279,16 @@ Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid 
 Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:9
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
 Done! Total bytes read:204973
 address:10.41.0.182
 corr:9
@@ -294,27 +303,6 @@ img_id (isot) 2024-02-20T22:34:50
 img_id (mjd) 60360.94085648148
 corrstatus:[ True  True  True  True  True  True  True  True  True  True False False
  False False False False]
-accepting connection...Done!
-Receiving data...
-Done! Total bytes read:204969
-address:10.41.0.182
-corr:10
-img_id:2024-02-20T22:34:50
-b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
-(32, 32, 25)
-204796
-Invalid data size: buffer size must be a multiple of element size
-Setting truncated data size...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:10
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
 Done! Total bytes read:204973
@@ -359,56 +347,6 @@ corrstatus:[ True  True  True  True  True  True  True  True  True  True  True  T
  False False False False]
 accepting connection...Done!
 Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:12
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:12
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:12
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:12
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:12
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
 Done! Total bytes read:204973
 address:10.41.0.182
 corr:12
@@ -423,6 +361,16 @@ img_id (isot) 2024-02-20T22:34:50
 img_id (mjd) 60360.94085648148
 corrstatus:[ True  True  True  True  True  True  True  True  True  True  True  True
   True False False False]
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:13
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
 Timed out after reading 204148 bytes; proceeding...
@@ -451,77 +399,6 @@ corrstatus:[ True  True  True  True  True  True  True  True  True  True  True  T
   True  True False False]
 accepting connection...Done!
 Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:14
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:14
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:14
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:14
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Done! Total bytes read:204970
-address:10.41.0.182
-corr:14
-img_id:2024-02-20T22:34:50
-b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
-(32, 32, 25)
-204797
-Invalid data size: buffer size must be a multiple of element size
-Setting truncated data size...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:14
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
-Timed out after reading 204148 bytes; proceeding...
-Done! Total bytes read:204148
-address:10.41.0.182
-corr:14
-img_id:2024-02-20T22:34:50
-b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
-Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
-Setting retry flag...Done, continue
-accepting connection...Done!
-Receiving data...
 Done! Total bytes read:204973
 address:10.41.0.182
 corr:14
@@ -536,6 +413,77 @@ img_id (isot) 2024-02-20T22:34:50
 img_id (mjd) 60360.94085648148
 corrstatus:[ True  True  True  True  True  True  True  True  True  True  True  True
   True  True  True False]
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:15
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:15
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:15
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:15
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:15
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
+accepting connection...Done!
+Receiving data...
+Done! Total bytes read:204972
+address:10.41.0.182
+corr:15
+img_id:2024-02-20T22:34:50
+b"\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, 'shape': (32, 32, 25), }                                                    \n"
+(32, 32, 25)
+204799
+Invalid data size: buffer size must be a multiple of element size
+Setting truncated data size...Done, continue
+accepting connection...Done!
+Receiving data...
+Timed out after reading 204148 bytes; proceeding...
+Done! Total bytes read:204148
+address:10.41.0.182
+corr:15
+img_id:2024-02-20T22:34:50
+b'\xa5\x8a\xf2\xbaN\x91?\xe9\x02\xa03.\xa8\xd1?\x9c\xc9\xd3A\xc0]\xc8\xbfs\xf46\xd5\xc4u3\xc0\xbf\x9cfO`W\xff\xbf\xfa\xab\xda\x0b\xc6\xdc\xcb\xbf\x9d*a5\x13\xc6\xdb?\x9c\xe9Y\x97\xe2\xb1\xd7?\xf0\xcceq\xc4D\xfd?[\xc3\xde\x97\x80R\xe1?\xb6{\x0b\xb0e\xc7\x97?\xba\xcd/\xc9\xae\xb0\xe2?\x00}\xdb\xa9\xc9L\xd2\xbf\xd0\xa1\x1f0\xc6#\xd2?\x18:\xaf\xcb\x07\n\xe5\xbf74w\xbc$\xf0\xe4?\xaf'
+Error parsing data: 'utf-8' codec can't decode byte 0x8a in position 0: invalid start byte
+Setting retry flag...Done, continue
 accepting connection...Done!
 Receiving data...
 Done! Total bytes read:204973

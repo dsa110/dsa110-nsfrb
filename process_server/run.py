@@ -205,6 +205,15 @@ def search_task(image_tesseract,SNRthresh,img_id_isot,img_id_mjd,idx,subimgpix,m
     fullimg_array[idx].predictions = copy.deepcopy(predictions)
     fullimg_array[idx].probabilities = copy.deepcopy(probabilities)
 
+    #find candidates most likely to be real; need to ask Nikita about conditions
+    finalidxs = np.arange(data_array.shape[0])[~np.array(fullimg_array[idx].predictions,dtype=bool)]
+    
+    #only save if we find candidates
+    if len(finalidxs)==0: 
+        printlog("No candidates found",output_file=processfile)
+        return fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,len(fullimg_array[idx].cluster_cands)
+
+
     #save predictions/probabilities to a csv
     with open(cand_dir + "/classification_" + fullimg_array[idx].img_id_isot + ".csv","w") as csvfile:
         wr = csv.writer(csvfile,delimiter=',')
@@ -212,8 +221,10 @@ def search_task(image_tesseract,SNRthresh,img_id_isot,img_id_mjd,idx,subimgpix,m
         wr.writerow(np.concatenate([["probabilities"],probabilities]))
     csvfile.close()
 
-    #find candidates most likely to be real; need to ask Nikita about conditions
-    finalidxs = np.arange(data_array.shape[0])[~np.array(fullimg_array[idx].predictions,dtype=bool)]
+
+
+    #get candidates most likely to be real; need to ask Nikita about conditions
+    #finalidxs = np.arange(data_array.shape[0])[~np.array(fullimg_array[idx].predictions,dtype=bool)]
     finalcands = [fullimg_array[idx].cluster_cands[i] for i in finalidxs]#[condition]
 
     #dump sub-images to numpy files and write candidates to csv
