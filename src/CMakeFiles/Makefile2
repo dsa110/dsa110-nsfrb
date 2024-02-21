@@ -60,6 +60,43 @@ CMAKE_SOURCE_DIR = /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src
 CMAKE_BINARY_DIR = /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src
 
 #=============================================================================
+# Target rules for target CMakeFiles/run_server.dir
+
+# All Build rule for target.
+CMakeFiles/run_server.dir/all:
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/depend
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles --progress-num=1,2 "Built target run_server"
+.PHONY : CMakeFiles/run_server.dir/all
+
+# Include target in all.
+all: CMakeFiles/run_server.dir/all
+
+.PHONY : all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/run_server.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles 2
+	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/run_server.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles 0
+.PHONY : CMakeFiles/run_server.dir/rule
+
+# Convenience name for target.
+run_server: CMakeFiles/run_server.dir/rule
+
+.PHONY : run_server
+
+# clean rule for target.
+CMakeFiles/run_server.dir/clean:
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/clean
+.PHONY : CMakeFiles/run_server.dir/clean
+
+# clean rule for target.
+clean: CMakeFiles/run_server.dir/clean
+
+.PHONY : clean
+
+#=============================================================================
 # Target rules for target CMakeFiles/socket_subclient_test_V3.out.dir
 
 # All Build rule for target.
@@ -97,50 +134,13 @@ clean: CMakeFiles/socket_subclient_test_V3.out.dir/clean
 .PHONY : clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/socket_server_test_V3.out.dir
-
-# All Build rule for target.
-CMakeFiles/socket_server_test_V3.out.dir/all:
-	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/depend
-	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles --progress-num=3,4 "Built target socket_server_test_V3.out"
-.PHONY : CMakeFiles/socket_server_test_V3.out.dir/all
-
-# Include target in all.
-all: CMakeFiles/socket_server_test_V3.out.dir/all
-
-.PHONY : all
-
-# Build rule for subdir invocation for target.
-CMakeFiles/socket_server_test_V3.out.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles 2
-	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/socket_server_test_V3.out.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles 0
-.PHONY : CMakeFiles/socket_server_test_V3.out.dir/rule
-
-# Convenience name for target.
-socket_server_test_V3.out: CMakeFiles/socket_server_test_V3.out.dir/rule
-
-.PHONY : socket_server_test_V3.out
-
-# clean rule for target.
-CMakeFiles/socket_server_test_V3.out.dir/clean:
-	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/clean
-.PHONY : CMakeFiles/socket_server_test_V3.out.dir/clean
-
-# clean rule for target.
-clean: CMakeFiles/socket_server_test_V3.out.dir/clean
-
-.PHONY : clean
-
-#=============================================================================
 # Target rules for target CMakeFiles/simpletestclient.out.dir
 
 # All Build rule for target.
 CMakeFiles/simpletestclient.out.dir/all:
 	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/depend
 	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles --progress-num=1,2 "Built target simpletestclient.out"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles --progress-num=3,4 "Built target simpletestclient.out"
 .PHONY : CMakeFiles/simpletestclient.out.dir/all
 
 # Include target in all.

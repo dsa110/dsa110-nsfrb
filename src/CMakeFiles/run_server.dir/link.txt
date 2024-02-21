@@ -1,0 +1,1 @@
+/usr/bin/cc     CMakeFiles/run_server.dir/socket_server_test_V3.c.o  -o run_server -lm 

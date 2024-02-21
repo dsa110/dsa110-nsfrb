@@ -111,6 +111,19 @@ depend:
 .PHONY : depend
 
 #=============================================================================
+# Target rules for targets named run_server
+
+# Build rule for target.
+run_server: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 run_server
+.PHONY : run_server
+
+# fast build rule for target.
+run_server/fast:
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/build
+.PHONY : run_server/fast
+
+#=============================================================================
 # Target rules for targets named socket_subclient_test_V3.out
 
 # Build rule for target.
@@ -122,19 +135,6 @@ socket_subclient_test_V3.out: cmake_check_build_system
 socket_subclient_test_V3.out/fast:
 	$(MAKE) -f CMakeFiles/socket_subclient_test_V3.out.dir/build.make CMakeFiles/socket_subclient_test_V3.out.dir/build
 .PHONY : socket_subclient_test_V3.out/fast
-
-#=============================================================================
-# Target rules for targets named socket_server_test_V3.out
-
-# Build rule for target.
-socket_server_test_V3.out: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 socket_server_test_V3.out
-.PHONY : socket_server_test_V3.out
-
-# fast build rule for target.
-socket_server_test_V3.out/fast:
-	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/build
-.PHONY : socket_server_test_V3.out/fast
 
 #=============================================================================
 # Target rules for targets named simpletestclient.out
@@ -182,7 +182,7 @@ socket_server_test_V3.o: socket_server_test_V3.c.o
 
 # target to build an object file
 socket_server_test_V3.c.o:
-	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/socket_server_test_V3.c.o
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/socket_server_test_V3.c.o
 .PHONY : socket_server_test_V3.c.o
 
 socket_server_test_V3.i: socket_server_test_V3.c.i
@@ -191,7 +191,7 @@ socket_server_test_V3.i: socket_server_test_V3.c.i
 
 # target to preprocess a source file
 socket_server_test_V3.c.i:
-	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/socket_server_test_V3.c.i
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/socket_server_test_V3.c.i
 .PHONY : socket_server_test_V3.c.i
 
 socket_server_test_V3.s: socket_server_test_V3.c.s
@@ -200,7 +200,7 @@ socket_server_test_V3.s: socket_server_test_V3.c.s
 
 # target to generate assembly for a file
 socket_server_test_V3.c.s:
-	$(MAKE) -f CMakeFiles/socket_server_test_V3.out.dir/build.make CMakeFiles/socket_server_test_V3.out.dir/socket_server_test_V3.c.s
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/socket_server_test_V3.c.s
 .PHONY : socket_server_test_V3.c.s
 
 socket_subclient_test_V3.o: socket_subclient_test_V3.c.o
@@ -236,9 +236,9 @@ help:
 	@echo "... all (the default if no target is provided)"
 	@echo "... clean"
 	@echo "... depend"
+	@echo "... run_server"
 	@echo "... socket_subclient_test_V3.out"
 	@echo "... edit_cache"
-	@echo "... socket_server_test_V3.out"
 	@echo "... simpletestclient.out"
 	@echo "... rebuild_cache"
 	@echo "... simpletestclient.o"
