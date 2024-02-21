@@ -46,12 +46,12 @@ def send_data(timestamp,array,node=23,ENDFILE='ENDFILE',headersize=128,verbose=F
     elif node >= 10 and node < 15:
         sb = "sb" + str(node)
     elif node== 23:
-        sb = "h23"
+        sb = "_h23"
     else:
         print("Invalid corr node")
 
     #make filename
-    fname = "subband_avg_" + sb + "_" + str(timestamp) + ".npy"
+    fname = sb + "_IMG" + str(timestamp) + ".npy"
     url = host + "/" + fname
 
     #convert numpy data to bytes
@@ -97,6 +97,9 @@ def send_data(timestamp,array,node=23,ENDFILE='ENDFILE',headersize=128,verbose=F
         pflags = int(r.data.decode('utf-8')[-2])
         if (pflags & pflagdict['parse_error']): #once moved to git, get the flag value from nsfrb.pipeline.pflagdict
             print("Parse Error, Re-sending...")
+            tries += 1
+        elif (pflags & pflagdict['datasize_error']):
+            print("Data Loss Error, Re-sending...")
             tries += 1
         else:
             print("Success")

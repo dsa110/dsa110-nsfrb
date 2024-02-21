@@ -524,11 +524,12 @@ int main(int argc, char *argv[]) {
 				subclient_fd = subclient_send_persistent(addrstring,strlen(addrstring),subclientPORT,logfile,subclient_fd);
 				subclient_fd = subclient_send_persistent("ENDADDR",7,subclientPORT,logfile,subclient_fd);
 
-				//get img ID from file name
-				unsigned char *id_delim = "ID";
+				//get img ID from file name; each file should be named in ISOT format: "sbxx_IMGYYYY-MM-DDTHH:MM:SS.npy"
+				fprintf("%s\n",client_request.fname);
+				unsigned char *id_delim = "IMG";
 				unsigned char *img_id_str = strstr(client_request.fname,id_delim);
-				img_id_str = img_id_str + 2;
-				img_id_str[4] = 0;
+				img_id_str = img_id_str + 3;
+				img_id_str[19] = 0;
 				fprintf(logfile, "%s,%ld\n",img_id_str,strlen(img_id_str));
 				//uint16_t img_id = 0;//next_id;
 

@@ -10,10 +10,10 @@ from scipy.stats import gamma
 from scipy.stats import truncnorm
 from scipy.signal import peak_widths
 from scipy.stats import norm
-
+from event import names
 #from gen_dmtrials_copy import gen_dm
 import argparse
-
+from astropy.time import Time
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from concurrent.futures import ProcessPoolExecutor
@@ -73,11 +73,11 @@ from nsfrb.outputlogging import printlog
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id,img_id_hex,shape=(32,32,25,16),dtype=np.float16):
+    def __init__(self,img_id_isot,img_id_mjd,shape=(32,32,25,16),dtype=np.float16):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
-        self.img_id = img_id
-        self.img_id_hex = img_id_hex
+        self.img_id_isot = img_id_isot
+        self.img_id_mjd = img_id_mjd
         self.shape = shape
 
     def add_corr_img(self,data,corr_node,testmode=False):
@@ -90,11 +90,11 @@ class fullimg:
         return np.all(self.corrstatus==1)
 
 fullimg_array = []
-def find_id(img_id):
+def find_id(img_id_isot):
     if len(fullimg_array) == 0: return -1
 	
     for i in range(len(fullimg_array)):
-	    if fullimg_array[i].img_id == img_id: return i
+	    if fullimg_array[i].img_id_isot == img_id_isot: return i
     return -1
 
 """
@@ -119,6 +119,7 @@ corraddrs = {'10.41.0.91' : 0, #sb00/corr03
             '10.41.0.182' : 0 #h23, placeholder
              }
 
+
 def parse_packet(fullMsg,headersize=128,testh23=False):
     #first need  bytestring representation to find metadata
     fullMsgStr = str(bytes.fromhex(fullMsg))[2:]
@@ -129,12 +130,16 @@ def parse_packet(fullMsg,headersize=128,testh23=False):
     corr_node = corraddrs[corr_address]
 
     #print(fullMsgStr[fullMsgStr.index("ENDADDR"):128])
-    img_id_hex = fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")]
-    img_id = int(fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")],16)
+    #images will be labelled with the datetime in ISOT format
+    img_id_isot = fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")]
+    img_id_mjd = Time(img_id_isot,format='isot').mjd
+
+    #img_id_hex = fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")]
+    #img_id = int(fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")],16)
     data = fullMsg[2*(fullMsgStr.index("ENDIMGID")+8):]
     printlog("address:"+str(corr_address),output_file=processfile)
     printlog("corr:"+str(corr_node),output_file=processfile)
-    printlog("img_id:" +str(img_id),output_file=processfile)
+    printlog("img_id:" +str(img_id_isot),output_file=processfile)
      
     headerbytes = bytes(data[:2*headersize],'utf-8')
     printlog(bytes.fromhex(data[:2*headersize]),output_file=processfile)
@@ -142,6 +147,7 @@ def parse_packet(fullMsg,headersize=128,testh23=False):
     shape = pipeline.get_shape_from_raw(headerbytes,headersize)#bytedata[:headersize],headersize)
     print(shape)
     printlog(len(imgbytes),output_file=processfile)
+    print(imgbytes[-6:])
     img_data = np.frombuffer(imgbytes,dtype=np.float64).reshape(shape)
     printlog(shape,output_file=processfile)
 
@@ -151,13 +157,13 @@ def parse_packet(fullMsg,headersize=128,testh23=False):
         if corraddrs[corr_address] > 15:
             corraddrs[corr_address] = 0
 
-    return corr_node,img_id,img_id_hex,shape,img_data
+    return corr_node,img_id_isot,img_id_mjd,shape,img_data
     
 maxProcesses = 5
 
 
-def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix,model_weights,verbose):
-    printlog("starting search process " + str(img_id) + "...",output_file=processfile,end='')
+def search_task(image_tesseract,SNRthresh,img_id_isot,img_id_mjd,idx,subimgpix,model_weights,verbose):
+    printlog("starting search process " + str(img_id_isot) + "...",output_file=processfile,end='')
     #print("starting process " + str(img_id) + "...")
     fullimg_array[idx].cands,fullimg_array[idx].cluster_cands,fullimg_array[idx].image_tesseract_searched,fullimg_array[idx].image_tesseract_binned = sl.run_search(image_tesseract,SNRthresh=SNRthresh)
     printlog("done",output_file=processfile)
@@ -198,26 +204,31 @@ def search_task(image_tesseract,SNRthresh,img_id,idx,subimgpix,model_weights,ver
     print(predictions,probabilities)
     fullimg_array[idx].predictions = copy.deepcopy(predictions)
     fullimg_array[idx].probabilities = copy.deepcopy(probabilities)
+
     #save predictions/probabilities to a csv
-    with open(cand_dir + "/classification_ID" + fullimg_array[idx].img_id_hex + ".csv","w") as csvfile:
+    with open(cand_dir + "/classification_" + fullimg_array[idx].img_id_isot + ".csv","w") as csvfile:
         wr = csv.writer(csvfile,delimiter=',')
-        wr.writerow(predictions)
-        wr.writerow(probabilities)
+        wr.writerow(np.concatenate([["predictions"],predictions]))
+        wr.writerow(np.concatenate([["probabilities"],probabilities]))
     csvfile.close()
 
     #find candidates most likely to be real; need to ask Nikita about conditions
     finalidxs = np.arange(data_array.shape[0])[~np.array(fullimg_array[idx].predictions,dtype=bool)]
     finalcands = [fullimg_array[idx].cluster_cands[i] for i in finalidxs]#[condition]
-    with open(cand_dir + "candidates_ID" + fullimg_array[idx].img_id_hex + ".csv","w") as csvfile:
-        wr = csv.writer(csvfile,delimiter=',')
-        for finalcand in finalcands:
-            wr.writerow(np.array(finalcand))
-    csvfile.close()
 
-    #dump sub-images to numpy files
-    prefix = "candidate_subimage_ID" + fullimg_array[idx].img_id_hex
-    for i in finalidxs:
-        np.save(cand_dir + prefix + "_RA" + str(fullimg_array[idx].unique_cands[i][0]) + "_DEC" + str(fullimg_array[idx].unique_cands[i][1]) + "_WIDTH" + str(fullimg_array[idx].unique_cands[i][2]) + ".npy",data_array[i,:,:,:])
+    #dump sub-images to numpy files and write candidates to csv
+    suffix = "NSFRB.npy"# + fullimg_array[idx].img_id_hex
+    lastname = None	#once we have etcd, change to 'names.get_lastname()'
+    csvfile = open(cand_dir + "candidates_" + fullimg_array[idx].img_id_isot + ".csv","w")
+    wr = csv.writer(csvfile,delimiter=',')
+    wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+    for i in range(len(finalidxs)):
+        lastname = names.increment_name(fullimg_array[idx].img_id_mjd,lastname=lastname)
+        finalcand = finalcands[i]
+        wr.writerow(np.concatenate([[lastname],np.array(finalcand,dtype=int)]))
+        np.save(cand_dir + lastname + suffix,data_array[finalidxs[i],:,:,:])       
+    csvfile.close()
+    #np.save(cand_dir + prefix + "_RA" + str(fullimg_array[idx].unique_cands[i][0]) + "_DEC" + str(fullimg_array[idx].unique_cands[i][1]) + "_WIDTH" + str(fullimg_array[idx].unique_cands[i][2]) + ".npy",data_array[i,:,:,:])
     #for i in finalidxs:#range(len(fullimg_array[idx].unique_cands)):
     #    fullimg_array[idx].subimgs[i,:,:,:,:] = sl.get_subimage(fullimg_array[idx].image_tesseract,fullimg_array[idx].unique_cands[i][0],fullimg_array[idx].unique_cands[i][1],save=True,prefix="candidate_subimage_ID" + fullimg_array[idx].img_id_hex,subimgpix=subimgpix,output_dir=cand_dir)
     #for i in finalidxs:#range(len(fullimg_array[idx].unique_cands_dm)):
@@ -307,7 +318,7 @@ def main():
 
         #try to parse to get address
         try:
-            corr_node,img_id,img_id_hex,shape,arrData = parse_packet(fullMsg,testh23=args.testh23)
+            corr_node,img_id_isot,img_id_mjd,shape,arrData = parse_packet(fullMsg,testh23=args.testh23)
             if pipeline.set_pflag("all",on=False) == None:
                 printlog("Error setting flags, abort",processfile=processfile)
                 break
@@ -319,20 +330,27 @@ def main():
                 break
             printlog("Done, continue",output_file=processfile)
             continue	        
-        
+        except ValueError as exc:
+            printlog("Invalid data size: " + str(exc),output_file=processfile)
+            printlog("Setting truncated data size...",output_file=processfile,end='')
+            if pipeline.set_pflag("datasize_error") == None:
+                printlog("Error setting flags, abort",processfile=processfile,end='')
+                break
+            printlog("Done, continue",output_file=processfile)
+            continue     
             
         #printlog(arrData,output_file=processfile)
         printlog("Received data from corr " + str(corr_node),output_file=processfile)
         printlog("Shape " + str(shape),output_file=processfile)
-        printlog("img_id " + str(img_id),output_file=processfile)
-        printlog("img_id_hex " + str(img_id_hex),output_file=processfile)
+        printlog("img_id (isot) " + str(img_id_isot),output_file=processfile)
+        printlog("img_id (mjd) " + str(img_id_mjd),output_file=processfile)
 
         
         #if object corresponding to the image is in list
-        idx = find_id(img_id)
+        idx = find_id(img_id_isot)
         if idx == -1:
             #need to create new object
-            fullimg_array.append(fullimg(img_id,img_id_hex))
+            fullimg_array.append(fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[16]]))))
 		
         #add image and update flags
         fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
@@ -340,7 +358,7 @@ def main():
         print("corrstatus:",fullimg_array[idx].corrstatus)
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            future = executor.submit(search_task,fullimg_array[idx].image_tesseract,args.SNRthresh,fullimg_array[idx].img_id,idx,args.subimgpix,args.model_weights,args.verbose)
+            future = executor.submit(search_task,fullimg_array[idx].image_tesseract,args.SNRthresh,fullimg_array[idx].img_id_isot,fullimg_array[idx].img_id_mjd,idx,args.subimgpix,args.model_weights,args.verbose)
             fullimg_array[idx].future = future
             print(future.result())
             printlog(future.result(),output_file=processfile)
