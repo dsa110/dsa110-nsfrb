@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.fftpack import ifftshift, ifft2
 from scipy.stats import linregress
@@ -71,31 +70,6 @@ def compute_uvw(x_m, y_m, z_m, HA, Dec):
 
     return np.array(u), np.array(v), np.array(w)
 
-def plot_uv_coverage(u, v, title='u-v Coverage'):
-    """
-    Plot the u-v coverage.
-    This function creates a scatter plot of the u-v points and their symmetrical counterparts. It is used to visualize the spatial frequency coverage in radio interferometry.
-    Parameters:
-    u and v: Arrays of coordinates.
-    """
-    max_u = max(np.max(u), -np.min(u))
-    min_u = min(np.min(u), -np.max(u))
-    max_v = max(np.max(v), -np.min(v))
-    min_v = min(np.min(v), -np.max(v))
-
-    plt.scatter(u, v, marker='.', color='b')
-    plt.scatter(-u, -v, marker='.', color='b')  # Symmetry
-    plt.xlim(min_u, max_u)
-    plt.ylim(min_v, max_v)
-    plt.xlabel('u (m)')
-    plt.ylabel('v (m)')
-    plt.title(title)
-    plt.grid(True)
-    plt.axhline(0, color='black', linewidth=0.5)
-    plt.axvline(0, color='black', linewidth=0.5)
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.show()
-    return
 
 def apply_phase_shift(visibilities, u_core, v_core, u_shift_rad, v_shift_rad):
     """
