@@ -7,6 +7,7 @@ from nsfrb.imaging import uniform_image
 from nsfrb.TXclient import send_data  
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images  
 from tqdm import tqdm 
+import time
 
 def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False):
     """
@@ -109,14 +110,19 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
             # Prepare for the next block
             start_idx = end_idx
 
-        time_start_iso = Time(time_start / 86400, format='mjd').iso
+        time_start_iso = Time(time_start / 86400, format='mjd').isot
 
         # Send the dirty images to the TX client
         dirty_images_all = np.array(dirty_images_all)   
         #print(np.shape(dirty_images_all.transpose((2, 3, 0, 1))))
         #print(time_start_iso)
         # transposing to have the following shape (num_pix, num_pix, num_time_samples, num_channels)
-        send_data(time_start_iso, dirty_images_all.transpose((2, 3, 0, 1)))
+        # send_data(time_start_iso, dirty_images_all.transpose((2, 3, 0, 1)))
+        # Sending one sub-band at a time
+        for i in NUM_CHANNELS:
+            send_data(time_start_iso, dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i]) 
+            time.sleep(1)
+        
 
         selected_rows.close()
 
