@@ -4,7 +4,7 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_C
-  "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_server_test_V3.c" "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/run_server.dir/socket_server_test_V3.c.o"
+  "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/run_server.c" "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles/run_server.dir/run_server.c.o"
   )
 set(CMAKE_C_COMPILER_ID "GNU")
 

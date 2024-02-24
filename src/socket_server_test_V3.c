@@ -522,7 +522,7 @@ int main(int argc, char *argv[]) {
 			{
 				fprintf(logfile,"Sending address of client...\n");
 				subclient_fd = subclient_send_persistent(addrstring,strlen(addrstring),subclientPORT,logfile,subclient_fd);
-				subclient_fd = subclient_send_persistent("ENDADDR",7,subclientPORT,logfile,subclient_fd);
+				subclient_fd = subclient_send_persistent("ENDADDRS",8,subclientPORT,logfile,subclient_fd);
 
 				//get img ID from file name; each file should be named in ISOT format: "sbxx_IMGYYYY-MM-DDTHH:MM:SS.npy"
 				fprintf(logfile,"%s\n",client_request.fname);
@@ -576,12 +576,12 @@ int main(int argc, char *argv[]) {
 				}
 				//loop through data buffer 
 				int offset = 0;
-				if (strstr(data_buffer,"ENDFILE") != NULL)
-				{
-					offset = 7;
-					hit_boundary = 1;
-					
-				}
+				//if (strstr(data_buffer,"ENDFILE") != NULL)
+				//{
+				//	offset = 7;
+				//	hit_boundary = 1;
+				//	
+				//}
 				if (toport == 1)
 				{
 					//subclient_send(data_buffer,valread,subclientPORT,logfile);
@@ -665,6 +665,23 @@ int main(int argc, char *argv[]) {
                                                 update_pipestatus(argv[0]);
                                                 exit(EXIT_FAILURE);
 					}
+					else if (valread == 0)
+					{
+						hit_boundary == 1;
+                                        	fprintf(logfile,"breaking...\n");
+                                        	fprintf(logfile,"%s\n",data_buffer);
+                                        	for (int m = 0; m < valread; m++)
+                                        	{
+                                	                fprintf(logfile,"%.2x",data_buffer[m]);
+                        	                }
+                	                        //thing = lseek(new_socket,0,SEEK_CUR);//tell(new_socket);
+        	                                //fprintf(logfile,"THIS IS THE OFFSET NOW: %ld\n",thing);
+	
+                                        	break;
+                                
+
+					}
+					
 					totallength += valread;
                                         //printf("%s \n",data_buffer);
                                         startdata = &data_buffer[0];
@@ -702,11 +719,13 @@ int main(int argc, char *argv[]) {
 			reset_pflags();
 		 	fprintf(logfile,"%c\n",pflags);
 
-			char *nline = "\n";
-			char successall[strlen(success) + 2];
+			char pflagsStr[3];
+			pflagsStr[0] = pflags;
+			pflagsStr[1] = '\n';
+			pflagsStr[2] = 0;
+			char successall[strlen(success) + 3];
 			strcpy(successall,success);
-			strcat(successall,&pflags);
-			strcat(successall,nline);
+			strcat(successall,pflagsStr);
 			fprintf(logfile,"%s",successall);
 			//fflush(logfile);
 			//fclose(tmpstdin);

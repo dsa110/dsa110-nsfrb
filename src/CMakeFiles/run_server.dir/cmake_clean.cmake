@@ -1,5 +1,5 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/run_server.dir/socket_server_test_V3.c.o"
+  "CMakeFiles/run_server.dir/run_server.c.o"
   "run_server.pdb"
   "run_server"
 )

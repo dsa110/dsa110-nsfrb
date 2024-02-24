@@ -82,25 +82,34 @@ class fullimg:
 
     def add_corr_img(self,data,corr_node,testmode=False):
         self.image_tesseract[:,:,:,corr_node] = data
-        if testmode:
-            self.corrstatus[corr_node] = 1
+        #if testmode:
+        self.corrstatus[corr_node] = 1
         return
 	    
     def is_full(self):
         return np.all(self.corrstatus==1)
 
 def find_id(img_id_isot,fullimg_array):
-    if len(fullimg_array) == 0: return -1
+    printlog(fullimg_array,output_file=processfile)
+    for i in range(len(fullimg_array)):
+        printlog(fullimg_array[i] is None,output_file=processfile)
+        if fullimg_array[i] is not None:
+            printlog(fullimg_array[i].corrstatus,output_file=processfile)
+            printlog(fullimg_array[i].img_id_isot,output_file=processfile)
+    if len(fullimg_array) == 0: return -1,-1
 
     #also want to see if any spaces are open
     openidx = -1
 
     for i in range(len(fullimg_array)):
-        if fullimg_array[i] == None and openidx == -1:
+        
+        if fullimg_array[i] is None and openidx == -1:
             openidx = i
-        elif fullimg_array[i] == None: 
+        elif fullimg_array[i] is None: 
             continue
-        elif fullimg_array[i].img_id_isot == img_id_isot: return i,None
+        elif fullimg_array[i].img_id_isot == img_id_isot: 
+            printlog(img_id_isot + " " + str(fullimg_array[i].img_id_isot), output_file=processfile)
+            return i,-1
     return -1,openidx
 
 """
@@ -133,17 +142,17 @@ def parse_packet(fullMsg,headersize=128,testh23=False):
   
 
     #get metadata
-    corr_address = fullMsgStr[:fullMsgStr.index("ENDADDR")]
+    corr_address = fullMsgStr[:fullMsgStr.index("ENDADDRS")]
     corr_node = corraddrs[corr_address]
 
     #print(fullMsgStr[fullMsgStr.index("ENDADDR"):128])
     #images will be labelled with the datetime in ISOT format
-    img_id_isot = fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")]
+    img_id_isot = fullMsgStr[fullMsgStr.index("ENDADDRS")+8:fullMsgStr.index("ENDIMGID")]
     img_id_mjd = Time(img_id_isot,format='isot').mjd
 
     #img_id_hex = fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")]
     #img_id = int(fullMsgStr[fullMsgStr.index("ENDADDR")+7:fullMsgStr.index("ENDIMGID")],16)
-    data = fullMsg[2*(fullMsgStr.index("ENDIMGID")+8):]
+    data = fullMsg[2*(fullMsgStr.index("ENDIMGID")+8):fullMsgStr.index("ENDFILE")]
     printlog("address:"+str(corr_address),output_file=processfile)
     printlog("corr:"+str(corr_node),output_file=processfile)
     printlog("img_id:" +str(img_id_isot),output_file=processfile)
@@ -169,8 +178,16 @@ def parse_packet(fullMsg,headersize=128,testh23=False):
 
 def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
+
+    #define search params
+    gridsize=fullimg.image_tesseract.shape[0]
+    RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
+    DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
+    nsamps = fullimg.image_tesseract.shape[2]
+    time_axis = np.arange(nsamps)*sl.tsamp
+
     #print("starting process " + str(img_id) + "...")
-    fullimg.cands,fullimg.cluster_cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned = sl.run_search(fullimg.image_tesseract,SNRthresh=SNRthresh)
+    fullimg.cands,fullimg.cluster_cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned = sl.run_search(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis)
     printlog("done",output_file=processfile)
     
     printlog("basic clustering in RA, DEC...",output_file=processfile,end='')
@@ -254,7 +271,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8843',default=8843)
-    parser.add_argument('--maxbytes',type=int,help='Expected size of sub-band image data in bytes, default = 204958 (for 32x32x25 image)',default=204958)
+    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
+    parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
+    parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
+    parser.add_argument('--datasize',type=int,help='Expected size of each element in sub-band image in bytes,default=8',default=8)
     parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
     parser.add_argument('-T','--testh23',action='store_true')
     parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
@@ -265,8 +285,15 @@ def main():
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default="/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/model_weights.pth")
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
+    parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
     args = parser.parse_args()    
-       
+    
+
+    #total expected number of bytes for each sub-band image
+    maxbytes = args.gridsize*args.gridsize*args.nsamps*args.datasize + args.headersize + 42 #35 extra bytes are from the meta-data appended by the persistent RX server, but need to wait to see length of the ip address
+    printlog("MAXBYTES: " + str(maxbytes),output_file=processfile)
+    printlog("SHAPE: "  + str((args.gridsize,args.gridsize,args.nsamps,args.nchans)),output_file=processfile)
+   
     #array to store image ids temporarily
     fullimg_array = np.ndarray(shape=(args.maxProcesses),dtype=fullimg)
 
@@ -301,10 +328,32 @@ def main():
         
         #set timeout and expected number of bytes to read
         clientSocket.settimeout(args.timeout) 
-        maxbytes = args.maxbytes #204958
         totalbytes = 0
 
-        while (recstatus> 0) and (totalbytes < maxbytes):
+        
+        #get the address size from the first chunk  of data
+        try:
+            (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
+            recstatus = len(strData)
+            maxbytesaddr = len(strData[:16].decode('utf-8')[:strData[:16].decode('utf-8').index('E')])
+            printlog("ADDRESSS SIZE: " + str(maxbytesaddr),output_file=processfile)
+            fullMsg +=strData.hex()
+            totalbytes += recstatus
+        except Exception as ex:
+            if type(ex) == socket.timeout:
+                printlog("Timed out on first read, invalid start bytes: " + str(x),output_file=processfile)
+                printlog("Setting invalid start flag...",output_file=processfile,end='')
+                if pipeline.set_pflag("parse_error") == None:
+                    printlog("Error setting flags, abort",output_file=processfile)
+                    break
+                printlog("Done, continue",output_file=processfile)
+                continue
+            else:
+                raise
+
+
+
+        while (recstatus> 0) and (totalbytes < maxbytes+maxbytesaddr):
             try:
                 (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
                 recstatus = len(strData)
@@ -319,45 +368,69 @@ def main():
                 else:
                     raise
         printlog("Done! Total bytes read:" + str(totalbytes),output_file=processfile)
-        #print(fullMsg)
+        printlog(bytes.fromhex(fullMsg[-7:-1]).decode('utf-8'),output_file=processfile)
+        printlog(bytes.fromhex(fullMsg[:args.headersize]).decode('utf-8'),output_file=processfile)
         
+        #check if data is the size we expect
+        try:
+            assert(totalbytes==maxbytes+maxbytesaddr)
+        except AssertionError as exc:
+            printlog("Invalid data size, " + str(totalbytes) + " received when expected " + str(maxbytes+maxbytesaddr) + ": " + str(exc),output_file=processfile)
+            printlog("Setting truncated data size flag...",output_file=processfile,end='')
+            if pipeline.set_pflag("datasize_error") == None:
+                printlog("Error setting flags, abort",output_file=processfile)
+                break
+            printlog("Done, continue",output_file=processfile)
+            continue
 
-
+        
         #try to parse to get address
         try:
-            corr_node,img_id_isot,img_id_mjd,shape,arrData = parse_packet(fullMsg,testh23=args.testh23)
+            corr_node,img_id_isot,img_id_mjd,shape,arrData = parse_packet(fullMsg,headersize=args.headersize,testh23=args.testh23)
             if pipeline.set_pflag("all",on=False) == None:
                 printlog("Error setting flags, abort",processfile=processfile)
                 break
-        except UnicodeDecodeError as exc:
-            printlog("Error parsing data: " + str(exc),output_file=processfile)
-            printlog("Setting retry flag...",output_file=processfile,end='')
-            if pipeline.set_pflag("parse_error") == None: 
-                printlog("Error setting flags, abort",processfile=processfile)
-                break
-            printlog("Done, continue",output_file=processfile)
-            continue	        
-        except ValueError as exc:
-            printlog("Invalid data size: " + str(exc),output_file=processfile)
-            printlog("Setting truncated data size...",output_file=processfile,end='')
-            if pipeline.set_pflag("datasize_error") == None:
-                printlog("Error setting flags, abort",processfile=processfile,end='')
-                break
-            printlog("Done, continue",output_file=processfile)
-            continue     
-            
+        except Exception as exc:
+            if type(exc) == UnicodeDecodeError: 
+                printlog("Error parsing data: " + str(exc),output_file=processfile)
+                printlog("Setting parse error flag...",output_file=processfile,end='')
+                if pipeline.set_pflag("parse_error") == None: 
+                    printlog("Error setting flags, abort",processfile=processfile)
+                    break
+                printlog("Done, continue",output_file=processfile)
+                continue
+            if type(exc) == ValueError:
+                printlog("Invalid data size: " + str(exc),output_file=processfile)
+                printlog("Setting datasize flag...",output_file=processfile,end='')
+                if pipeline.set_pflag("datasize_error") == None:
+                    printlog("Error setting flags, abort",processfile=processfile)
+                    break
+                printlog("Done, continue",output_file=processfile)
+                continue
+            else:
+                clientSocket.close()
+                raise exc	        
         #printlog(arrData,output_file=processfile)
         printlog("Received data from corr " + str(corr_node),output_file=processfile)
         printlog("Shape " + str(shape),output_file=processfile)
         printlog("img_id (isot) " + str(img_id_isot),output_file=processfile)
         printlog("img_id (mjd) " + str(img_id_mjd),output_file=processfile)
 
-        
+        try:
+            assert(shape[0] == args.gridsize and shape[1] == args.gridsize and shape[2] == args.nsamps)
+        except AssertionError as exc:
+            printlog("Invalid data shape, expected " + str((args.gridsize,args.gridsize,args.nsamps)) + " but got " + str(shape) + ": " + str(exc),output_file=processfile)
+            printlog("Setting bad shape flag...",output_file=processfile,end='')
+            if pipeline.set_pflag("shape_error") == None:
+                printlog("Error setting flags, abort",output_file=processfile)
+                break
+            printlog("Done, continue",output_file=processfile)
+            continue 
 
 
         #if object corresponding to the image is in list
         idx,openidx = find_id(img_id_isot,fullimg_array)
-        #if it's not in the list, but there's an open spot, add it
+        printlog("FIND_ID: " + str(idx) + ", " + str(openidx),output_file=processfile)#if it's not in the list, but there's an open spot, add it
         if idx == -1 and openidx != -1:
             #need to create new object
             fullimg_array[openidx] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[16]])))

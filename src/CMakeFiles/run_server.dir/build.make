@@ -57,38 +57,38 @@ include CMakeFiles/run_server.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/run_server.dir/flags.make
 
-CMakeFiles/run_server.dir/socket_server_test_V3.c.o: CMakeFiles/run_server.dir/flags.make
-CMakeFiles/run_server.dir/socket_server_test_V3.c.o: socket_server_test_V3.c
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/run_server.dir/socket_server_test_V3.c.o"
-	/usr/bin/cc  $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -o CMakeFiles/run_server.dir/socket_server_test_V3.c.o   -c /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_server_test_V3.c
+CMakeFiles/run_server.dir/run_server.c.o: CMakeFiles/run_server.dir/flags.make
+CMakeFiles/run_server.dir/run_server.c.o: run_server.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/run_server.dir/run_server.c.o"
+	/usr/bin/cc  $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -o CMakeFiles/run_server.dir/run_server.c.o   -c /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/run_server.c
 
-CMakeFiles/run_server.dir/socket_server_test_V3.c.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/run_server.dir/socket_server_test_V3.c.i"
-	/usr/bin/cc  $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_server_test_V3.c > CMakeFiles/run_server.dir/socket_server_test_V3.c.i
+CMakeFiles/run_server.dir/run_server.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/run_server.dir/run_server.c.i"
+	/usr/bin/cc  $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/run_server.c > CMakeFiles/run_server.dir/run_server.c.i
 
-CMakeFiles/run_server.dir/socket_server_test_V3.c.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/run_server.dir/socket_server_test_V3.c.s"
-	/usr/bin/cc  $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/socket_server_test_V3.c -o CMakeFiles/run_server.dir/socket_server_test_V3.c.s
+CMakeFiles/run_server.dir/run_server.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/run_server.dir/run_server.c.s"
+	/usr/bin/cc  $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/run_server.c -o CMakeFiles/run_server.dir/run_server.c.s
 
-CMakeFiles/run_server.dir/socket_server_test_V3.c.o.requires:
+CMakeFiles/run_server.dir/run_server.c.o.requires:
 
-.PHONY : CMakeFiles/run_server.dir/socket_server_test_V3.c.o.requires
+.PHONY : CMakeFiles/run_server.dir/run_server.c.o.requires
 
-CMakeFiles/run_server.dir/socket_server_test_V3.c.o.provides: CMakeFiles/run_server.dir/socket_server_test_V3.c.o.requires
-	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/socket_server_test_V3.c.o.provides.build
-.PHONY : CMakeFiles/run_server.dir/socket_server_test_V3.c.o.provides
+CMakeFiles/run_server.dir/run_server.c.o.provides: CMakeFiles/run_server.dir/run_server.c.o.requires
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/run_server.c.o.provides.build
+.PHONY : CMakeFiles/run_server.dir/run_server.c.o.provides
 
-CMakeFiles/run_server.dir/socket_server_test_V3.c.o.provides.build: CMakeFiles/run_server.dir/socket_server_test_V3.c.o
+CMakeFiles/run_server.dir/run_server.c.o.provides.build: CMakeFiles/run_server.dir/run_server.c.o
 
 
 # Object files for target run_server
 run_server_OBJECTS = \
-"CMakeFiles/run_server.dir/socket_server_test_V3.c.o"
+"CMakeFiles/run_server.dir/run_server.c.o"
 
 # External object files for target run_server
 run_server_EXTERNAL_OBJECTS =
 
-run_server: CMakeFiles/run_server.dir/socket_server_test_V3.c.o
+run_server: CMakeFiles/run_server.dir/run_server.c.o
 run_server: CMakeFiles/run_server.dir/build.make
 run_server: CMakeFiles/run_server.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable run_server"
@@ -99,7 +99,7 @@ CMakeFiles/run_server.dir/build: run_server
 
 .PHONY : CMakeFiles/run_server.dir/build
 
-CMakeFiles/run_server.dir/requires: CMakeFiles/run_server.dir/socket_server_test_V3.c.o.requires
+CMakeFiles/run_server.dir/requires: CMakeFiles/run_server.dir/run_server.c.o.requires
 
 .PHONY : CMakeFiles/run_server.dir/requires
 

@@ -291,6 +291,10 @@ def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[
 #run search pipeline with desired DM, width trial range; output candidates to a csv? pkl? txt?
 #takes 4D cube (RA,DEC,TIME,FREQUENCY)
 def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,off=10,widthmode="gaussian",PSF=None,offpnoise=0.3,verbose=False,output_file=output_file):
+
+    #first normalize
+    image_tesseract = image_tesseract - image_tesseract.mean(axis=(0,1,2),keepdims=True)
+
     if output_file != "":
         fout = open(output_file,"a")
     else:

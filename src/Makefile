@@ -149,6 +149,33 @@ simpletestclient.out/fast:
 	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/build
 .PHONY : simpletestclient.out/fast
 
+run_server.o: run_server.c.o
+
+.PHONY : run_server.o
+
+# target to build an object file
+run_server.c.o:
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/run_server.c.o
+.PHONY : run_server.c.o
+
+run_server.i: run_server.c.i
+
+.PHONY : run_server.i
+
+# target to preprocess a source file
+run_server.c.i:
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/run_server.c.i
+.PHONY : run_server.c.i
+
+run_server.s: run_server.c.s
+
+.PHONY : run_server.s
+
+# target to generate assembly for a file
+run_server.c.s:
+	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/run_server.c.s
+.PHONY : run_server.c.s
+
 simpletestclient.o: simpletestclient.c.o
 
 .PHONY : simpletestclient.o
@@ -175,33 +202,6 @@ simpletestclient.s: simpletestclient.c.s
 simpletestclient.c.s:
 	$(MAKE) -f CMakeFiles/simpletestclient.out.dir/build.make CMakeFiles/simpletestclient.out.dir/simpletestclient.c.s
 .PHONY : simpletestclient.c.s
-
-socket_server_test_V3.o: socket_server_test_V3.c.o
-
-.PHONY : socket_server_test_V3.o
-
-# target to build an object file
-socket_server_test_V3.c.o:
-	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/socket_server_test_V3.c.o
-.PHONY : socket_server_test_V3.c.o
-
-socket_server_test_V3.i: socket_server_test_V3.c.i
-
-.PHONY : socket_server_test_V3.i
-
-# target to preprocess a source file
-socket_server_test_V3.c.i:
-	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/socket_server_test_V3.c.i
-.PHONY : socket_server_test_V3.c.i
-
-socket_server_test_V3.s: socket_server_test_V3.c.s
-
-.PHONY : socket_server_test_V3.s
-
-# target to generate assembly for a file
-socket_server_test_V3.c.s:
-	$(MAKE) -f CMakeFiles/run_server.dir/build.make CMakeFiles/run_server.dir/socket_server_test_V3.c.s
-.PHONY : socket_server_test_V3.c.s
 
 socket_subclient_test_V3.o: socket_subclient_test_V3.c.o
 
@@ -241,12 +241,12 @@ help:
 	@echo "... edit_cache"
 	@echo "... simpletestclient.out"
 	@echo "... rebuild_cache"
+	@echo "... run_server.o"
+	@echo "... run_server.i"
+	@echo "... run_server.s"
 	@echo "... simpletestclient.o"
 	@echo "... simpletestclient.i"
 	@echo "... simpletestclient.s"
-	@echo "... socket_server_test_V3.o"
-	@echo "... socket_server_test_V3.i"
-	@echo "... socket_server_test_V3.s"
 	@echo "... socket_subclient_test_V3.o"
 	@echo "... socket_subclient_test_V3.i"
 	@echo "... socket_subclient_test_V3.s"

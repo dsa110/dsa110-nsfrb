@@ -135,6 +135,7 @@ def pipeout(arr,output_file=output_file):
 pflagdict = dict()
 pflagdict['parse_error'] = 1
 pflagdict['datasize_error'] = 2
+pflagdict['shape_error'] = 4
 pflagdict['invalid'] = 8
 pflagdict['all'] = 15
 flagfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"

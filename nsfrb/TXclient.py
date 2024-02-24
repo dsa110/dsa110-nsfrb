@@ -23,7 +23,9 @@ host = ipaddress + ":" + str(port)
 #url = "http://" + host + "/" + fname
 keepalive_time = 15
 httpversion = 0.9
-retries = 5
+
+
+fakeheader = bytes.fromhex("934e554d5059010076007b276465736372273a20273c6638272c2027666f727472616e5f6f72646572273a2046616c73652c20277368617065273a20283330302c203330302c2032292c207d2020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020200a")
 
 #for example of headers, see /media/ubuntu/ssd/sherman/code/here.txt
 def make_header(content_length,host=host):
@@ -38,7 +40,7 @@ def make_header(content_length,host=host):
     return headers
 
 
-def send_data(timestamp,array,node=23,ENDFILE='ENDFILE',headersize=128,verbose=False):
+def send_data(timestamp,array,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time):
     #timestamp is how sub-bands will be associated with each other, so ensure its the same for all sub-bands; should be in isot format: 'yyyy:mm:ddThh:mm:ss'
     #array is numpy array of sub-band data
     if node < 10:
@@ -48,7 +50,8 @@ def send_data(timestamp,array,node=23,ENDFILE='ENDFILE',headersize=128,verbose=F
     elif node== 23:
         sb = "_h23"
     else:
-        print("Invalid corr node")
+        if verbose:
+            print("Invalid corr node")
 
     #make filename
     fname = sb + "_IMG" + str(timestamp) + ".npy"
@@ -56,9 +59,9 @@ def send_data(timestamp,array,node=23,ENDFILE='ENDFILE',headersize=128,verbose=F
 
     #convert numpy data to bytes
     if type(array) == bytes:
-        body = array[:-1] + bytes(ENDFILE,encoding='utf-8') #note we had to remove the newline
+        body = fakeheader + array + bytes(ENDFILE,encoding='utf-8') #note we had to remove the newline
     else:
-        body = array.tobytes() + bytes(ENDFILE,encoding='utf-8')
+        body = fakeheader + array.tobytes() + bytes(ENDFILE,encoding='utf-8')
     content_length = len(body)
 
 
@@ -83,31 +86,90 @@ def send_data(timestamp,array,node=23,ENDFILE='ENDFILE',headersize=128,verbose=F
         #handler.setLevel(logging.NOTSET)
         logger.addHandler(handler)
     
+    
     tries = 0
+    http = urllib3.PoolManager()
     while tries < retries:
-        http = urllib3.PoolManager() #https://urllib3.readthedocs.io/en/2.2.0/reference/urllib3.poolmanager.html#urllib3.PoolManager.urlopen
-        r=http.urlopen(method='PUT',
-            url=url,
-            body=body,
-            headers=make_header(content_length),
-            timeout=keepalive_time,
-            retries=retries)
-
-        #check response to see if successful
-        pflags = int(r.data.decode('utf-8')[-2])
-        if (pflags & pflagdict['parse_error']): #once moved to git, get the flag value from nsfrb.pipeline.pflagdict
-            print("Parse Error, Re-sending...")
-            tries += 1
-        elif (pflags & pflagdict['datasize_error']):
-            print("Data Loss Error, Re-sending...")
-            tries += 1
+        r = None
+        try:
+            r = http.urlopen(method='PUT',
+                            url=url,
+                            body=body,
+                            headers=make_header(content_length),
+                            timeout=keepalive_time,
+                            retries=retries)
+        
+            #check response to see if successful
+            pflags = int(r.data.decode('utf-8')[-2])
+            if (pflags & pflagdict['parse_error']): #once moved to git, get the flag value from nsfrb.pipeline.pflagdict
+                if verbose:
+                    print("Parse Error, Re-sending...")
+                tries += 1
+            elif (pflags & pflagdict['datasize_error']):
+                if verbose:
+                    print("Data Loss Error, Re-sending...")
+                tries += 1
+            elif (pflags & pflagdict['shape_error']):
+                if verbose:
+                    print("Shape Error, Re-sending...")
+                tries += 1
+            else:
+                if verbose:
+                    print("Success")
+                
+                    print("Received: " + str(r.data.decode('utf-8')))
+                break
+        except Exception as exc:
+            if type(Exception) == AttributeError:
+                if verbose:
+                    print("Received NoneType response, Re-sending...")
+                tries += 1
+            else:
+                raise exc
         else:
-            print("Success")
-            break
-    #rjson = r.info()
-    #print(rjson)
-    #f = open("TXoutput.txt","w")
-    #f.write(rjson['data'].hex())
-    #f.close() 
-    #http.close()
-    return str(r.data.decode('utf-8'))
+            if verbose:
+                print(r.data.decode('utf-8'))
+        finally:
+            if r is not None:
+                r.close()    
+    return "send_data complete"
+"""
+    ####
+    r = None
+    try:
+        tries = 0
+        while tries < retries:
+            http = urllib3.PoolManager() #https://urllib3.readthedocs.io/en/2.2.0/reference/urllib3.poolmanager.html#urllib3.PoolManager.urlopen
+            #try except format from https://realpython.com/urllib-request/
+
+            r = http.urlopen(method='PUT',
+                            url=url,
+                            body=body,
+                            headers=make_header(content_length),
+                            timeout=keepalive_time,
+                            retries=retries)
+            
+            #check response to see if successful
+            pflags = int(r.data.decode('utf-8')[-2])
+            if (pflags & pflagdict['parse_error']): #once moved to git, get the flag value from nsfrb.pipeline.pflagdict
+                print("Parse Error, Re-sending...")
+                tries += 1
+            elif (pflags & pflagdict['datasize_error']):
+                print("Data Loss Error, Re-sending...")
+                tries += 1
+            elif (pflags & pflagdict['shape_error']):
+                print("Shape Error, Re-sending...")
+                tries += 1
+            else:
+                print("Success")
+                break
+    except Exception as exc:
+        print(exc)
+    else:
+        print(r.data.decode('utf-8'))
+    finally:
+        print("Finally: " + str(r.data.decode('utf-8')))
+        if r is not None:
+            r.close()
+    return #str(r.data.decode('utf-8'))
+"""

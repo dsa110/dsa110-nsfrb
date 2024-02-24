@@ -1,1 +1,1 @@
-./socket_server_test_V3.out failed
+../src/run_server failed
