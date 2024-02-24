@@ -2,14 +2,16 @@ import argparse
 from casatools import table
 import numpy as np
 from astropy.time import Time
+import sys
+sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
+sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE
 from nsfrb.imaging import uniform_image
 from nsfrb.TXclient import send_data  
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images  
 from tqdm import tqdm 
 import time
-import sys
-sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
+
 def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False):
     """
     Process data from a CASA .ms table containing visibility data, which includes extracting the CORRECTED_DATA column data, 
@@ -117,7 +119,7 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
         dirty_images_all = np.array(dirty_images_all)   
         # transposing to have the following shape (num_pix, num_pix, num_time_samples, num_channels)
         # Sending one sub-band at a time
-        for i in range(NUM_CHANNELS//48):
+        for i in range(NUM_CHANNELS//AVERAGING_FACTOR):
             dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
             msg=send_data(time_start_isot, dirty_images_all_bytes ,verbose=verbose_flag,retries=5,keepalive_time=60)
             if verbose_flag: print(msg)
