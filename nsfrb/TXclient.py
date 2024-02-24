@@ -66,12 +66,14 @@ def send_data(timestamp,array,node=23,ENDFILE='',headersize=128,verbose=False,re
 
 
     #print(body.decode('utf-8'))
-
+    if verbose:
+        print("Sending " + fname)
+        print("Message body of size " + str(content_length))
     """
     f = open("TXoutput.txt","w")
     f.write(body.hex())
     f.close()
-    """
+    
     if verbose:
         HTTPConnection.debuglevel = 1
         print("Sending " + fname)
@@ -85,7 +87,7 @@ def send_data(timestamp,array,node=23,ENDFILE='',headersize=128,verbose=False,re
         handler = logging.FileHandler('urllib3_logs.log')
         #handler.setLevel(logging.NOTSET)
         logger.addHandler(handler)
-    
+    """
     
     tries = 0
     http = urllib3.PoolManager()
@@ -133,43 +135,3 @@ def send_data(timestamp,array,node=23,ENDFILE='',headersize=128,verbose=False,re
             if r is not None:
                 r.close()    
     return "send_data complete"
-"""
-    ####
-    r = None
-    try:
-        tries = 0
-        while tries < retries:
-            http = urllib3.PoolManager() #https://urllib3.readthedocs.io/en/2.2.0/reference/urllib3.poolmanager.html#urllib3.PoolManager.urlopen
-            #try except format from https://realpython.com/urllib-request/
-
-            r = http.urlopen(method='PUT',
-                            url=url,
-                            body=body,
-                            headers=make_header(content_length),
-                            timeout=keepalive_time,
-                            retries=retries)
-            
-            #check response to see if successful
-            pflags = int(r.data.decode('utf-8')[-2])
-            if (pflags & pflagdict['parse_error']): #once moved to git, get the flag value from nsfrb.pipeline.pflagdict
-                print("Parse Error, Re-sending...")
-                tries += 1
-            elif (pflags & pflagdict['datasize_error']):
-                print("Data Loss Error, Re-sending...")
-                tries += 1
-            elif (pflags & pflagdict['shape_error']):
-                print("Shape Error, Re-sending...")
-                tries += 1
-            else:
-                print("Success")
-                break
-    except Exception as exc:
-        print(exc)
-    else:
-        print(r.data.decode('utf-8'))
-    finally:
-        print("Finally: " + str(r.data.decode('utf-8')))
-        if r is not None:
-            r.close()
-    return #str(r.data.decode('utf-8'))
-"""

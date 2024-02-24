@@ -168,7 +168,7 @@ dtypelookup = {1 : np.int8,
 b"PUT /_h23_IMG2023-10-03T21:56:46.215.npy HTTP/1.1\r\nAccept-Encoding: identity\r\nHost: 10.41.0.94:8080\r\nUser-Agent: curl/7.78.0\r\nAccept: */*\r\nReferer: rbose\r\nContent-Length: 1440128\r\nExpect: 100-continue\r\n\r\n\x93NUMPY\x01\x00v\x00{'descr': '<f8', 'fortran_order': False, "
 b"'shape': (300, 300, 2), }
 """
-def parse_packet(fullMsg,maxbytes,headersize,datasize,port,testh23=False):
+def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=False):
     #break into header and data
     HTTPheaderMsg = bytes.fromhex(fullMsg[:fullMsg.index(HEADER_DELIM)])
     NPheaderMsgHex = fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+2:fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2)]
@@ -186,7 +186,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,testh23=False):
     #get metadata
     img_id_isot = HTTPheaderMsgStr[HTTPheaderMsgStr.index('IMG')+3:HTTPheaderMsgStr.index('.npy')]
     img_id_mjd = Time(img_id_isot,format='isot').mjd
-    corr_address = HTTPheaderMsgStr[HTTPheaderMsgStr.index('Host')+6:HTTPheaderMsgStr.index(':'+str(port))]
+    #corr_address = address#HTTPheaderMsgStr[HTTPheaderMsgStr.index('Host')+6:HTTPheaderMsgStr.index(':'+str(port))]
     corr_node = corraddrs[corr_address]
     content_length = int(HTTPheaderMsgStr[HTTPheaderMsgStr.index('Content-Length')+16:HTTPheaderMsgStr.index('Expect')-2])
     shape = pipeline.get_shape_from_raw(bytes(NPheaderMsgHex,'utf-8'),headersize)#tuple(NPheaderMsgStr[NPheaderMsgStr.index('shape')+8:NPheaderMsgStr.index(')')+1])
@@ -196,7 +196,13 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,testh23=False):
     printlog("shape:" + str(shape),output_file=processfile)
 
     #use content length to get just data portion
-    data = fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(content_length*2)]
+    #data = fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(content_length*2)]
+    #printlog(fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(content_length*2)-fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2),output_file=processfile)
+    #printlog(str(data[:128]),output_file=processfile)
+    
+    data = fullMsg[fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex):fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex) + (2*content_length)]
+
+
     printlog("datahex: " + str(len(data)),output_file=processfile)
     imgbytes = bytes.fromhex(data)
     printlog("databytes: " + str(len(imgbytes)),output_file=processfile)
@@ -359,6 +365,8 @@ def main():
     while True: # want to keep accepting connections
         printlog("accepting connection...",output_file=processfile,end='')
         clientSocket,address = servSockD.accept()
+        corr_address, tmp = clientSocket.getpeername()
+        printlog("client: " + str(corr_address) + "...",output_file=processfile,end='')
         recstatus = 1
         fullMsg = ""
         printlog("Done!",output_file=processfile)
@@ -438,7 +446,7 @@ def main():
 
         #try to parse to get address
         try:
-            corr_node,img_id_isot,img_id_mjd,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=args.headersize,datasize=args.datasize,port=args.port,testh23=args.testh23)
+            corr_node,img_id_isot,img_id_mjd,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=args.headersize,datasize=args.datasize,port=args.port,corr_address=corr_address,testh23=args.testh23)
             #if set_pflag_loc("all",on=False) == None:
             #    printlog("Error setting flags, abort",processfile=processfile)
             #    break
