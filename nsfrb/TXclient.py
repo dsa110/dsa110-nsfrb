@@ -4,7 +4,14 @@ import logging
 from http.client import HTTPConnection
 import sys
 sys.path.append("..")
-from nsfrb.pipeline import pflagdict
+#from nsfrb.pipeline import pflagdict
+pflagdict = dict()
+pflagdict['parse_error'] = 1
+pflagdict['datasize_error'] = 2
+pflagdict['shape_error'] = 4
+pflagdict['invalid'] = 8
+pflagdict['all'] = 15
+
 HTTPConnection.debuglevel = 0
 """
 This script implements the following curl command in python:
@@ -25,7 +32,7 @@ keepalive_time = 15
 httpversion = 0.9
 
 
-fakeheader = bytes.fromhex("934e554d5059010076007b276465736372273a20273c6638272c2027666f727472616e5f6f72646572273a2046616c73652c20277368617065273a20283330302c203330302c2032292c207d2020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020200a")
+#fakeheader = bytes.fromhex("934e554d5059010076007b276465736372273a20273c6638272c2027666f727472616e5f6f72646572273a2046616c73652c20277368617065273a20283330302c203330302c2032292c207d2020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020200a")
 
 #for example of headers, see /media/ubuntu/ssd/sherman/code/here.txt
 def make_header(content_length,host=host):
@@ -39,8 +46,36 @@ def make_header(content_length,host=host):
     headers['Expect'] = '100-continue'
     return headers
 
+def build_np_header(shape,descr='<f8',fortran_order=False,headersize=128):
+    #every header stars with this
+    startbytes = bytes.fromhex("93") + bytes("NUMPY",'utf-8') + bytes.fromhex("010000")
 
-def send_data(timestamp,array,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time):
+    #make a dictionary
+    d = dict()
+    d['descr'] = descr
+    d['fortran_order'] = fortran_order
+    d['shape'] = shape
+    dstr = str(d)[:-1]
+    dstr += ", }"
+    dbytes = bytes(dstr,'utf-8')
+
+    #append spaces until we get to 128
+    spacebytes = bytes(" "*(headersize - len(startbytes + dbytes) - 1) + "\n",'utf-8')
+
+    #combine
+    headerbytes = startbytes + dbytes + spacebytes
+    #print(headerbytes)
+    return headerbytes
+    
+
+def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time):
+    if type(array) != bytes and shape is None:
+        shape = array.shape
+    elif shape is None:
+        print("Invalid shape")
+        return
+    if verbose:
+        print(shape)
     #timestamp is how sub-bands will be associated with each other, so ensure its the same for all sub-bands; should be in isot format: 'yyyy:mm:ddThh:mm:ss'
     #array is numpy array of sub-band data
     if node < 10:
@@ -56,6 +91,9 @@ def send_data(timestamp,array,node=23,ENDFILE='',headersize=128,verbose=False,re
     #make filename
     fname = sb + "_IMG" + str(timestamp) + ".npy"
     url = host + "/" + fname
+    
+    #make a header
+    fakeheader = build_np_header(shape=shape,headersize=headersize)
 
     #convert numpy data to bytes
     if type(array) == bytes:

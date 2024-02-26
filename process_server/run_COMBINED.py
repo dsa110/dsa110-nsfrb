@@ -199,7 +199,10 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     #data = fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(content_length*2)]
     #printlog(fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(content_length*2)-fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2),output_file=processfile)
     #printlog(str(data[:128]),output_file=processfile)
-    
+   
+    printlog("totaldatasize: " + str(len(fullMsg)),output_file=processfile)
+    printlog("without HTTP header: "  + str(len(fullMsg[fullMsg.index(HEADER_DELIM):])))
+    printlog("without NP header: " + str(len(fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):]))) 
     data = fullMsg[fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex):fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex) + (2*content_length)]
 
 
@@ -401,12 +404,18 @@ def main():
         while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
             try:
                 (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
-                printlog(strData,output_file=processfile)
+                #printlog(strData,output_file=processfile)
                 recstatus = len(strData)
 
                 #printlog(strData.hex(),output_file=processfile,end='')
                 fullMsg += strData.hex()
                 totalbytes += recstatus
+
+                #don't know how long the header is, so don't start counting until hit NP data
+                if "93" in fullMsg:
+                    printlog("Found start byte at index " + str(fullMsg.index("93")),output_file=processfile)
+                    totalbytes = (len(fullMsg) - fullMsg.index("93"))//2
+                
             except Exception as ex:
                 if type(ex) == socket.timeout:
                     printlog("Timed out after reading " + str(totalbytes) + " bytes; proceeding...",output_file=processfile)

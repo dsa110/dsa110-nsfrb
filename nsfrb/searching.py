@@ -265,6 +265,7 @@ def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[
             if i == TMPCOORDS[0] and j == TMPCOORDS[1]:
                 print("sig: ", signal,file=fout)
                 print("noise: ",noise,file=fout)
+                print("S/N: ", signal/noise,file=fout)
             image_tesseract_time[i,j] = signal/noise#np.nanmax(np.convolve(image_tesseract_freq[i,j,:],boxcar,'same')/np.sum(boxcar))/noiseest#/np.sum(boxcar))
             #print(boxcar)
             if plot:
