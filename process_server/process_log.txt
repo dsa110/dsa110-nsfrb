@@ -11466,7 +11466,7 @@ Data: [[[4.95739154 4.95469297]
   [4.95776463 4.95516689]
   [4.95772127 4.95508582]
   [4.95756988 4.95488264]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True False False False False False False False False False False False
  False False False False]
@@ -17206,7 +17206,7 @@ Data: [[[4.97069729 4.97102513]
   [4.96994023 4.97039339]
   [4.97022058 4.97061952]
   [4.97043748 4.97081303]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True False False False False False False False False False False
  False False False False]
@@ -22946,7 +22946,7 @@ Data: [[[4.971291   4.97051542]
   [4.970679   4.97003304]
   [4.9708841  4.97019704]
   [4.97110312 4.97037827]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True False False False False False False False False False
  False False False False]
@@ -28686,7 +28686,7 @@ Data: [[[4.979661   4.97881843]
   [4.98030574 4.97921923]
   [4.98008239 4.97908527]
   [4.97987834 4.97896109]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True False False False False False False False False
  False False False False]
@@ -34426,7 +34426,7 @@ Data: [[[5.01245539 5.01272557]
   [5.01251813 5.01272379]
   [5.01250267 5.01275166]
   [5.0124927  5.01278264]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True False False False False False False False
  False False False False]
@@ -40166,7 +40166,7 @@ Data: [[[5.03024376 5.03073128]
   [5.03015802 5.03057074]
   [5.03012325 5.03052833]
   [5.03010916 5.03053562]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True False False False False False False
  False False False False]
@@ -45906,7 +45906,7 @@ Data: [[[5.03831917 5.03793761]
   [5.03854235 5.0381337 ]
   [5.03842464 5.03803872]
   [5.0383191  5.03794387]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True False False False False False
  False False False False]
@@ -51646,7 +51646,7 @@ Data: [[[4.92650791 4.9262568 ]
   [4.9269198  4.92669291]
   [4.92675356 4.92652908]
   [4.92660216 4.9263747 ]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True False False False False
  False False False False]
@@ -57386,7 +57386,7 @@ Data: [[[5.04611801 5.04663405]
   [5.04628777 5.04678677]
   [5.0461889  5.04670598]
   [5.04609903 5.04662365]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True  True False False False
  False False False False]
@@ -63126,7 +63126,7 @@ Data: [[[4.96437268 4.96538261]
   [4.96467657 4.96568524]
   [4.96460268 4.96558916]
   [4.96448798 4.96545694]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True  True  True False False
  False False False False]
@@ -68866,7 +68866,7 @@ Data: [[[4.98773695 4.98704381]
   [4.98713506 4.98660771]
   [4.98743691 4.98685292]
   [4.98767581 4.98702616]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True  True  True  True False
  False False False False]
@@ -74606,7 +74606,7 @@ Data: [[[4.97066031 4.97115038]
   [4.9700127  4.9703045 ]
   [4.9702906  4.97063559]
   [4.97055091 4.97095014]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True  True  True  True  True
  False False False False]
@@ -80346,7 +80346,7 @@ Data: [[[4.97331097 4.97265418]
   [4.97273922 4.97229259]
   [4.97297845 4.97240586]
   [4.97322671 4.97255388]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True  True  True  True  True
   True False False False]
@@ -86086,7 +86086,7 @@ Data: [[[4.94029252 4.93983537]
   [4.93986027 4.93952444]
   [4.93998948 4.9396095 ]
   [4.94012495 4.93972833]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True  True  True  True  True
   True  True False False]
@@ -91826,7 +91826,7 @@ Data: [[[4.83793465 4.83859468]
   [4.83755431 4.83849407]
   [4.83767961 4.83854511]
   [4.83778239 4.8385668 ]]]
-[<__main__.fullimg object at 0x7fcb50470f40> None None None None]
+[<__main__.fullimg object at 0x7fdc4d5ebca0> None None None None]
 False
 [ True  True  True  True  True  True  True  True  True  True  True  True
   True  True  True False]
@@ -91839,4 +91839,7 @@ True
 FIND_ID: 0, -1
 corrstatus:[ True  True  True  True  True  True  True  True  True  True  True  True
   True  True  True  True]
-starting search process 2023-10-03T21:56:46.215...
+starting search process 2023-10-03T21:56:46.215...done
+No candidates found
+([], [], 0)
+accepting connection...

@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from matplotlib import pyplot as plt
 import random
 import copy
@@ -8,7 +9,8 @@ from scipy.stats import gamma
 from scipy.stats import truncnorm
 from scipy.signal import peak_widths
 from scipy.stats import norm
-
+import os
+from PIL import Image,ImageOps
 #from gen_dmtrials_copy import gen_dm
 
 
@@ -84,8 +86,8 @@ time_axis = np.linspace(0,T,nsamps) #ms
 freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 #width trials
-nwidths=4
-widthtrials = np.logspace(0,3,nwidths,base=2,dtype=int)
+nwidths=1#4
+widthtrials =np.array([1]) #np.logspace(0,3,nwidths,base=2,dtype=int)
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
@@ -114,7 +116,7 @@ def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
     return dms
 minDM = 171
 maxDM = 4000
-DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[5:17]
+DM_trials = np.array([0])#np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[5:17]
 DM_trials = np.concatenate([[0],DM_trials])
 nDMtrials = len(DM_trials)
 
@@ -146,7 +148,182 @@ ANTENNALONS = np.array(ANTENNALONS)
 ANTENNAELEVS = np.array(ANTENNAELEVS)
 
 """Search functions"""
+datagridsize = 256
+def make_PSF_cube(gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False,output_file=output_file):
+    """
+    This function creates a frequency-dependent PSF based on Nikita's source simulation pipeline. It
+    uses pre-defined images and downsamples to the desired resolution. The PSF is duplicated along the time
+    axis.   
+    """
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+    #get pngs for a point source from Nikita's images
+    dirname = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"
+    pngs = os.listdir(dirname)
+    sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
+    freqs = []
+    fs = []
+	    
+    print("Creating PSF with shape " + str(sourceimg.shape) + " using " + str(datagridsize) + "x" + str(datagridsize) + " images in " + dirname + "...",file=fout)
+    for png in pngs:
+        print(png,file=fout)
+        if ".png" in png:
+            #get frequency
+            freq = float(png[png.index("avg_") + 4: png.index("avg_") + 11])
+            freqs.append(freq)
+            fs.append(png)
 
+    
+    #need to check that datagridsize/gridsize compatible
+    if datagridsize > gridsize and datagridsize%gridsize != 0:
+        diff = datagridsize%gridsize
+        datagridsizecut = datagridsize - diff
+    elif datagridsize > gridsize:
+        diff = 0
+        datagridsizecut = datagridsize
+
+    
+    #print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
+    if datagridsize > gridsize:
+        print("Downsampling by factor " + str(datagridsizecut//gridsize) + "...",file=fout,end="")
+    freqs_sorted = np.sort(freqs)
+    fs_sorted = [x for x, _ in sorted(zip(fs, freqs))]
+    #downsample and copy over time and frequency axes
+    for i in range(nchans):
+        for j in range(nsamps):
+            
+            #print(np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i]))).shape)
+            fullim = np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i])))
+            print(fullim.shape,file=fout)
+            
+            if datagridsize == gridsize:
+                sourceimg[:,:,j,i] = fullim
+
+            elif datagridsize < gridsize:
+                diff = gridsize - datagridsize
+                fullim = np.pad(fullim, (diff//2,diff - (diff//2)),mode='constant')
+                sourceimg[:,:,j,i] = fullim
+            
+            elif datagridsize > gridsize:
+                if datagridsize%gridsize != 0:
+                    fullim = fullim[diff//2:(diff//2) + datagridsizecut,diff//2:(diff//2)+ datagridsizecut]            
+                
+                sourceimg[:,:,j,i] = fullim.reshape((gridsize,datagridsize//gridsize,gridsize,datagridsize//gridsize)).mean((1,3))
+
+    #roll if not perfectly centered
+    maxpix = tuple(np.array(np.unravel_index(np.argmax(sourceimg[:,:,0,0].flatten()),(gridsize,gridsize))))
+    centerpix = ((gridsize//2) - 1,(gridsize//2) - 1)
+    if maxpix != centerpix:
+    
+        rolledPSFimg = np.roll(np.roll(sourceimg,shift=centerpix[0]-maxpix[0],axis=0),shift=centerpix[1]-maxpix[1],axis=1)
+        rolledPSFimg[gridsize - (maxpix[0]-centerpix[0]):,:,:,:] = 0
+        rolledPSFimg[:,gridsize - (maxpix[1]-centerpix[1]):,:,:] = 0
+    else: rolledPSFimg = PSFimg
+    #cutout image
+    #PSFimg = rolledPSFimg[gridsize//2:gridsize//2 + gridsize,gridsize//2:gridsize//2 + gridsize]
+
+    print("Complete!",file=fout)
+    if output_file != "":
+        fout.close()
+    return rolledPSFimg
+
+default_PSF = make_PSF_cube()
+
+
+def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False):
+    #get pngs
+    """
+    This function makes test images with finite width using Nikita's test pngs
+    """
+    
+    dirname = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"#testimgs_2024-03-18/"#{a}x{a}_images/"#src_examples/observation_1/images/".format(a=gridsize)
+    pngs = os.listdir(dirname)
+    sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
+    freqs = []
+    fs = []
+    
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    for png in pngs:
+        print(png,file=fout)
+        if ".png" in png:
+            #get frequency
+            freq = float(png[png.index("avg_") + 4: png.index("avg_") + 11])
+            freqs.append(freq)
+            fs.append(png)
+
+    #need to check that datagridsize/gridsize compatible
+    if datagridsize > gridsize and datagridsize%gridsize != 0:
+        diff = datagridsize%gridsize
+        datagridsizecut = datagridsize - diff
+    elif datagridsize > gridsize:
+        diff = 0
+        datagridsizecut = datagridsize
+
+
+    #print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
+    if datagridsize > gridsize:
+        print("Downsampling by factor " + str(datagridsizecut//gridsize) + "...",file=fout,end="")
+    freqs_sorted = np.sort(freqs)
+    fs_sorted = [x for x, _ in sorted(zip(fs, freqs))]
+    #downsample and copy over time and frequency axes
+    for i in range(nchans):
+        for j in range(nsamps):
+
+            #print(np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i]))).shape)
+            fullim = np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i])))
+            print(fullim.shape,file=fout)
+
+            if datagridsize == gridsize:
+                sourceimg[:,:,j,i] = fullim
+
+            elif datagridsize < gridsize:
+                diff = gridsize - datagridsize
+                fullim = np.pad(fullim, (diff//2,diff - (diff//2)),mode='constant')
+                sourceimg[:,:,j,i] = fullim
+
+            elif datagridsize > gridsize:
+                if datagridsize%gridsize != 0:
+                    fullim = fullim[diff//2:(diff//2) + datagridsizecut,diff//2:(diff//2)+ datagridsizecut]
+
+                sourceimg[:,:,j,i] = fullim.reshape((gridsize,datagridsize//gridsize,gridsize,datagridsize//gridsize)).mean((1,3))
+
+
+
+
+
+    #now add noise based on the SNR
+    #PSFimg = make_PSF_cube(loc=loc,gridsize=gridsize,nchans=nchans,nsamps=nsamps)
+    #sourceimg = sourceimg[gridsize//2:gridsize//2 + gridsize,gridsize//2:gridsize//2 + gridsize]
+    noises = []
+    for i in range(nchans):
+        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]/(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]))#/np.sum(PSFimg[:,:,:,i]))
+        
+        
+        print(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]),np.sum(PSFimg[:,:,:,i]),file=fout)
+        
+    
+        #img[16,16,500:500+wid,:] = snr/wid
+        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr#/np.sum(PSFimg[:,:,0,i])
+        
+        
+        sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.sum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
+        noises.append(1/np.sum(PSFimg[:,:,0,i])/width/nchans)
+
+    
+    if output_file != "":
+        fout.close()
+    return sourceimg
+
+
+
+
+### *** DEPRECATED 3/20/2024
 #Create psf of desired resolution using antenna positions
 #Note this is a rather crude implementation, it assumes 2D, but
 #Nikita can get better PSFs
@@ -235,7 +412,96 @@ def make_2D_PSF(gridsize=gridsize,ANTENNALONS=ANTENNALONS,ANTENNALATS=ANTENNALAT
     return ANTENNAPSF
 
 
-#snr calculation code
+
+
+
+
+from scipy.signal import convolve2d
+from scipy.signal import correlate2d
+def matched_filter_space(image_tesseract,PSFimg):
+    """
+    Matched filter via convolution w/ DSA-110 core PSF
+    """
+
+    image_tesseract_filtered = np.zeros(image_tesseract.shape)
+    nsamps = image_tesseract.shape[2]
+    nchans = image_tesseract.shape[3]
+    for i in range(nsamps):
+        for j in range(nchans):
+            image_tesseract_filtered[:,:,i,j] = convolve2d(image_tesseract[:,:,i,j],PSFimg[:,:,i,j],mode='same') #assume the PSF is already centered
+
+    return image_tesseract_filtered
+    
+    
+    np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
+
+
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=5,plot=False):
+    """
+    alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
+    """
+    nsamps = image_tesseract_filtered_dm.shape[2]
+    #ndms = image_tesseract.shape[3]
+    gridsize = image_tesseract_filtered_dm.shape[0]
+    loc = gridsize//2
+    
+
+    #make a boxcar filter for time
+    boxcar = np.zeros(image_tesseract_filtered_dm.shape[2])
+    boxcar[loc-wid//2-2:loc+wid-wid//2-2] = 1
+
+    if plot:
+        plt.figure(figsize=(40,12))
+        plt.subplot(1,4,2)
+        plt.plot(boxcar)
+    #convolve for each timeseries; assume already normalized
+    image_tesseract_binned = np.zeros((gridsize,gridsize))
+    noisemap=np.zeros((gridsize,gridsize))
+    for i in range(gridsize):
+        for j in range(gridsize):
+            timeseries = image_tesseract_filtered_dm[i,j,:]
+            csig = np.convolve(timeseries,boxcar,'same')#/wid#/np.sum(boxcar)
+            peakidx = np.argmax(csig)
+
+
+            #print(np.argmin(csig-np.max(csig)/2),nsamps-np.argmin(csig[::-1]-np.max(csig)/2))
+            
+            
+            s=np.nanstd(csig[csig<noiseth])#np.nanstd(np.concatenate([csig[:np.nanargmax(csig)-wid],csig[np.nanargmax(csig)+wid+1:]]))
+            noisemap[i,j] = s
+
+            
+
+            #print(np.nanmax(csig),s,np.nanmax(csig)/s)
+            image_tesseract_binned[i,j] = np.nanmax(csig)/s#/wid
+            #print(np.nanargmax(csig))
+            if plot:
+                plt.subplot(1,4,3)
+                plt.plot(csig,color='grey',alpha=1)
+                plt.plot(np.arange(len(csig))[csig<noiseth],csig[csig<noiseth],color='red',marker='o',linestyle='')
+                plt.axvline(noiseth/wid)
+                #plt.axvline(np.argmin(csig-np.max(csig)/2),color='red')
+                #plt.axvline(nsamps-np.argmin(csig[::-1]-np.max(csig)/2),color='purple')
+                
+                plt.subplot(1,4,1)
+                plt.plot(timeseries,color='grey',alpha=1)
+    if plot:
+        plt.subplot(1,4,4)
+        plt.hist(noisemap.flatten())
+        plt.axvline(noiseth/np.sqrt(wid))
+        #plt.hist(np.std(image_tesseract_filtered_dm[:,:,:25//2],axis=2).flatten(),np.linspace(0,10,100))
+        
+        plt.subplot(1,4,3)
+        plt.axhline(noiseth/np.sqrt(wid))
+        #plt.axvline(loc + wid,color='red')
+        #plt.axhline(1000,color='red')
+        plt.show()
+    
+    return image_tesseract_binned
+
+
+
+#snr calculation code ### *** DEPRECATED 3/20/2024
 def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[0,0],output_file=output_file):
     #plot=False
     if output_file != "":
@@ -289,6 +555,144 @@ def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[
     return image_tesseract_snr
 
 
+# Brute force dedispersion
+def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis):
+    """
+    This function dedisperses a dynamic spectrum of shape nsamps x nchans by brute force without accounting for edge effects
+    """
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    #get delay axis
+    tdelays = DM*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
+    tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
+    tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
+    tdelays_frac = tdelays/tsamp - tdelays_idx_low
+    print("Trial DM: " + str(DM) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout,end="")
+    nchans = len(freq_axis)
+    dedisp_timeseries = np.zeros(image_tesseract_point.shape[0])
+    #shift each channel
+    for k in range(nchans):
+        #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
+        arrlow =  np.pad(image_tesseract_point[:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+        arrhi =  np.pad(image_tesseract_point[:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+
+        dedisp_timeseries += arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+    print("Done!",file=fout)
+    if output_file != "":
+        fout.close()
+    return dedisp_timeseries
+
+
+#Updated search code
+#run search pipeline with desired DM, width trial range; output candidates to a csv? pkl? txt?
+#takes 4D cube (RA,DEC,TIME,FREQUENCY)
+
+def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
+                   DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
+                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=3,canddict=dict()):
+
+    """
+    This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
+    a list of candidates' DM, pulse width, RA, declination, and time of arrival(?)
+    """
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    
+    #get axis sizes
+    gridsize = len(RA_axis)
+    nsamps = len(time_axis)
+    nchans = len(freq_axis)
+
+
+    #create PSF if the shape doesn't match
+    if PSF.shape != image_tesseract.shape:
+        print("Updating PSF...",file=fout)
+        PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+
+    #dedisperse --> gridsize x gridsize x time x DM
+    nDMtrials = len(DM_trials)
+    print("Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
+    image_tesseract_dedisp = np.zeros((gridsize,gridsize,nsamps,nDMtrials)) #stores output array as dedispersion transform for every pixel
+    
+
+    for i in range(gridsize):
+        for j in range(gridsize):
+            for d in range(nDMtrials):
+                image_tesseract_dedisp[i,j,:,d] = dedisperse(image_tesseract[i,j,:,:],DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis)
+    print("Done!",file=fout) 
+
+    #2D matched filter for each timestep and channel
+    print("Spatial matched filtering with DSA PSF...",file=fout)
+    image_tesseract_filtered = matched_filter_space(image_tesseract_dedisp,PSF)
+    print("Done!",file=fout)
+
+    #boxcar filter and get snr using rolled PSF --> gridsize x gridsize x width x DM (x TOA?)
+    nwidthtrials = len(widthtrials)
+    image_tesseract_binned = np.zeros((gridsize,gridsize,nwidthtrials,nDMtrials)) #stores output array as S/N for each dedispersion and width trial for every pixel
+    
+    print("Starting boxcar filtering with " + str(nwidthtrials) + " trials...",file=fout)
+    #PSF parameters
+    maxs = []
+    maxs2 = []
+    for w in range(nwidthtrials):
+        for d in range(nDMtrials):
+            image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_filtered[:,:,:,d],widthtrials[w],noiseth=noiseth) 
+            if d ==0:
+                maxs.append(image_tesseract_binned[15, 16,w,d])
+            else:
+                maxs2.append(image_tesseract_binned[15, 16,w,d])
+    print("Done!",file=fout)    
+
+    if plot:
+        plt.figure(figsize=(12,6))
+        plt.plot(widthtrials,maxs,'o-')
+        plt.plot(widthtrials,maxs2,'o-')
+        plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(5/np.arange(1,10)),color='red')
+        plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(np.arange(1,10)/5),color='blue')
+        plt.show()
+        
+
+
+    print("Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
+    #find candidates above SNR threshold
+    condition = (image_tesseract_binned>SNRthresh).flatten()
+    ncands = np.sum(condition)
+    canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize*gridsize*nDMtrials*nwidthtrials)[condition],(gridsize,gridsize,nwidthtrials,nDMtrials))#[1].shape
+    
+    canddecs = DEC_axis[canddec_idxs]
+    candras = RA_axis[candra_idxs]
+    candwids = widthtrials[candwid_idxs]
+    canddms = DM_trials[canddm_idxs]
+    candsnrs = image_tesseract_binned.flatten()[condition]
+    
+    candidxs = [(candra_idxs[i],canddec_idxs[i],candwid_idxs[i],canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
+    cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
+
+    #make a dictionary for easy plotting of results
+    canddict['ra_idxs'] = copy.deepcopy(candra_idxs)
+    canddict['dec_idxs'] = copy.deepcopy(canddec_idxs)
+    canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+    canddict['dm_idxs'] = copy.deepcopy(canddm_idxs)
+    canddict['ras'] = copy.deepcopy(candras)
+    canddict['decs'] = copy.deepcopy(canddecs)
+    canddict['wids'] = copy.deepcopy(candwids)
+    canddict['dms'] = copy.deepcopy(canddms)
+    canddict['snrs'] = copy.deepcopy(candsnrs)
+
+    print("Done! Found " + str(ncands) + " candidates",file=fout)
+    if output_file != "":
+        fout.close()
+    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered
+
+
+
+### *** DEPRECATED 3/20/2024
 #run search pipeline with desired DM, width trial range; output candidates to a csv? pkl? txt?
 #takes 4D cube (RA,DEC,TIME,FREQUENCY)
 def run_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,off=10,widthmode="gaussian",PSF=None,offpnoise=0.3,verbose=False,output_file=output_file):
@@ -511,6 +915,46 @@ def read_cands(fname):
     csvfile.close()
     return cands
 
+def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM_trials,widthtrials=widthtrials,output_dir=output_dir,show=True):
+    """
+    Makes updated diagnostic plots for search system
+    """
+    gridsize = len(RA_axis)
+    decs,ras,wids,dms=canddict['dec_idxs'],canddict['ra_idxs'],canddict['wid_idxs'],canddict['dm_idxs']#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
+    snrs = canddict['snrs']#imgsearched.flatten()[(imgsearched>2500).flatten()]
+
+
+    
+    plt.figure(figsize=(32,12))
+    plt.subplot(1,2,1)
+    plt.scatter(ras,decs,c=snrs,marker='o',s=snrs/10,cmap='jet',alpha=(snrs-np.min(snrs))/(2*np.max(snrs)-np.min(snrs)))
+    plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
+    plt.imshow(img.mean((2,3)),cmap='pink_r',aspect='auto')
+    plt.axvline(gridsize//2,color='grey')
+    plt.axhline(gridsize//2,color='grey')
+    plt.xlabel("RA index")
+    plt.ylabel("DEC index")
+    
+    plt.subplot(1,2,2)
+    plt.scatter(widthtrials[wids],
+                DM_trials[dms],c=snrs,marker='o',s=snrs,cmap='jet',alpha=(snrs-np.min(snrs))/(2*np.max(snrs)-np.min(snrs)))
+    plt.colorbar(label='S/N')
+    for i in widthtrials:
+        plt.axvline(i,color='grey',linestyle='--')
+    for i in DM_trials:
+        plt.axhline(i,color='grey',linestyle='--')
+    plt.xlim(0,np.max(widthtrials)*2)
+    plt.ylim(0,np.max(DM_trials)*10)
+    plt.xlabel("Width (Samples)")
+    plt.ylabel("DM (pc/cc)")
+    plt.savefig(output_dir + "diagnostic_RA_DEC.png")
+    if show:
+        plt.show()
+    else:
+        plt.close()
+    return
+
+#DEPRECATED 3/20/2024
 #make diagnostic plots
 def search_plots(cands_gaussian,cluster_cands_gaussian,DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,injected_cands_gaussian=None):
 

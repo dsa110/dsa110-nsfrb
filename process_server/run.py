@@ -184,12 +184,22 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose):
     RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
     DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
     nsamps = fullimg.image_tesseract.shape[2]
+    nchans = fullimg.image_tesseract.shape[3]
     time_axis = np.arange(nsamps)*sl.tsamp
+    canddict = dict()
 
     #print("starting process " + str(img_id) + "...")
-    fullimg.cands,fullimg.cluster_cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned = sl.run_search(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis)
+    fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned = sl.run_search(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=canddict,PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans))
     printlog("done",output_file=processfile)
     
+    #clustering TBD
+    fullimg.cluster_cands = fullimg.candidxs
+
+    #diagnostic plot
+    printlog("making diagnostic plot...",output_file=processfile,end='')
+    sl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,show=False)
+    printlog("done!",output_file=processfile)
+
     printlog("basic clustering in RA, DEC...",output_file=processfile,end='')
     fullimg.unique_cands = [(fullimg.cluster_cands[i][0],fullimg.cluster_cands[i][1],fullimg.cluster_cands[i][3]) for i in range(len(fullimg.cluster_cands))]
     fullimg.unique_cands = list(set(fullimg.unique_cands))
