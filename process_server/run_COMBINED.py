@@ -151,7 +151,7 @@ corraddrs = {'10.41.0.91' : 0, #sb00/corr03
             '10.41.0.82' : 14, #sb14/corr21
             '10.41.0.71' : 15, #sb15/corr22
             '10.41.0.182' : 0, #h23, placeholder
-            '10.41.0.94' : 0 #corr20
+            '10.42.0.115' : 0#'10.41.0.94' : 0 #corr20
 }
 
 dtypelookup = {1 : np.int8,
@@ -220,7 +220,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
 
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
@@ -233,8 +233,10 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose):
     canddict = dict()
 
     #print("starting process " + str(img_id) + "...")
-    fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=canddict,PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans))
-    printlog("done",output_file=processfile)
+    timing1 = time.time()
+    fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=canddict,PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft)
+   
+    printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
 
     #clustering TBD
@@ -349,9 +351,10 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
     parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
+    parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
     args = parser.parse_args()    
     
-    
+    printlog("USEFFT = " + str(args.usefft),output_file=processfile)
     #total expected number of bytes for each sub-band image
     if args.datasize%2 != 0:
         maxbytes = args.gridsize*args.gridsize*args.nsamps*(args.datasize-1) + args.headersize
@@ -530,7 +533,7 @@ def main():
         printlog(fullimg_array[idx].corrstatus,output_file=processfile)
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            future = executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose)
+            future = executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft)
             printlog(future.result(),output_file=processfile)
 
             #after finishes execution, remove from list by setting element to None

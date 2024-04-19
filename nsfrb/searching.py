@@ -311,7 +311,9 @@ def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsiz
         #img[16,16,500:500+wid,:] = snr/wid
         sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr#/np.sum(PSFimg[:,:,0,i])
         
-        
+        sourceimg[:,:,:int(loc*nsamps),:] = 0
+        sourceimg[:,:,int(loc*nsamps) + width:,:] = 0        
+
         sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.sum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
         noises.append(1/np.sum(PSFimg[:,:,0,i])/width/nchans)
 
@@ -418,7 +420,7 @@ def make_2D_PSF(gridsize=gridsize,ANTENNALONS=ANTENNALONS,ANTENNALATS=ANTENNALAT
 
 from scipy.signal import convolve2d
 from scipy.signal import correlate2d
-def matched_filter_space(image_tesseract,PSFimg):
+def matched_filter_space(image_tesseract,PSFimg,usefft=False):
     """
     Matched filter via convolution w/ DSA-110 core PSF
     """
@@ -428,12 +430,15 @@ def matched_filter_space(image_tesseract,PSFimg):
     nchans = image_tesseract.shape[3]
     for i in range(nsamps):
         for j in range(nchans):
-            image_tesseract_filtered[:,:,i,j] = convolve2d(image_tesseract[:,:,i,j],PSFimg[:,:,i,j],mode='same') #assume the PSF is already centered
+            if usefft:
+                image_tesseract_filtered[:,:,i,j] = np.fft.fftshift(np.fft.fftshift(image_tesseract[:,:,i,j])*np.fft.fftshift(PSFimg[:,:,i,j]))
+            else:
+                image_tesseract_filtered[:,:,i,j] = convolve2d(image_tesseract[:,:,i,j],PSFimg[:,:,i,j],mode='same') #assume the PSF is already centered
 
     return image_tesseract_filtered
     
     
-    np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
+    #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
 def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=5,plot=False):
@@ -592,7 +597,7 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis):
 
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
-                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=3,canddict=dict()):
+                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=3,canddict=dict(),usefft=False):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -629,7 +634,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
     #2D matched filter for each timestep and channel
     print("Spatial matched filtering with DSA PSF...",file=fout)
-    image_tesseract_filtered = matched_filter_space(image_tesseract_dedisp,PSF)
+    if usefft:
+        print("Using 2D FFT method...",file=fout)
+    image_tesseract_filtered = matched_filter_space(image_tesseract_dedisp,PSF,usefft=usefft)
     print("Done!",file=fout)
 
     #boxcar filter and get snr using rolled PSF --> gridsize x gridsize x width x DM (x TOA?)
@@ -927,7 +934,7 @@ def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM
     
     plt.figure(figsize=(32,12))
     plt.subplot(1,2,1)
-    plt.scatter(ras,decs,c=snrs,marker='o',s=snrs/10,cmap='jet',alpha=(snrs-np.min(snrs))/(2*np.max(snrs)-np.min(snrs)))
+    plt.scatter(ras,decs,c=snrs,marker='o',s=snrs/10,cmap='jet',alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
     plt.imshow(img.mean((2,3)),cmap='pink_r',aspect='auto')
     plt.axvline(gridsize//2,color='grey')
@@ -937,7 +944,7 @@ def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM
     
     plt.subplot(1,2,2)
     plt.scatter(widthtrials[wids],
-                DM_trials[dms],c=snrs,marker='o',s=snrs,cmap='jet',alpha=(snrs-np.min(snrs))/(2*np.max(snrs)-np.min(snrs)))
+                DM_trials[dms],c=snrs,marker='o',s=snrs,cmap='jet',alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.colorbar(label='S/N')
     for i in widthtrials:
         plt.axvline(i,color='grey',linestyle='--')
