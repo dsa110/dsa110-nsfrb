@@ -314,10 +314,10 @@ def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsiz
         sourceimg[:,:,:int(loc*nsamps),:] = 0
         sourceimg[:,:,int(loc*nsamps) + width:,:] = 0        
 
-        sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.sum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
-        noises.append(1/np.sum(PSFimg[:,:,0,i])/width/nchans)
+        sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
+        noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
 
-    
+    print(noises)
     if output_file != "":
         fout.close()
     return sourceimg
@@ -431,7 +431,7 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False):
     for i in range(nsamps):
         for j in range(nchans):
             if usefft:
-                image_tesseract_filtered[:,:,i,j] = np.fft.fftshift(np.fft.fftshift(image_tesseract[:,:,i,j])*np.fft.fftshift(PSFimg[:,:,i,j]))
+                image_tesseract_filtered[:,:,i,j] = np.abs(np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(np.fft.fft(image_tesseract[:,:,i,j]))*np.fft.fftshift(np.fft.fft(PSFimg[:,:,i,j])))))
             else:
                 image_tesseract_filtered[:,:,i,j] = convolve2d(image_tesseract[:,:,i,j],PSFimg[:,:,i,j],mode='same') #assume the PSF is already centered
 
@@ -441,14 +441,14 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False):
     #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
-def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=5,plot=False):
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plot=False):
     """
     alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
     """
     nsamps = image_tesseract_filtered_dm.shape[2]
     #ndms = image_tesseract.shape[3]
     gridsize = image_tesseract_filtered_dm.shape[0]
-    loc = gridsize//2
+    loc = nsamps//2
     
 
     #make a boxcar filter for time
@@ -465,14 +465,14 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=5,plot=F
     for i in range(gridsize):
         for j in range(gridsize):
             timeseries = image_tesseract_filtered_dm[i,j,:]
-            csig = np.convolve(timeseries,boxcar,'same')#/wid#/np.sum(boxcar)
+            csig = np.convolve(np.nan_to_num(timeseries,nan=0),boxcar,'same')#/wid#/np.sum(boxcar)
             peakidx = np.argmax(csig)
 
 
             #print(np.argmin(csig-np.max(csig)/2),nsamps-np.argmin(csig[::-1]-np.max(csig)/2))
             
             
-            s=np.nanstd(csig[csig<noiseth])#np.nanstd(np.concatenate([csig[:np.nanargmax(csig)-wid],csig[np.nanargmax(csig)+wid+1:]]))
+            s=np.nanstd(csig[csig<noiseth*np.nanmax(csig)])#np.nanstd(np.concatenate([csig[:np.nanargmax(csig)-wid],csig[np.nanargmax(csig)+wid+1:]]))
             noisemap[i,j] = s
 
             
@@ -490,6 +490,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=5,plot=F
                 
                 plt.subplot(1,4,1)
                 plt.plot(timeseries,color='grey',alpha=1)
+    
     if plot:
         plt.subplot(1,4,4)
         plt.hist(noisemap.flatten())
@@ -671,13 +672,23 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         print("Updating PSF...",file=fout)
         PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
 
+    #2D matched filter for each timestep and channel
+    print("Spatial matched filtering with DSA PSF...",file=fout)
+    if usefft:
+        print("Using 2D FFT method...",file=fout)
+    image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,usefft=usefft)
+    print("Done!",file=fout)
+    print("---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+
     #dedisperse --> gridsize x gridsize x time x DM
     nDMtrials = len(DM_trials)
     print("Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
     image_tesseract_dedisp = np.zeros((gridsize,gridsize,nsamps,nDMtrials)) #stores output array as dedispersion transform for every pixel
     for d in range(nDMtrials):
-        image_tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis)[0]
+        image_tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract_filtered,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis)[0]
     print(image_tesseract_dedisp.shape)
+    print("---> " + str(np.sum(np.isnan(image_tesseract_dedisp))),file=fout)
+
     """
     for i in range(gridsize):
         for j in range(gridsize):
@@ -686,12 +697,12 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     """
     print("Done!",file=fout) 
 
-    #2D matched filter for each timestep and channel
+    """#2D matched filter for each timestep and channel
     print("Spatial matched filtering with DSA PSF...",file=fout)
     if usefft:
         print("Using 2D FFT method...",file=fout)
     image_tesseract_filtered = matched_filter_space(image_tesseract_dedisp,PSF,usefft=usefft)
-    print("Done!",file=fout)
+    print("Done!",file=fout)"""
 
     #boxcar filter and get snr using rolled PSF --> gridsize x gridsize x width x DM (x TOA?)
     nwidthtrials = len(widthtrials)
@@ -703,12 +714,13 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     maxs2 = []
     for w in range(nwidthtrials):
         for d in range(nDMtrials):
-            image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_filtered[:,:,:,d],widthtrials[w],noiseth=noiseth) 
+            image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_dedisp[:,:,:,d],widthtrials[w],noiseth=noiseth) 
             if d ==0:
                 maxs.append(image_tesseract_binned[15, 16,w,d])
             else:
                 maxs2.append(image_tesseract_binned[15, 16,w,d])
     print("Done!",file=fout)    
+    print("---> " + str(np.sum(np.isnan(image_tesseract_binned))),file=fout)
 
     if plot:
         plt.figure(figsize=(12,6))
@@ -976,7 +988,7 @@ def read_cands(fname):
     csvfile.close()
     return cands
 
-def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM_trials,widthtrials=widthtrials,output_dir=output_dir,show=True):
+def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM_trials,widthtrials=widthtrials,output_dir=output_dir,show=True,vmax=1000,vmin=0,s100=100):
     """
     Makes updated diagnostic plots for search system
     """
@@ -986,11 +998,11 @@ def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM
 
 
     
-    plt.figure(figsize=(32,12))
+    plt.figure(figsize=(36,12))
     plt.subplot(1,2,1)
-    plt.scatter(ras,decs,c=snrs,marker='o',s=snrs/10,cmap='jet',alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    plt.scatter(ras,decs,c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
-    plt.imshow(img.mean((2,3)),cmap='pink_r',aspect='auto')
+    #plt.imshow(img.mean((2,3)),cmap='pink_r',aspect='auto')
     plt.axvline(gridsize//2,color='grey')
     plt.axhline(gridsize//2,color='grey')
     plt.xlabel("RA index")
@@ -998,7 +1010,7 @@ def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM
     
     plt.subplot(1,2,2)
     plt.scatter(widthtrials[wids],
-                DM_trials[dms],c=snrs,marker='o',s=snrs,cmap='jet',alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+                DM_trials[dms],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.colorbar(label='S/N')
     for i in widthtrials:
         plt.axvline(i,color='grey',linestyle='--')
