@@ -649,7 +649,7 @@ def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,outpu
 
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
-                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=3,canddict=dict(),usefft=False):
+                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=1e-2,canddict=dict(),usefft=False):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
