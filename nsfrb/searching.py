@@ -561,7 +561,58 @@ def snr_vs_RA_DEC(image_tesseract,boxcar,gridsize,plot=False,width=1,TMPCOORDS=[
 
 
 # Brute force dedispersion
-def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis):
+def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,output_file=""):
+    """
+    This function dedisperses a dynamic spectrum pixel grid of shape gridsize x gridsize x nsamps x nchans by brute force without accounting for edge effects
+    """
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    #get delay axis
+    neg_flag = DM < 0
+    DM = np.abs(DM)
+
+    #Delays
+    tdelays = DM*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
+    tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
+    tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
+    tdelays_frac = tdelays/tsamp - tdelays_idx_low
+    print("Trial DM: " + str(DM) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout,end="")
+    nchans = len(freq_axis)
+    nsamps = image_tesseract_point.shape[-2]
+    dedisp_timeseries_all = np.zeros(image_tesseract_point.shape[:-1])
+    dedisp_img = np.zeros(image_tesseract_point.shape)
+    #shift each channel
+    for k in range(nchans):
+        #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac);
+        if neg_flag:
+            padshape = tuple([(0,0)]*(len(dedisp_timeseries_all.shape)-1) + [(tdelays_idx_low[k],0)])
+            arrlow =  np.pad(image_tesseract_point[:,:,:,k],padshape,mode="constant",constant_values=0)[:,:,:nsamps]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+        else:
+            padshape = tuple([(0,0)]*(len(dedisp_timeseries_all.shape)-1) + [(0,tdelays_idx_low[k])])
+            arrlow =  np.pad(image_tesseract_point[:,:,:,k],padshape,mode="constant",constant_values=0)[:,:,tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+        print(padshape,file=fout)
+
+        if neg_flag:
+            padshape = tuple([(0,0)]*(len(dedisp_timeseries_all.shape)-1) + [(tdelays_idx_hi[k],0)])
+            arrhi =  np.pad(image_tesseract_point[:,:,:,k],padshape,mode="constant",constant_values=0)[:,:,:nsamps]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+        else:
+            padshape = tuple([(0,0)]*(len(dedisp_timeseries_all.shape)-1) + [(0,tdelays_idx_hi[k])])
+            arrhi =  np.pad(image_tesseract_point[:,:,:,k],padshape,mode="constant",constant_values=0)[:,:,tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+
+        print(padshape,file=fout)
+
+        dedisp_timeseries_all += arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+        dedisp_img[:,:,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+    print("Done!",file=fout)
+    if output_file != "":
+        fout.close()
+    return dedisp_timeseries_all,dedisp_img
+
+
+def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,output_file=""):
     """
     This function dedisperses a dynamic spectrum of shape nsamps x nchans by brute force without accounting for edge effects
     """
@@ -624,12 +675,15 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     nDMtrials = len(DM_trials)
     print("Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
     image_tesseract_dedisp = np.zeros((gridsize,gridsize,nsamps,nDMtrials)) #stores output array as dedispersion transform for every pixel
-    
-
+    for d in range(nDMtrials):
+        image_tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis)[0]
+    print(image_tesseract_dedisp.shape)
+    """
     for i in range(gridsize):
         for j in range(gridsize):
             for d in range(nDMtrials):
                 image_tesseract_dedisp[i,j,:,d] = dedisperse(image_tesseract[i,j,:,:],DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis)
+    """
     print("Done!",file=fout) 
 
     #2D matched filter for each timestep and channel
@@ -659,9 +713,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     if plot:
         plt.figure(figsize=(12,6))
         plt.plot(widthtrials,maxs,'o-')
-        plt.plot(widthtrials,maxs2,'o-')
-        plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(5/np.arange(1,10)),color='red')
-        plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(np.arange(1,10)/5),color='blue')
+        #plt.plot(widthtrials,maxs2,'o-')
+        #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(5/np.arange(1,10)),color='red')
+        #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(np.arange(1,10)/5),color='blue')
         plt.show()
         
 
