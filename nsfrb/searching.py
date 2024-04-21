@@ -13,7 +13,7 @@ import os
 from PIL import Image,ImageOps
 #from gen_dmtrials_copy import gen_dm
 
-
+from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 
@@ -87,7 +87,7 @@ freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 #width trials
 nwidths=1#4
-widthtrials =np.array([1]) #np.logspace(0,3,nwidths,base=2,dtype=int)
+widthtrials =np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
@@ -116,8 +116,9 @@ def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
     return dms
 minDM = 171
 maxDM = 4000
-DM_trials = np.array([0])#np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[5:17]
+DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 DM_trials = np.concatenate([[0],DM_trials])
+DM_trials = np.array([0,100])
 nDMtrials = len(DM_trials)
 
 #snr threshold
@@ -478,7 +479,8 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plo
             
 
             #print(np.nanmax(csig),s,np.nanmax(csig)/s)
-            image_tesseract_binned[i,j] = np.nanmax(csig)/s#/wid
+            if s == 0: image_tesseract_binned[i,j] = np.nan
+            else: image_tesseract_binned[i,j] = np.nanmax(csig)/s#/wid
             #print(np.nanargmax(csig))
             if plot:
                 plt.subplot(1,4,3)
@@ -998,7 +1000,7 @@ def search_plots_new(canddict,img,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=DM
 
 
     
-    plt.figure(figsize=(36,12))
+    plt.figure(figsize=(40,12))
     plt.subplot(1,2,1)
     plt.scatter(ras,decs,c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
@@ -1223,10 +1225,10 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=
                                                    constant_values=np.nan)
 
     #cut out subimage
-    minraidx = gridsize + ra_idx - subimgpix//2#np.max([ra_idx - subimgpix//2,0])
-    maxraidx = gridsize + ra_idx + subimgpix//2 + 1#np.min([ra_idx + subimgpix//2 + 1,gridsize-1])
-    mindecidx = gridsize + dec_idx - subimgpix//2#np.max([dec_idx - subimgpix//2,0])
-    maxdecidx = gridsize + dec_idx + subimgpix//2 + 1#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
+    minraidx = int(gridsize + ra_idx - subimgpix//2)#np.max([ra_idx - subimgpix//2,0])
+    maxraidx = int(gridsize + ra_idx + subimgpix//2 + 1)#np.min([ra_idx + subimgpix//2 + 1,gridsize-1])
+    mindecidx = int(gridsize + dec_idx - subimgpix//2)#np.max([dec_idx - subimgpix//2,0])
+    maxdecidx = int(gridsize + dec_idx + subimgpix//2 + 1)#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
 
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
     print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)
@@ -1249,9 +1251,8 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=
 
 
 #hdbscan clustering function; clusters in DM, width, RA, DEC space
-"""
 import hdbscan
-def hdbscan_cluster(cands,min_cluster_size=50,gridsize=gridsize,nDMtrials=nDMtrials,nwidths=nwidths,plot=False):
+def hdbscan_cluster(cands,min_cluster_size=50,gridsize=gridsize,nDMtrials=nDMtrials,nwidths=nwidths,dmt=DM_trials,wt=widthtrials,SNRthresh=SNRthresh,plot=False,show=False):
 
     print(str(len(cands)) + " candidates")
 
@@ -1306,11 +1307,11 @@ def hdbscan_cluster(cands,min_cluster_size=50,gridsize=gridsize,nDMtrials=nDMtri
     centroid_snrs = []
     for k in classnames:
         if k != -1:
-            centroid_ras.append(int(np.sum((snridxs*raidxs)[classes==k])/np.sum(snridxs[classes==k])))
-            centroid_decs.append(int(np.sum((snridxs*decidxs)[classes==k])/np.sum(snridxs[classes==k])))
-            centroid_dms.append(int(np.sum((snridxs*dmidxs)[classes==k])/np.sum(snridxs[classes==k])))
-            centroid_widths.append(int(np.sum((snridxs*widthidxs)[classes==k])/np.sum(snridxs[classes==k])))
-            centroid_snrs.append(np.sum((snridxs*snridxs)[classes==k])/np.sum(snridxs[classes==k]))
+            centroid_ras.append((np.nansum((snridxs*raidxs)[classes==k])/np.nansum(snridxs[classes==k])))
+            centroid_decs.append((np.nansum((snridxs*decidxs)[classes==k])/np.nansum(snridxs[classes==k])))
+            centroid_dms.append((np.nansum((snridxs*dmidxs)[classes==k])/np.nansum(snridxs[classes==k])))
+            centroid_widths.append((np.nansum((snridxs*widthidxs)[classes==k])/np.nansum(snridxs[classes==k])))
+            centroid_snrs.append(np.nansum((snridxs*snridxs)[classes==k])/np.nansum(snridxs[classes==k]))
             csvwriter.writerow([centroid_ras[-1],centroid_decs[-1],centroid_widths[-1],centroid_dms[-1],centroid_snrs[-1]])            
     fcsv.close()
     centroid_ras = np.array(centroid_ras)
@@ -1319,8 +1320,49 @@ def hdbscan_cluster(cands,min_cluster_size=50,gridsize=gridsize,nDMtrials=nDMtri
     centroid_widths = np.array(centroid_widths)
     centroid_snrs = np.array(centroid_snrs)
 
+    centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
 
     if plot:
+        cands_noninf = []
+        for i in cands:
+            if not np.isinf(i[-1]): cands_noninf.append(i)
+        
+        plt.figure(figsize=(40,12))
+        plt.subplot(121)
+        for i in range(-1,len(np.unique(classes))-int(-1 in classes)):
+            if i == -1:
+                plt.scatter(np.array(cands_noninf)[classes==i,0],np.array(cands_noninf)[classes==i,1],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Not Classified',color='grey')
+            else:
+                c=plt.plot(centroid_ras[i],centroid_decs[i],'x',markersize=50,markerfacecolor="none",markeredgewidth=4)
+                plt.scatter(np.array(cands_noninf)[classes==i,0],np.array(cands_noninf)[classes==i,1],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Class ' + str(i),c=c[0].get_color())
+
+        plt.xlim(0,32)
+        plt.ylim(0,32)
+        plt.xlabel("RA index")
+        plt.ylabel("DEC index")
+        plt.legend(loc='upper right')
+
+        plt.subplot(122)
+        wtinterp = interp1d(np.arange(len(wt)),wt,fill_value='extrapolate')
+        dmtinterp = interp1d(np.arange(len(dmt)),dmt,fill_value='extrapolate')
+        for i in range(-1,len(np.unique(classes))-int(-1 in classes)):
+            if i == -1:
+                plt.scatter(wt[np.array(cands_noninf,dtype=int)[classes==i,2]],dmt[np.array(cands_noninf,dtype=int)[classes==i,3]],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Not Classified',color='grey')
+            else:
+                c=plt.plot(int(wtinterp(centroid_widths[i])),int(dmtinterp(centroid_dms[i])),'x',markersize=50,markerfacecolor="none",markeredgewidth=4)
+                plt.scatter(wt[np.array(cands_noninf,dtype=int)[classes==i,2]],dmt[np.array(cands_noninf,dtype=int)[classes==i,3]],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Class ' + str(i),c=c[0].get_color())
+        plt.xlabel("Width (Samples)")
+        plt.ylabel("DM (pc/cc)")
+        plt.legend(loc='upper right',frameon=True)
+	
+
+        plt.savefig(output_dir + "hdbscan_cluster_plot.png")
+        if show:        
+            plt.show()
+        else:
+            plt.close()
+
+        """
         plt.figure(figsize=(24,24))
         ax = plt.subplot(projection="3d")
         for k in classnames:
@@ -1330,9 +1372,11 @@ def hdbscan_cluster(cands,min_cluster_size=50,gridsize=gridsize,nDMtrials=nDMtri
         if noisepoints > 0:
             c=ax.scatter(raidxs[classes==-1],decidxs[classes==-1],dmidxs[classes==-1],s=100*(2**widthidxs[classes==-1]),marker='o',alpha=0.1,color='grey')
 
-        plt.savefig(outdir + "hdbscan_cluster_plot.png")
-        plt.close()
+        plt.savefig(output_dir + "hdbscan_cluster_plot.png")
+        if show:	
+            plt.show()
+        else:
+            plt.close()
 
-
-    return classes,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
-"""
+        """
+    return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs

@@ -220,7 +220,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
 
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
@@ -239,15 +239,30 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft):
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
 
-    #clustering TBD
-    fullimg.cluster_cands = fullimg.candidxs
-  
     #only save if we find candidates
     if len(fullimg.candidxs)==0:
         printlog("No candidates found",output_file=processfile)
-        return fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
+        return fullimg.cands,fullimg.candidxs,len(fullimg.cands)
 
- 
+
+
+    #clustering with hdbscan
+    if cluster:
+        printlog("clustering with HDBSCAN...",output_file=processfile)
+
+        #prune candidates with infinite signal-to-noise for clustering
+        cands_noninf = []
+        for i in fullimg.candidxs:
+            if not np.isinf(i[-1]): cands_noninf.append(i)  
+
+        #clustering with hdbscan
+        classes,fullimg.cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = sl.hdbscan_cluster(cands_noninf,min_cluster_size=5,gridsize=gridsize,plot=True,show=False,SNRthresh=SNRthresh)
+        printlog("done, made " + str(len(fullimg.cluster_cands)) + " clusters",output_file=processfile)
+        printlog(classes,output_file=processfile)
+        printlog(fullimg.cluster_cands,output_file=processfile)
+    else:
+        fullimg.cluster_cands = fullimg.candidxs
+
     if len(fullimg.candidxs) > 0: 
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=processfile,end='')
@@ -264,7 +279,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft):
     printlog("obtaining image cutouts...",output_file=processfile,end='')
     fullimg.subimgs = np.zeros((len(fullimg.unique_cands),subimgpix,subimgpix,fullimg.image_tesseract_binned.shape[3]),dtype=np.float16)
     for i in range(len(fullimg.unique_cands)):
-        fullimg.subimgs[i,:,:,:] = sl.get_subimage(fullimg.image_tesseract_binned,fullimg.unique_cands[i][0],fullimg.unique_cands[i][1],save=False,subimgpix=subimgpix)[:,:,fullimg.unique_cands[i][2],:]
+        fullimg.subimgs[i,:,:,:] = sl.get_subimage(fullimg.image_tesseract_binned,fullimg.unique_cands[i][0],fullimg.unique_cands[i][1],save=False,subimgpix=subimgpix)[:,:,int(fullimg.unique_cands[i][2]),:]
 
     data_array = np.nan_to_num(fullimg.subimgs,nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
 
@@ -352,6 +367,7 @@ def main():
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
     parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
     parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
+    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
     args = parser.parse_args()    
     
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
@@ -533,7 +549,7 @@ def main():
         printlog(fullimg_array[idx].corrstatus,output_file=processfile)
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            future = executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft)
+            future = executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster)
             printlog(future.result(),output_file=processfile)
 
             #after finishes execution, remove from list by setting element to None

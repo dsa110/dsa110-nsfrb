@@ -11,6 +11,7 @@ from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images  
 from tqdm import tqdm 
 import time
+from scipy.stats import norm
 
 def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False):
     """
@@ -119,10 +120,17 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
         dirty_images_all = np.array(dirty_images_all)   
         # transposing to have the following shape (num_pix, num_pix, num_time_samples, num_channels)
         # Sending one sub-band at a time
+       
+        #pad with zeros and noise to test pipeline
+        dirty_images_all = dirty_images_all.transpose((2, 3, 0, 1))
+        dirty_images_all = np.pad(dirty_images_all,((0,0),(0,0),(11,12),(0,0)))
+        print(dirty_images_all.shape)
+        dirty_images_all += norm.rvs(loc=0,scale=np.nanmax(dirty_images_all)/2,size=dirty_images_all.shape)
+ 
         gridsize = 300
         for i in range(NUM_CHANNELS//AVERAGING_FACTOR):
             #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-            msg=send_data(time_start_isot, dirty_images_all.transpose((2, 3, 0, 1))[150-gridsize//2:150+gridsize//2,150-gridsize//2:150+gridsize//2,:,i] ,verbose=verbose_flag,retries=5,keepalive_time=10)
+            msg=send_data(time_start_isot, dirty_images_all[:,:,:,i] ,verbose=verbose_flag,retries=5,keepalive_time=10)
             if verbose_flag: print(msg)
             time.sleep(1)
 
