@@ -17,6 +17,7 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 
+
 fsize=45
 fsize2=35
 plt.rcParams.update({
@@ -50,6 +51,9 @@ Directory for output data
 f = open("../metadata.txt","r")
 cwd = f.read()[:-1]
 f.close()
+sys.path.append(cwd + "/") 
+from nsfrb.config import *
+
 
 output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
@@ -63,25 +67,25 @@ f.close()
 """
 Search parameters
 """
-tsamp = 130 #ms
-T = 3250 #ms
+#tsamp = 130 #ms
+#T = 3250 #ms
 nsamps = int(T/tsamp)
 
-fmax  = 1530 #MHz
-fmin = 1280 #MHz
-c = 3e8 #m/s
-fc = 1400 #MHz
-lambdac = (c/(fc*1e6)) #m
-nchans = 16 #16 coarse channels
-chanbw = (fmax-fmin)/nchans #MHz
-telescope_diameter = 4.65 #m
+#fmax  = 1530 #MHz
+#fmin = 1280 #MHz
+#c = 3e8 #m/s
+#fc = 1400 #MHz
+#lambdac = (c/(fc*1e6)) #m
+#nchans = 16 #16 coarse channels
+#chanbw = (fmax-fmin)/nchans #MHz
+#telescope_diameter = 4.65 #m
 
 
 #resolution parameters
-pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
-gridsize = 32#256
-RA_point = 0 #rad
-DEC_point = 0 #rad
+#pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
+#gridsize = 32#256
+#RA_point = 0 #rad
+#DEC_point = 0 #rad
 
 #create axes
 RA_axis = np.linspace(RA_point-pixsize*gridsize//2,RA_point+pixsize*gridsize//2,gridsize)
