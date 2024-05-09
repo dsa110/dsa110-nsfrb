@@ -47,10 +47,14 @@ Directory for output data
 """
 #output_dir = "/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 #output_dir = "./NSFRB_search_output/"
-output_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
-coordfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
-output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
-cand_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+f = open("../metadata.txt","r")
+cwd = f.read()[:-1]
+f.close()
+
+output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
+coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
+output_file = output_dir + "search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
+cand_dir = cwd + "/candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 f=open(output_file,"w")
 f.close()
 
@@ -161,7 +165,7 @@ def make_PSF_cube(gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False,output
     else:
         fout = sys.stdout
     #get pngs for a point source from Nikita's images
-    dirname = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"
+    dirname = cwd + "/simulations_and_classifications/src_examples/observation_2/images/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"
     pngs = os.listdir(dirname)
     sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
     freqs = []
@@ -239,7 +243,7 @@ def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsiz
     This function makes test images with finite width using Nikita's test pngs
     """
     
-    dirname = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"#testimgs_2024-03-18/"#{a}x{a}_images/"#src_examples/observation_1/images/".format(a=gridsize)
+    dirname = cwd + "/simulations_and_classifications/src_examples/observation_2/images/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"#testimgs_2024-03-18/"#{a}x{a}_images/"#src_examples/observation_1/images/".format(a=gridsize)
     pngs = os.listdir(dirname)
     sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
     freqs = []

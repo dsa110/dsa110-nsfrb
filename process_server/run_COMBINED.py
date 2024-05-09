@@ -18,8 +18,13 @@ from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from concurrent.futures import ProcessPoolExecutor
 
+f = open("../metadata.txt","r")
+cwd = f.read()[:-1]
+f.close()
+
+
 import sys
-sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 import csv
 import copy
 
@@ -50,7 +55,6 @@ plt.rcParams.update({
 This file runs the process server which receives data from the RX server and buffers it until data from all 16 channels 
 is received; then it starts the search pipeline
 """
-sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb import searching as sl
 from nsfrb import pipeline
 
@@ -58,12 +62,12 @@ from nsfrb import pipeline
 Directory for output data
 """
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
-pipestatusfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
-searchflagsfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
-output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
-processfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
-flagfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
-cand_dir = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
+searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
+output_file = cwd + "/tmpoutput/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
+processfile = cwd + "/process_server/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
+flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
+cand_dir = cwd + "/candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 """
 Arguments: data file
 """
@@ -362,7 +366,7 @@ def main():
 
     #arguments for classifier from classifier.py
     #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')
-    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default="/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
     parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)

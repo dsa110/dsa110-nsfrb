@@ -9,3 +9,7 @@ setup(name='dsa110-nsfrb',
 #      requirements=['seaborn', 'astropy', 'hdbscan', 'progress'],
 #      packages=['nsfrb'],
       zip_safe=False)
+
+#get local nsfrb directory
+import os
+os.system("pwd > metadata.txt")

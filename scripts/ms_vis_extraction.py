@@ -3,8 +3,13 @@ from casatools import table
 import numpy as np
 from astropy.time import Time
 import sys
-sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
-sys.path.append("/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+
+f = open("../metadata.txt","r")
+cwd = f.read()[:-1]
+f.close()
+
+sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
+sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE
 from nsfrb.imaging import uniform_image
 from nsfrb.TXclient import send_data  
@@ -29,7 +34,7 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
         None
     """
     tb = table()
-    tb.open('/home/ubuntu/nkosogor/2023-10-03_1459+716.ms')
+    tb.open('/media/ubuntu/ssd/sherman/code/CORR20BACKUP/ubuntu/nkosogor/2023-10-03_1459+716.ms')#'/home/ubuntu/nkosogor/2023-10-03_1459+716.ms')
 
     time_col = tb.getcol('TIME')  # Get the entire TIME column
     # TIME is in Modified Julian Date (MJD) in seconds
