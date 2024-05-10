@@ -17,10 +17,7 @@ The folder is structured as follows:
     - Visualization tools: Functions for displaying training images, plotting loss and accuracy graphs, and showing wrongly classified images for model evaluation.
     - Model saving and loading mechanisms: Demonstrates how to save trained model weights for later use and how to load them for inference. The `model_weights.pth` can be found in the current directory.
 
-- `classify.py`: This script includes:
-    - `NumpyImageCubeDataset`: A dataset class for efficiently loading and processing image cube batches. It supports dynamic transformations and preprocessing, including image resizing to a uniform dimension and nan-value handling.
-    - `EnhancedCNN`: The same as above.
-    - `classify_images`: A function designed for classifying images. It returns both binary predictions and their corresponding probabilities.
+
 
 
 ## Usage
@@ -29,3 +26,8 @@ To generate images, run the `generate_rfi_images.py` or `generate_source_images.
 
 ```bash
 python generate_rfi_images.py --num_observations 10 --dist_low 1000 --dist_high 100000 --zoom_pix 50
+```
+
+```bash
+python generate_source_images.py --dataset_dir /Users/nikita/dsa110-nsfrb/simulations_and_classifications/train_src --num_observations 1000 --zoom_pix 150 --noise_std_low 0.0 --noise_std_high 0.1 --spectral_index_low -0.0 --spectral_index_high 0.5
+```
