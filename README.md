@@ -8,6 +8,7 @@ Software requirements are listed in `requirements.txt`, and the module can be in
 python setup.py install
 ```
 
+<<<<<<< HEAD
 from the bash command line. dsa110-nsfrb contains four primary modules:
 - `nsfrb.imaging`: This file contains helper functions for imaging of fast visibility data. Radio images will be formed on each of 16 corr nodes that handle 15.6 MHz each. These will be sent to T4 (implemented on corr20) for combination and searching
 - `nsfrb.searching`: This file contains helper functions to search for NSFRBs in RA, Declination, DM, and pulse-width space. DM is searched up to 4000 pc/cc and pulse width up to 3.25 s (25 samples). Identified candidates are clustered in position then used to obtain 10x10 pixel cutouts (for all DM, pulse width trials) around the candidate.
@@ -22,8 +23,49 @@ from the bash command line. dsa110-nsfrb contains four primary modules:
 
 User-facing scripts are contained in the `scripts` directory, including commands to start the T4 server, send data via corr node clients, and run the search and classification systems. See `scripts/README.md`, `simulations_and_classifications/README.md` and `src/README.md` for details on exection. The simplest usage is to start the T4 search pipeline, which is done using the following commands:
 
+from the bash command line. The following sub-modules are defined:
+
+- `nsfrb': Helper functions used by the process server and imaging client to run the NSFRB pipeline.
+	- `imaging'
+	- `searching'
+	- `simulating'
+	- `classifying'
+	- `TXclient'
+	- `plotting'
+- `process_server': Scripts to run the T4 process server, which receives images over HTTP from each correlator node and runs the search and classification pipelines.
+	- `run_COMBINED'
+	- `run_poc_server'
+	- `kill_proc_server'
+	- `process_flags'
+	- `process_log'
+- `simulations_and_classifications': Scripts for simulating RFI and source images with the DSA-110 baseline coverage.
+	- `generate_rfi_images'
+	- `generate_source_images'
+	- `rfi_classification_pytorch.ipynb'
+- `scripts': Test scripts and jupyter notebooks
+	- `get_status'
+	- `ms_vis_extraction'
+	- `SearchAlgorithmTuning_V1.ipynb'
+	- `socket_client_test_POST/PUT'
+	- `run_search' [DEPRECATED]
+	- `run_classifier' [DEPRECATED]
+	- `run_NSFRB' [DEPRECATED]
+	- `kill_NSFRB' [DEPRECATED]
+- `src' [DEPRECATED]: C implementation of process server and imaging client
+- `tmpoutput': Log files for each stage of the NSFRB pipeline
+	- `pipe_log'
+	- `run_log'
+	- `search_log'
+- `candidates': Numpy files with image cutouts around each NSFRB candidate, and csv/txt files with candidate RA, DEC, pulse width, and DM.
+
+Other Files:
+
+- `DSA110_Station_Coordinates.csv': Locations of DSA-110 antennas
+- `metadata.txt': Metadata (including working directory) for internal use
+- `casa38nsfrb_env.yml': yaml file to create NSFRB Python environment. Run with:
+
 ```bash
-cd dsa110-nsfrb/scripts
-./run_search.sh | ./run_classifier.sh
+conda env create -f casa38nsfrb_env.yml
 ```
+
 This effort is conducted by Myles Sherman, Nikita Kosogorov, Casey Law, Vikram Ravi, Liam Connor, and the DSA-110 Team.
