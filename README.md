@@ -8,7 +8,7 @@ Software requirements are listed in `requirements.txt`, and the module can be in
 python setup.py install
 ```
 
-<<<<<<< HEAD
+
 from the bash command line. dsa110-nsfrb contains four primary modules:
 - `nsfrb.imaging`: This file contains helper functions for imaging of fast visibility data. Radio images will be formed on each of 16 corr nodes that handle 15.6 MHz each. These will be sent to T4 (implemented on corr20) for combination and searching
 - `nsfrb.searching`: This file contains helper functions to search for NSFRBs in RA, Declination, DM, and pulse-width space. DM is searched up to 4000 pc/cc and pulse width up to 3.25 s (25 samples). Identified candidates are clustered in position then used to obtain 10x10 pixel cutouts (for all DM, pulse width trials) around the candidate.
