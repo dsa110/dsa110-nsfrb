@@ -17,10 +17,7 @@ The folder is structured as follows:
     - Visualization tools: Functions for displaying training images, plotting loss and accuracy graphs, and showing wrongly classified images for model evaluation.
     - Model saving and loading mechanisms: Demonstrates how to save trained model weights for later use and how to load them for inference. The `model_weights.pth` can be found in the current directory.
 
-- `classify.py`: This script includes:
-    - `NumpyImageCubeDataset`: A dataset class for efficiently loading and processing image cube batches. It supports dynamic transformations and preprocessing, including image resizing to a uniform dimension and nan-value handling.
-    - `EnhancedCNN`: The same as above.
-    - `classify_images`: A function designed for classifying images. It returns both binary predictions and their corresponding probabilities.
+
 
 
 ## Usage
