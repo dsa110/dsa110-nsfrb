@@ -10,6 +10,9 @@ This folder defines sub-modules for the NSFRB pipeline, which consists of formin
 - `pipeline[DEPRECATED]': This module contains helper functions for managing data streaming among the imaging, searching and classification subsystems.
 - `simulating': This module contains helper functions for RFI and source simulation.
 - `classifying': This module contains functions to run and train the Convolutional Neural Network (CNN) used to identify RFI
+	- `NumpyImageCubeDataset`: A dataset class for loading and processing image cube batches. It supports dynamic transformations and preprocessing, including image resizing to a uniform dimension.
+    	- `EnhancedCNN`: Model architecture (see more details in `simulations_and_classifications`).
+    	- `classify_images`: A function designed for classifying images. It returns both binary predictions and their corresponding probabilities.
 - `TXclient': This module contains functions send image data over http from the correlator nodes to the T4 system
 - `plotting': This module contains plotting functions for UV baselines and dirty images
 - `config.py': This contains relevant parameters and constants for the NSFRB search
