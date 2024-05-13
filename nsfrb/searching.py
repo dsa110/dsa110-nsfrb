@@ -17,7 +17,7 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 
-
+from concurrent.futures import ProcessPoolExecutor, as_completed
 fsize=45
 fsize2=35
 plt.rcParams.update({
@@ -454,13 +454,20 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False):
     #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
-def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plot=False):
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plot=False,output_file=""):
     """
     alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
     """
+
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
     nsamps = image_tesseract_filtered_dm.shape[2]
     #ndms = image_tesseract.shape[3]
-    gridsize = image_tesseract_filtered_dm.shape[0]
+    gridsize_RA = image_tesseract_filtered_dm.shape[1]
+    gridsize_DEC = image_tesseract_filtered_dm.shape[0]
     loc = nsamps//2
     
 
@@ -473,10 +480,10 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plo
         plt.subplot(1,4,2)
         plt.plot(boxcar)
     #convolve for each timeseries; assume already normalized
-    image_tesseract_binned = np.zeros((gridsize,gridsize))
-    noisemap=np.zeros((gridsize,gridsize))
-    for i in range(gridsize):
-        for j in range(gridsize):
+    image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA))
+    noisemap=np.zeros((gridsize_DEC,gridsize_RA))
+    for i in range(gridsize_DEC):
+        for j in range(gridsize_RA):
             timeseries = image_tesseract_filtered_dm[i,j,:]
             csig = np.convolve(np.nan_to_num(timeseries,nan=0),boxcar,'same')#/wid#/np.sum(boxcar)
             peakidx = np.argmax(csig)
@@ -516,6 +523,9 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plo
         #plt.axvline(loc + wid,color='red')
         #plt.axhline(1000,color='red')
         plt.show()
+
+    if output_file != "":
+        fout.close()
     
     return image_tesseract_binned
 
@@ -663,7 +673,8 @@ def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,outpu
 
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
-                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=1e-2,canddict=dict(),usefft=False):
+                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=1e-2,canddict=dict(),usefft=False,
+                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -676,106 +687,169 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
     
     #get axis sizes
-    gridsize = len(RA_axis)
+    gridsize_RA = len(RA_axis)
+    gridsize_DEC = len(DEC_axis)
+    gridsize = gridsize_RA
     nsamps = len(time_axis)
     nchans = len(freq_axis)
 
+    if space_filter:
+        assert(gridsize_RA == gridsize_DEC)
+        #create PSF if the shape doesn't match
+        if PSF.shape != image_tesseract.shape:
+            print("Updating PSF...",file=fout)
+            PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
 
-    #create PSF if the shape doesn't match
-    if PSF.shape != image_tesseract.shape:
-        print("Updating PSF...",file=fout)
-        PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
-
-    #2D matched filter for each timestep and channel
-    print("Spatial matched filtering with DSA PSF...",file=fout)
-    if usefft:
-        print("Using 2D FFT method...",file=fout)
-    image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,usefft=usefft)
-    print("Done!",file=fout)
-    print("---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
-
-    #dedisperse --> gridsize x gridsize x time x DM
-    nDMtrials = len(DM_trials)
-    print("Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
-    image_tesseract_dedisp = np.zeros((gridsize,gridsize,nsamps,nDMtrials)) #stores output array as dedispersion transform for every pixel
-    for d in range(nDMtrials):
-        image_tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract_filtered,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis)[0]
-    print(image_tesseract_dedisp.shape)
-    print("---> " + str(np.sum(np.isnan(image_tesseract_dedisp))),file=fout)
-
-    """
-    for i in range(gridsize):
-        for j in range(gridsize):
-            for d in range(nDMtrials):
-                image_tesseract_dedisp[i,j,:,d] = dedisperse(image_tesseract[i,j,:,:],DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis)
-    """
-    print("Done!",file=fout) 
-
-    """#2D matched filter for each timestep and channel
-    print("Spatial matched filtering with DSA PSF...",file=fout)
-    if usefft:
-        print("Using 2D FFT method...",file=fout)
-    image_tesseract_filtered = matched_filter_space(image_tesseract_dedisp,PSF,usefft=usefft)
-    print("Done!",file=fout)"""
-
-    #boxcar filter and get snr using rolled PSF --> gridsize x gridsize x width x DM (x TOA?)
-    nwidthtrials = len(widthtrials)
-    image_tesseract_binned = np.zeros((gridsize,gridsize,nwidthtrials,nDMtrials)) #stores output array as S/N for each dedispersion and width trial for every pixel
+        #2D matched filter for each timestep and channel
+        print("Spatial matched filtering with DSA PSF...",file=fout)
+        if usefft:
+            print("Using 2D FFT method...",file=fout)
+        image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,usefft=usefft)
+        print("Done!",file=fout)
+        print("---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+    else: 
+        image_tesseract_filtered = image_tesseract
     
-    print("Starting boxcar filtering with " + str(nwidthtrials) + " trials...",file=fout)
-    #PSF parameters
-    maxs = []
-    maxs2 = []
-    for w in range(nwidthtrials):
-        for d in range(nDMtrials):
-            image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_dedisp[:,:,:,d],widthtrials[w],noiseth=noiseth) 
-            if d ==0:
-                maxs.append(image_tesseract_binned[15, 16,w,d])
-            else:
-                maxs2.append(image_tesseract_binned[15, 16,w,d])
-    print("Done!",file=fout)    
-    print("---> " + str(np.sum(np.isnan(image_tesseract_binned))),file=fout)
 
-    if plot:
-        plt.figure(figsize=(12,6))
-        plt.plot(widthtrials,maxs,'o-')
-        #plt.plot(widthtrials,maxs2,'o-')
-        #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(5/np.arange(1,10)),color='red')
-        #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(np.arange(1,10)/5),color='blue')
-        plt.show()
+    #use the concurrent futures package to search sub-images separately; we have to do this AFTER the spatial matched filter so that the PSF structure is suppressed
+    if multithreading: 
+        #initialize a pool of processes for concurent execution
+        maxProcesses = nrows*ncols
+        executor = ProcessPoolExecutor(maxProcesses) 
+
+        #submit a search task to the process pool for each subimage
+        assert(gridsize_DEC%nrows == 0) #gridsize must be divisible by number of rows and cols
+        assert(gridsize_RA%ncols == 0)
+        #nrows = ncols = int(np.sqrt(maxProcesses))
+        gridsize_DEC_i = int(gridsize_DEC//nrows)
+        gridsize_RA_i = int(gridsize_RA//ncols)
+        candidxs = []
+        cands = []
+        canddict['ra_idxs'] = np.array([],dtype=int)
+        canddict['dec_idxs'] = np.array([],dtype=int)
+        canddict['wid_idxs'] = np.array([],dtype=int)
+        canddict['dm_idxs'] = np.array([],dtype=int)
+        canddict['ras'] = np.array([])
+        canddict['decs'] = np.array([])
+        canddict['wids'] = np.array([])
+        canddict['dms'] = np.array([])
+        canddict['snrs'] = np.array([])
+
+        nDMtrials = len(DM_trials)
+        nwidthtrials = len(widthtrials)
+        image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))
+
+        print("Multi-processing with " + str(nrows) + " Rows, " + str(ncols) + " Cols",file=fout)
+        task_list = []
+        for i in range(nrows):#range(maxProcesses):
+            for j in range(ncols):
+                #define RA and DEC axes and sub-image
+                row = i#int(i%np.sqrt(maxProcesses))
+                col = j#int(i//np.sqrt(maxProcesses))
+                image_tesseract_filtered_i = image_tesseract_filtered[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i,col*gridsize_RA_i:(col+1)*gridsize_RA_i,:,:]
+                RA_axis_i = RA_axis[col*gridsize_RA_i:(col+1)*gridsize_RA_i]
+                DEC_axis_i = DEC_axis[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i]
+                print("---> Subimage " + str(i) + " (row=" + str(row) + ",col=" + str(col) + "), shape=" + str(image_tesseract_filtered_i.shape),file=fout)
+                print(output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",file=fout)
+            
+                #make new thread to search sub-image
+                task_list.append(executor.submit(run_search_new,
+                                    image_tesseract_filtered_i,
+                                    RA_axis_i,
+                                    DEC_axis_i,
+                                    time_axis,
+                                    freq_axis,
+                                    DM_trials,widthtrials,tsamp,SNRthresh,plot,
+                                    off,PSF,offpnoise,verbose,output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",noiseth,dict(),usefft,
+                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i))
+                
+        for future in as_completed(task_list):
+            print("---> Result " + str(i) + ":",file=fout)
+            candidxs_i,cands_i,image_tesseract_binned_i,image_tesseract_filtered_i,canddict_i = future.result()
+            
+            #save the binned image and candidates
+            candidxs = list(candidxs) + list(candidxs_i)
+            cands = list(cands) + list(cands_i)
+            image_tesseract_binned[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i,col*gridsize_RA_i:(col+1)*gridsize_RA_i,:,:] = image_tesseract_binned_i    
+
+            for k in canddict_i.keys():
+                canddict[k] = np.concatenate([canddict[k],canddict_i[k]])
+
+        #make a dictionary for easy plotting of results
+        ncands = len(cands)
+    else: #proceed normally
+
+
+        #dedisperse --> gridsize x gridsize x time x DM
+        nDMtrials = len(DM_trials)
+        print("Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
+        image_tesseract_dedisp = np.zeros((gridsize_DEC,gridsize_RA,nsamps,nDMtrials)) #stores output array as dedispersion transform for every pixel
+        for d in range(nDMtrials):
+            image_tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract_filtered,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis,output_file=output_file)[0]
+        print(image_tesseract_dedisp.shape)
+        print("---> " + str(np.sum(np.isnan(image_tesseract_dedisp))),file=fout)
+
+        print("Done!",file=fout) 
+
+
+        #boxcar filter and get snr using rolled PSF --> gridsize x gridsize x width x DM (x TOA?)
+        nwidthtrials = len(widthtrials)
+        image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials)) #stores output array as S/N for each dedispersion and width trial for every pixel
+    
+        print("Starting boxcar filtering with " + str(nwidthtrials) + " trials...",file=fout)
+        #PSF parameters
+        maxs = []
+        maxs2 = []
+        for w in range(nwidthtrials):
+            for d in range(nDMtrials):
+                image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_dedisp[:,:,:,d],widthtrials[w],noiseth=noiseth,output_file=output_file) 
+                if d ==0 and plot:
+                    maxs.append(image_tesseract_binned[15, 16,w,d])
+                elif plot:
+                    maxs2.append(image_tesseract_binned[15, 16,w,d])
+        print("Done!",file=fout)    
+        print("---> " + str(np.sum(np.isnan(image_tesseract_binned))),file=fout)
+
+        if plot:
+            plt.figure(figsize=(12,6))
+            plt.plot(widthtrials,maxs,'o-')
+            #plt.plot(widthtrials,maxs2,'o-')
+            #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(5/np.arange(1,10)),color='red')
+            #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(np.arange(1,10)/5),color='blue')
+            plt.show()
         
 
 
-    print("Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
-    #find candidates above SNR threshold
-    condition = (image_tesseract_binned>SNRthresh).flatten()
-    ncands = np.sum(condition)
-    canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize*gridsize*nDMtrials*nwidthtrials)[condition],(gridsize,gridsize,nwidthtrials,nDMtrials))#[1].shape
+        print("Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
+        #find candidates above SNR threshold
+        condition = (image_tesseract_binned>SNRthresh).flatten()
+        ncands = np.sum(condition)
+        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*nDMtrials*nwidthtrials)[condition],(gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))#[1].shape
     
-    canddecs = DEC_axis[canddec_idxs]
-    candras = RA_axis[candra_idxs]
-    candwids = widthtrials[candwid_idxs]
-    canddms = DM_trials[canddm_idxs]
-    candsnrs = image_tesseract_binned.flatten()[condition]
+        canddecs = DEC_axis[canddec_idxs]
+        candras = RA_axis[candra_idxs]
+        candwids = widthtrials[candwid_idxs]
+        canddms = DM_trials[canddm_idxs]
+        candsnrs = image_tesseract_binned.flatten()[condition]
     
-    candidxs = [(candra_idxs[i],canddec_idxs[i],candwid_idxs[i],canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
-    cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
+        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
+        cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
 
-    #make a dictionary for easy plotting of results
-    canddict['ra_idxs'] = copy.deepcopy(candra_idxs)
-    canddict['dec_idxs'] = copy.deepcopy(canddec_idxs)
-    canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
-    canddict['dm_idxs'] = copy.deepcopy(canddm_idxs)
-    canddict['ras'] = copy.deepcopy(candras)
-    canddict['decs'] = copy.deepcopy(canddecs)
-    canddict['wids'] = copy.deepcopy(candwids)
-    canddict['dms'] = copy.deepcopy(canddms)
-    canddict['snrs'] = copy.deepcopy(candsnrs)
+        #make a dictionary for easy plotting of results
+        canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
+        canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
+        canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+        canddict['dm_idxs'] = copy.deepcopy(canddm_idxs)
+        canddict['ras'] = copy.deepcopy(candras)
+        canddict['decs'] = copy.deepcopy(canddecs)
+        canddict['wids'] = copy.deepcopy(candwids)
+        canddict['dms'] = copy.deepcopy(canddms)
+        canddict['snrs'] = copy.deepcopy(candsnrs)
 
     print("Done! Found " + str(ncands) + " candidates",file=fout)
     if output_file != "":
         fout.close()
-    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered
+    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict
 
 
 

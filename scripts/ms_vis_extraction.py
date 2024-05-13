@@ -152,7 +152,7 @@ def main():
     parser.add_argument('--plot-dirty-images', action='store_true', default=False, help='Enable dirty images plotting')
     args = parser.parse_args()
 
-    process_data(args.num_time_samples, args.num_gulp, args.verbose, args.plot_uv_analysis, args.plot_dirty_images)
+    process_data(args.num_gulp, args.num_time_samples, args.verbose, args.plot_uv_analysis, args.plot_dirty_images)
 
 if __name__ == '__main__':
     main()
