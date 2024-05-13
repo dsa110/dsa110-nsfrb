@@ -36,6 +36,9 @@ Optional arguments are defined below:
 - `--headersize`: Number of bytes representing the header; note this varies depending on the data shape, default = 128
 - `--usefft`: Implement PSF spatial matched filter as a 2D FFT
 - `--cluster`: Enable clustering with HDBSCAN
+- `--multithreading`: Enable multithreading in search
+- `--nrows`: Number of rows to break image into if multithreading, default = 4 
+- `--ncols`: Number of columns to break image into if multithreading, default = 2 
 
 To kill process server:
 

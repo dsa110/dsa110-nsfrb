@@ -1,6 +1,7 @@
 name: casa38nsfrb
 channels:
   - pyviz
+  - pytorch
   - conda-forge
   - defaults
 dependencies:
@@ -32,6 +33,7 @@ dependencies:
   - cftime=1.5.0=py38hb5d20a5_0
   - cloudpickle=2.0.0=pyhd3eb1b0_0
   - colorcet=3.0.0=py38h06a4308_0
+  - cpuonly=2.0=0
   - curl=7.78.0=hea6ffbf_0
   - cycler=0.11.0=pyhd3eb1b0_0
   - cytoolz=0.11.0=py38h7b6447c_0
@@ -48,6 +50,8 @@ dependencies:
   - executing=0.8.3=pyhd3eb1b0_0
   - expat=2.4.4=h295c915_0
   - f2c=20160103=h14c3975_1001
+  - ffmpeg=4.3=hf484d3e_0
+  - filelock=3.13.1=py38h06a4308_0
   - flask=2.1.3=py38h06a4308_0
   - flask-compress=1.10.1=pyhd3eb1b0_0
   - fontconfig=2.13.1=h6c09931_0
@@ -55,6 +59,9 @@ dependencies:
   - fsspec=2022.11.0=pyhd8ed1ab_0
   - giflib=5.2.1=h7b6447c_0
   - glib=2.69.1=h4ff587b_1
+  - gmp=6.2.1=h295c915_3
+  - gmpy2=2.1.2=py38heeb90bb_0
+  - gnutls=3.6.15=he1e5248_0
   - gst-plugins-base=1.14.0=h8213a91_2
   - gstreamer=1.14.0=h28cd5cc_2
   - hdbscan=0.8.27=py38h5c078b8_0
@@ -84,6 +91,7 @@ dependencies:
   - jupyterlab_widgets=1.0.0=pyhd3eb1b0_1
   - kiwisolver=1.3.2=py38h295c915_0
   - krb5=1.19.2=hcc1bbae_0
+  - lame=3.100=h7b6447c_0
   - lazy-object-proxy=1.6.0=py38h27cfd23_0
   - lcms2=2.12=h3be6417_0
   - ld_impl_linux-64=2.35.1=h7274673_9
@@ -95,6 +103,8 @@ dependencies:
   - libgfortran-ng=7.5.0=ha8ba4b0_17
   - libgfortran4=7.5.0=ha8ba4b0_17
   - libgomp=9.3.0=h5101ec6_17
+  - libiconv=1.16=h7f8727e_2
+  - libidn2=2.3.2=h7f8727e_0
   - libllvm11=11.1.0=h3826bc1_1
   - libnetcdf=4.6.1=h2053bdc_4
   - libnghttp2=1.43.0=h812cca2_0
@@ -102,7 +112,9 @@ dependencies:
   - libsodium=1.0.18=h7b6447c_0
   - libssh2=1.9.0=ha56f1ee_6
   - libstdcxx-ng=9.3.0=hd4cf53a_17
+  - libtasn1=4.16.0=h27cfd23_0
   - libtiff=4.2.0=h85742a9_0
+  - libunistring=0.9.10=h27cfd23_0
   - libuuid=1.0.3=h7f8727e_2
   - libwebp=1.2.2=h55f646e_0
   - libwebp-base=1.2.2=h7f8727e_0
@@ -120,15 +132,19 @@ dependencies:
   - mkl_fft=1.3.1=py38hd3c417c_0
   - mkl_random=1.2.2=py38h51133e4_0
   - mock=4.0.3=py38h578d9bd_3
+  - mpc=1.1.0=h10f8cd9_1
+  - mpfr=4.0.2=hb69a4c5_1
   - munkres=1.1.4=py_0
   - nbclient=0.5.13=py38h06a4308_0
   - ncurses=6.3=h7f8727e_2
   - nest-asyncio=1.5.5=py38h06a4308_0
   - netcdf4=1.5.7=py38h0a24e14_0
+  - nettle=3.7.3=hbbd107a_1
   - notebook=6.4.12=py38h06a4308_0
   - numba=0.55.1=py38h51133e4_0
   - numexpr=2.8.1=py38h6abb31d_0
   - numpy-base=1.21.5=py38hf524024_1
+  - openh264=2.1.1=h4ff587b_0
   - openssl=1.1.1w=h7f8727e_0
   - pandas=1.4.1=py38h295c915_1
   - pandocfilters=1.5.0=pyhd3eb1b0_0
@@ -159,6 +175,8 @@ dependencies:
   - python-dateutil=2.8.2=pyhd3eb1b0_0
   - python-fastjsonschema=2.16.2=py38h06a4308_0
   - python_abi=3.8=2_cp38
+  - pytorch=2.0.1=py3.8_cpu_0
+  - pytorch-mutex=1.0=cpu
   - pyviz_comms=2.0.2=pyhd3eb1b0_0
   - pyyaml=6.0=py38h7f8727e_1
   - qt=5.9.7=h5867ecd_1
@@ -183,6 +201,8 @@ dependencies:
   - toml=0.10.2=pyhd3eb1b0_0
   - tomli=2.0.1=py38h06a4308_0
   - toolz=0.11.2=pyhd3eb1b0_0
+  - torchaudio=2.0.2=py38_cpu
+  - torchvision=0.15.2=py38_cpu
   - tqdm=4.64.0=py38h06a4308_0
   - typing_extensions=4.1.1=pyh06a4308_0
   - wcwidth=0.2.5=pyhd3eb1b0_0
@@ -240,7 +260,7 @@ dependencies:
     - blimpy==2.1.4
     - boto3==1.26.83
     - botocore==1.29.165
-    - burstfit==0.2.1+11.g48845da.dirty
+    - burstfit==0.2.1+10.g1aad5fa.dirty
     - cachelib==0.9.0
     - cachetools==5.3.1
     - caltechdata-api==1.4.3
@@ -249,8 +269,9 @@ dependencies:
     - casatasks==6.4.4.31
     - casatools==6.4.4.31
     - casjobs==0.0.2
+    - cchardet==2.1.7
     - celery==5.3.6
-    - certifi==2022.9.24
+    - certifi==2023.7.22
     - cfod==2021.6.4
     - channels==4.0.0
     - chardet==5.1.0
@@ -261,7 +282,7 @@ dependencies:
     - click-repl==0.3.0
     - codecov==2.1.12
     - coloredlogs==15.0.1
-    - comet==3.1.0
+    - comet==3.2.0rc0
     - commonmark==0.9.1
     - configobj==5.0.8
     - constantly==15.1.0
@@ -289,12 +310,13 @@ dependencies:
     - dsa110-antpos==v1.4.0-dirty
     - dsa110-calib==3.0.0+109.gfb3689c.dirty
     - dsa110-catalogs==0.2
-    - dsa110-event==0.7.0+9.geb0f25d.dirty
-    - dsa110-meridian-fs==1.5.7
+    - dsa110-event==0.6.7+dirty
+    - dsa110-meridian-fs==v1.5.7-dirty
     - dsa110-nsfrb==0.1.0
     - dsa110-pyutils==3.8.2+4.gb5ad0b5.dirty
     - dsa110-syshealth==0.1-10-ge2b6650-dirty
     - dsa110-t3==1.4.8+3.gce6270b
+    - dsa110-voltage-imaging==0.1.0+5.g56e5a7b.dirty
     - dustmaps==1.0.10
     - emcee==3.1.2
     - ephem==4.1.3
@@ -380,7 +402,7 @@ dependencies:
     - lmfit==1.2.2
     - lxml==4.9.1
     - mako==1.2.0
-    - markdown==3.3.6
+    - markdown==3.4.3
     - markdown-it-py==2.1.0
     - markupsafe==2.1.3
     - mastcasjobs==0.0.5
