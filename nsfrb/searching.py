@@ -241,7 +241,7 @@ def make_PSF_cube(gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False,output
 default_PSF = make_PSF_cube()
 
 
-def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False,DM=0):
+def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False,DM=0,output_file=""):
     #get pngs
     """
     This function makes test images with finite width using Nikita's test pngs
@@ -330,7 +330,6 @@ def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsiz
         sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
         noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
 
-    print(noises)
     if output_file != "":
         fout.close()
     return sourceimg
