@@ -39,7 +39,8 @@ Optional arguments are defined below:
 - `--multithreading`: Enable multithreading in search
 - `--nrows`: Number of rows to break image into if multithreading, default = 4 
 - `--ncols`: Number of columns to break image into if multithreading, default = 2 
-
+- `--threadDM` : Break DM trials among multiple threads
+ 
 To kill process server:
 
 ```bash

@@ -674,7 +674,7 @@ def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,outpu
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=1e-2,canddict=dict(),usefft=False,
-                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0):
+                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,threadDM=False):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -714,7 +714,8 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     #use the concurrent futures package to search sub-images separately; we have to do this AFTER the spatial matched filter so that the PSF structure is suppressed
     if multithreading: 
         #initialize a pool of processes for concurent execution
-        maxProcesses = nrows*ncols
+        if threadDM:maxProcesses = nrows*ncols*len(DM_trials)
+        else: maxProcesses = nrows*ncols
         executor = ProcessPoolExecutor(maxProcesses) 
 
         #submit a search task to the process pool for each subimage
@@ -752,8 +753,25 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                 print("---> Subimage " + str(i) + " (row=" + str(row) + ",col=" + str(col) + "), shape=" + str(image_tesseract_filtered_i.shape),file=fout)
                 print(output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",file=fout)
             
-                #make new thread to search sub-image
-                task_list.append(executor.submit(run_search_new,
+                if threadDM:
+                    for k in range(nDMtrials):
+                        #define sub-range of DM trials
+                        DM_trials_i = DM_trials[k:k+1]
+
+                        #make new thread to search sub-image
+                        task_list.append(executor.submit(run_search_new,
+                                    image_tesseract_filtered_i,
+                                    RA_axis_i,
+                                    DEC_axis_i,
+                                    time_axis,
+                                    freq_axis,
+                                    DM_trials_i,widthtrials,tsamp,SNRthresh,plot,
+                                    off,PSF,offpnoise,verbose,output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",noiseth,dict(),usefft,
+                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i))
+                
+                else:
+                    #make new thread to search sub-image
+                    task_list.append(executor.submit(run_search_new,
                                     image_tesseract_filtered_i,
                                     RA_axis_i,
                                     DEC_axis_i,
@@ -762,15 +780,19 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                     DM_trials,widthtrials,tsamp,SNRthresh,plot,
                                     off,PSF,offpnoise,verbose,output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",noiseth,dict(),usefft,
                                     False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i))
-                
+
+
         for future in as_completed(task_list):
             print("---> Result " + str(i) + ":",file=fout)
-            candidxs_i,cands_i,image_tesseract_binned_i,image_tesseract_filtered_i,canddict_i = future.result()
-            
+            candidxs_i,cands_i,image_tesseract_binned_i,image_tesseract_filtered_i,canddict_i,DM_trials_i = future.result()
+            if threadDM: subDMidx = np.argmin(np.abs(DM_trials_i[0] - DM_trials))
+
+
             #save the binned image and candidates
             candidxs = list(candidxs) + list(candidxs_i)
             cands = list(cands) + list(cands_i)
-            image_tesseract_binned[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i,col*gridsize_RA_i:(col+1)*gridsize_RA_i,:,:] = image_tesseract_binned_i    
+            if threadDM: image_tesseract_binned[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i,col*gridsize_RA_i:(col+1)*gridsize_RA_i,:,subDMidx:subDMidx+1] = image_tesseract_binned_i    
+            else: image_tesseract_binned[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i,col*gridsize_RA_i:(col+1)*gridsize_RA_i,:,:] = image_tesseract_binned_i
 
             for k in canddict_i.keys():
                 canddict[k] = np.concatenate([canddict[k],canddict_i[k]])
@@ -786,7 +808,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         image_tesseract_dedisp = np.zeros((gridsize_DEC,gridsize_RA,nsamps,nDMtrials)) #stores output array as dedispersion transform for every pixel
         for d in range(nDMtrials):
             image_tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract_filtered,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis,output_file=output_file)[0]
-        print(image_tesseract_dedisp.shape)
+        #print(image_tesseract_dedisp.shape)
         print("---> " + str(np.sum(np.isnan(image_tesseract_dedisp))),file=fout)
 
         print("Done!",file=fout) 
@@ -849,7 +871,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     print("Done! Found " + str(ncands) + " candidates",file=fout)
     if output_file != "":
         fout.close()
-    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict
+    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials
 
 
 

@@ -22,8 +22,8 @@ do
 	echo ">>>>>>>>>>>>>>>"
 
         echo ""
-        echo ">>>>>>>>>>>>>>> server_log.txt"
-        tail -$2 ../src/server_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/server_log.txt
+        echo ">>>>>>>>>>>>>>> error_log.txt"
+        tail -$2 ../tmpoutput/error_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/server_log.txt
         echo ">>>>>>>>>>>>>>>"
 
 
