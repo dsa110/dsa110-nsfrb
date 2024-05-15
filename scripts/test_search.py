@@ -42,10 +42,17 @@ def test_1(img,PSF,
         SNRthresh,
         gridsize,
         nsamps,
-        nchans,verbose):
+        nchans,verbose,usefft=False,multithreading=False,threadDM=False):
     """
-    Run search pipeline without multithreading or FFT or clustering
+    Run search pipeline 
     """
+    if not (usefft or multithreading): print("Testing Baseline Search Pipeline...",end="")
+    elif usefft and not multithreading: print("Testing Search Pipeline with FFT implementation...",end="")
+    elif multithreading and (not threadDM) and (not usefft): print("Testing Search Pipeline with Multithreading (No DM Threading)...",end="")
+    elif multithreading and threadDM and (not usefft): print("Testing Search Pipeline with Multithreading Implementation and DM Threading...",end="")
+    elif usefft and multithreading and (not threadDM): print("Testing Search Pipeline with FFT and Multithreading (No DM Threading)...",end="")
+    elif usefft and multithreading and threadDM: print("Testing Search Pipeline with FFT and Multithreading Implementation and DM Threading...",end="")
+
     RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
     DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
     time_axis = np.arange(nsamps)*sl.tsamp
@@ -54,13 +61,123 @@ def test_1(img,PSF,
     candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                                                                                     time_axis=time_axis,canddict=dict(),
                                                                                                     PSF=PSF,output_file=ofile,
-                                                                                                    usefft=False,multithreading=False)
+                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM)
                                                                                                     
     """
-    ADD ASSERTIONS HERE
+    ASSERTIONS
     """
+    assert(image_tesseract_searched.shape == (gridsize,gridsize,len(sl.widthtrials),len(sl.DM_trials)))
+    assert(image_tesseract_binned.shape == (gridsize,gridsize,nsamps,nchans))
+    assert(type(candidxs) == list)
+    assert(type(cands) == list)
+    assert(len(candidxs) == len(cands))
+    for k in canddict.keys():
+        assert(len(canddict[k]) == len(candidxs))
     print("Passed!")                     
     return
+
+
+def test_2(img,PSF,
+        gridsize,
+        nsamps,
+        nchans,verbose,usefft=False,multithreading=False,threadDM=False):
+    """
+    Run search pipeline with low SNR threshold
+    """
+
+    if not (usefft or multithreading): print("Testing Baseline Search Pipeline with low SNR threshold...",end="")
+    elif usefft and not multithreading: print("Testing Search Pipeline with FFT implementation with low SNR threshold...",end="")
+    elif multithreading and (not threadDM) and (not usefft): print("Testing Search Pipeline with Multithreading (No DM Threading) with low SNR threshold...",end="")
+    elif multithreading and threadDM and (not usefft): print("Testing Search Pipeline with Multithreading Implementation and DM Threading with low SNR threshold...",end="")
+    elif usefft and multithreading and (not threadDM): print("Testing Search Pipeline with FFT and Multithreading (No DM Threading) with low SNR threshold...",end="")
+    elif usefft and multithreading and threadDM: print("Testing Search Pipeline with FFT and Multithreading Implementation and DM Threading with low SNR threshold...",end="")
+
+
+
+    RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
+    DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
+    time_axis = np.arange(nsamps)*sl.tsamp
+    if verbose: ofile = ""
+    else: ofile = sl.output_file
+    SNRthresh = 0
+    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
+                                                                                                    time_axis=time_axis,canddict=dict(),
+                                                                                                    PSF=PSF,output_file=ofile,
+                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM)
+    """
+    ASSERTIONS
+    """
+    assert(image_tesseract_searched.shape == (gridsize,gridsize,len(sl.widthtrials),len(sl.DM_trials)))
+    assert(image_tesseract_binned.shape == (gridsize,gridsize,nsamps,nchans))
+    assert(type(candidxs) == list)
+    assert(type(cands) == list)
+    assert(len(candidxs) == len(cands))
+    for k in canddict.keys():
+        assert(len(canddict[k]) == len(candidxs))
+    assert(len(candidxs) == gridsize*gridsize*len(sl.widthtrials)*len(sl.DM_trials)) #check that all positions, DMs, widths are recovered 
+    assert(len(candidxs[0]) == 5) #RA, DEC, width, DM,SNR
+    assert(len(cands[0]) == 5) #RA, DEC, width, DM, SNR
+    assert(np.all(canddict['ras'] == RA_axis[canddict['ra_idxs']]))
+    assert(np.all(canddict['decs'] == DEC_axis[canddict['dec_idxs']]))
+    assert(np.all(canddict['wids'] == sl.widthtrials[canddict['wid_idxs']]))
+    assert(np.all(canddict['dms'] == sl.DM_trials[canddict['dm_idxs']]))
+    assert(np.all(np.array([candidxs[i][0] for i in range(len(candidxs))]) == canddict['ra_idxs']))
+    assert(np.all(np.array([candidxs[i][1] for i in range(len(candidxs))]) == canddict['dec_idxs']))
+    assert(np.all(np.array([candidxs[i][2] for i in range(len(candidxs))]) == canddict['wid_idxs']))
+    assert(np.all(np.array([candidxs[i][3] for i in range(len(candidxs))]) == canddict['dm_idxs']))
+    assert(np.all(np.array([cands[i][0] for i in range(len(cands))]) == canddict['ras']))
+    assert(np.all(np.array([cands[i][1] for i in range(len(cands))]) == canddict['decs']))
+    assert(np.all(np.array([cands[i][2] for i in range(len(cands))]) == canddict['wids']))
+    assert(np.all(np.array([cands[i][3] for i in range(len(cands))]) == canddict['dms']))
+    assert(np.all(np.array([cands[i][4] for i in range(len(cands))]) == np.array([candidxs[i][4] for i in range(len(candidxs))])))
+    assert(np.all(np.array([cands[i][4] for i in range(len(cands))]) == np.array([image_tesseract_searched[candidxs[i][1],candidxs[i][0],candidxs[i][2],candidxs[i][3]] for i in range(len(cands))])))
+    print("Passed!")
+    return
+
+
+def test_3(img,PSF,
+        SNRthresh,
+        gridsize,
+        nsamps,
+        nchans,verbose,usefft=False,multithreading=False,threadDM=False):
+    """
+    Run search pipeline with high SNR threshold
+    """
+    
+    if not (usefft or multithreading): print("Testing Baseline Search Pipeline with high SNR threshold...",end="")
+    elif usefft and not multithreading: print("Testing Search Pipeline with FFT implementation with high SNR threshold...",end="")
+    elif multithreading and (not threadDM) and (not usefft): print("Testing Search Pipeline with Multithreading (No DM Threading) with high SNR threshold...",end="")
+    elif multithreading and threadDM and (not usefft): print("Testing Search Pipeline with Multithreading Implementation and DM Threading with high SNR threshold...",end="")
+    elif usefft and multithreading and (not threadDM): print("Testing Search Pipeline with FFT and Multithreading (No DM Threading) with high SNR threshold...",end="")
+    elif usefft and multithreading and threadDM: print("Testing Search Pipeline with FFT and Multithreading Implementation and DM Threading with high SNR threshold...",end="")
+
+
+    
+    RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
+    DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
+    time_axis = np.arange(nsamps)*sl.tsamp
+    if verbose: ofile = ""
+    else: ofile = sl.output_file
+    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
+                                                                                                    time_axis=time_axis,canddict=dict(),
+                                                                                                    PSF=PSF,output_file=ofile,
+                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM)
+    """
+    ASSERTIONS
+    """
+    assert(image_tesseract_searched.shape == (gridsize,gridsize,len(sl.widthtrials),len(sl.DM_trials)))
+    assert(image_tesseract_binned.shape == (gridsize,gridsize,nsamps,nchans))
+    assert(type(candidxs) == list)
+    assert(type(cands) == list)
+    assert(len(candidxs) == len(cands))
+    for k in canddict.keys():
+        assert(len(canddict[k]) == len(candidxs))
+    assert(len(candidxs) == 0)
+    assert(len(cands) == 0)
+    assert(np.all(image_tesseract_searched <= SNRthresh))
+    print("Passed!")
+    return
+
 
 
 def main():
@@ -86,14 +203,38 @@ def main():
     #create a test image and PSF
     if args.verbose: ofile = ""
     else: ofile = sl.output_file
+    print("Creating test images and PSF...",end="")
     PSFimg = sl.make_PSF_cube(gridsize=args.gridsize,nsamps=args.nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=args.gridsize,nsamps=args.nsamps,DM=0,output_file=ofile)
-    
+    print("Done!")
 
     #TESTING
-    test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose)
+    if args.run_unit_tests:
+        #regular implementation
+        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose)
+        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose)
+        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose)
 
+        #with FFT
+        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True)
+        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True)
+        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True)
 
+        #with multithreading
+        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True)
+        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True)
+        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True)
+        
+        #with multithreading and DM threading
+        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True,threadDM=True)
+        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True,threadDM=True)
+        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True,threadDM=True)
+
+        #with FFT, multithreading, and DM threading
+        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
+        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
+        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
+    return
 
 if __name__=="__main__":
     main()

@@ -443,7 +443,7 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False):
     for i in range(nsamps):
         for j in range(nchans):
             if usefft:
-                image_tesseract_filtered[:,:,i,j] = np.abs(np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(np.fft.fft(image_tesseract[:,:,i,j]))*np.fft.fftshift(np.fft.fft(PSFimg[:,:,i,j])))))
+                image_tesseract_filtered[:,:,i,j] =  np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fft2(image_tesseract[:,:,i,j])*np.fft.fft2(PSFimg[:,:,i,j]))))#np.abs(np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(np.fft.fft(image_tesseract[:,:,i,j]))*np.fft.fftshift(np.fft.fft(PSFimg[:,:,i,j])))))
             else:
                 image_tesseract_filtered[:,:,i,j] = convolve2d(image_tesseract[:,:,i,j],PSFimg[:,:,i,j],mode='same') #assume the PSF is already centered
 
@@ -673,7 +673,7 @@ def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,outpu
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=1e-2,canddict=dict(),usefft=False,
-                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,threadDM=False):
+                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,threadDM=False):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -766,7 +766,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                     freq_axis,
                                     DM_trials_i,widthtrials,tsamp,SNRthresh,plot,
                                     off,PSF,offpnoise,verbose,output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",noiseth,dict(),usefft,
-                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i))
+                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i,k,False))
                 
                 else:
                     #make new thread to search sub-image
@@ -778,13 +778,13 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                     freq_axis,
                                     DM_trials,widthtrials,tsamp,SNRthresh,plot,
                                     off,PSF,offpnoise,verbose,output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",noiseth,dict(),usefft,
-                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i))
+                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i,0,False))
 
 
         for future in as_completed(task_list):
             print("---> Result " + str(i) + ":",file=fout)
             candidxs_i,cands_i,image_tesseract_binned_i,image_tesseract_filtered_i,canddict_i,DM_trials_i = future.result()
-            if threadDM: subDMidx = np.argmin(np.abs(DM_trials_i[0] - DM_trials))
+            if threadDM: subDMidx = list(DM_trials).index(DM_trials_i[0])#np.argmin(np.abs(DM_trials_i[0] - DM_trials))
 
 
             #save the binned image and candidates
@@ -853,14 +853,14 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         canddms = DM_trials[canddm_idxs]
         candsnrs = image_tesseract_binned.flatten()[condition]
     
-        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
+        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
         cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
 
         #make a dictionary for easy plotting of results
         canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
         canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
         canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
-        canddict['dm_idxs'] = copy.deepcopy(canddm_idxs)
+        canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
         canddict['ras'] = copy.deepcopy(candras)
         canddict['decs'] = copy.deepcopy(canddecs)
         canddict['wids'] = copy.deepcopy(candwids)
