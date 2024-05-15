@@ -9,3 +9,4 @@ torch==2.1.2
 torchvision==0.16.2
 Pillow==10.2.0
 casatools==6.4.4.31
+pytest==7.0.1
