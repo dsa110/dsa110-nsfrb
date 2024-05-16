@@ -488,7 +488,7 @@ def main():
         try:
             assert(totalbytes>=maxbytes)
         except AssertionError as exc:
-            printlog("Invalid data size, " + str(totalbytes) + " received when expected at least " + str(maxbytes+maxbytesaddr) + ": " + str(exc),output_file=processfile)
+            printlog("Invalid data size, " + str(totalbytes) + " received when expected at least " + str(maxbytes) + ": " + str(exc),output_file=processfile)
             printlog("Setting truncated data size flag...",output_file=processfile,end='')
             pflag = set_pflag_loc("datasize_error")
             if pflag == None:

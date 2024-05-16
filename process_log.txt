@@ -1,4 +1,0 @@
--bash: ./run_proc_server: No such file or directory
--bash: ./run_proc_server: No such file or directory
--bash: ./run_proc_server: No such file or directory
--bash: ./run_proc_server: No such file or directory

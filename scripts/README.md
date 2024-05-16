@@ -26,15 +26,6 @@ The folder is structured as follows:
 
 - `test_search.py`: This script runs unit tests for the search pipeline.
 
-Note the following scripts and folders are DEPRECATED as of 2024-05-10 and are pending deletion in a later version:
-
-- `script_warnings`
-- `script_flags`
-- `run_NSFRB`
-- `kill_NSFRB`
-- `run_classifier`
-- `run_search`
-
 ## Usage
 
 To run the imaging test script:
