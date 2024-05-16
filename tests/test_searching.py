@@ -38,7 +38,7 @@ This script runs a series of unit tests to verify the NSFRB search pipeline
 """
 
 
-def test_1(img,PSF,
+def base_test(img,PSF,
         SNRthresh,
         gridsize,
         nsamps,
@@ -77,7 +77,7 @@ def test_1(img,PSF,
     return
 
 
-def test_2(img,PSF,
+def lowSNR_test(img,PSF,
         gridsize,
         nsamps,
         nchans,verbose,usefft=False,multithreading=False,threadDM=False):
@@ -135,7 +135,7 @@ def test_2(img,PSF,
     return
 
 
-def test_3(img,PSF,
+def highSNR_test(img,PSF,
         SNRthresh,
         gridsize,
         nsamps,
@@ -180,6 +180,107 @@ def test_3(img,PSF,
 
 
 
+
+#regular implementation
+def test_regular_implementation():
+
+
+    SNRthresh = 3000
+    gridsize = 32
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+    
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose)
+    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose)
+    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose)
+
+    return
+
+
+
+#FFT implementation
+def test_FFT_implementation():
+
+
+    SNRthresh = 3000
+    gridsize = 32
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,usefft=True)
+    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,usefft=True)
+    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,usefft=True)
+
+    return
+
+#multithreading implementation
+def test_multithreading_implementation():
+
+    SNRthresh = 3000
+    gridsize = 32
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,multithreading=True)
+    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,multithreading=True)
+    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,multithreading=True)
+    
+    return
+
+
+#multithreading and DM threading
+def test_mulithreading_with_DM_threading():
+    SNRthresh = 3000
+    gridsize = 32
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True)
+    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True)
+    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True)
+
+    return
+
+#FFT, multithreading, DM threading
+def test_FFT_and_multithreading_with_DM_threading():
+    SNRthresh = 3000
+    gridsize = 32
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True,usefft=True)
+    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True,usefft=True)
+    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True,usefft=True)
+
+    return
+
+
+"""
 def main():
     #argument parsing
     parser = argparse.ArgumentParser()
@@ -235,6 +336,7 @@ def main():
         test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
         test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
     return
-
+"""
 if __name__=="__main__":
-    main()
+    pytest.main()
+
