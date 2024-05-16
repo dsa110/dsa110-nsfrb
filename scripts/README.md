@@ -24,8 +24,6 @@ The folder is structured as follows:
 - `socket_client_test_PUT.sh`: This script uses curl (https://curl.se/) to take an input datafile and send using an http PUT command to the T4 server. 
 - `socket_client_test_POST.sh` [deprecated] : This script uses curl (https://curl.se/) to take an input datafile and send using an http POST command to the T4 server. This script has been replaced by the more reliable and efficient `socket_client_test_PUT.sh`.
 
-- `test_search.py`: This script runs unit tests for the search pipeline.
-
 ## Usage
 
 To run the imaging test script:
@@ -40,8 +38,3 @@ To monitor the log files:
 ./get_status.sh [wait_time] [num_lines]
 ```
 
-To run all unit tests for the search pipeline with 300x300 images:
-
-```bash
-python test_search.py --run_unit_tests
-```

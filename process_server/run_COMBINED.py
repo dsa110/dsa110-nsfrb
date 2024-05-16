@@ -272,7 +272,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     if len(fullimg.candidxs) > 0: 
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=processfile,end='')
-        sl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,show=False)
+        sl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,output_dir=sl.output_dir,show=False)
         printlog("done!",output_file=processfile)
 
     

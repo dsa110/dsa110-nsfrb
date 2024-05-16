@@ -112,3 +112,43 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.savefig(pdf_filename)
     else:
         plt.show()
+
+
+def search_plots_new(canddict,img,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100):
+    """
+    Makes updated diagnostic plots for search system
+    """
+    gridsize = len(RA_axis)
+    decs,ras,wids,dms=canddict['dec_idxs'],canddict['ra_idxs'],canddict['wid_idxs'],canddict['dm_idxs']#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
+    snrs = canddict['snrs']#imgsearched.flatten()[(imgsearched>2500).flatten()]
+
+
+
+    plt.figure(figsize=(40,12))
+    plt.subplot(1,2,1)
+    plt.scatter(ras,decs,c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
+    #plt.imshow(img.mean((2,3)),cmap='pink_r',aspect='auto')
+    plt.axvline(gridsize//2,color='grey')
+    plt.axhline(gridsize//2,color='grey')
+    plt.xlabel("RA index")
+    plt.ylabel("DEC index")
+
+    plt.subplot(1,2,2)
+    plt.scatter(widthtrials[wids],
+                DM_trials[dms],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    plt.colorbar(label='S/N')
+    for i in widthtrials:
+        plt.axvline(i,color='grey',linestyle='--')
+    for i in DM_trials:
+        plt.axhline(i,color='grey',linestyle='--')
+    plt.xlim(0,np.max(widthtrials)*2)
+    plt.ylim(0,np.max(DM_trials)*10)
+    plt.xlabel("Width (Samples)")
+    plt.ylabel("DM (pc/cc)")
+    plt.savefig(output_dir + "diagnostic_RA_DEC.png")
+    if show:
+        plt.show()
+    else:
+        plt.close()
+    return
