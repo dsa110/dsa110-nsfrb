@@ -6,7 +6,8 @@
 
 Instructions for running tests for the `dsa110-nsfrb` repository:
 1. `imaging.py`: Handles imaging functions.
-2. `classifying.py`: Deals with the classification of images.
+2. `searching.py`: Contains helpers for dedispersion and matched filter searching.
+3. `classifying.py`: Deals with the classification of images.
 
 The tests are organized in the `tests` directory and can be executed using `pytest`. Ensure `pytest` is installed and execute the tests inside the `tests` directory.
 
@@ -24,7 +25,15 @@ To run the tests, navigate to the `tests` directory and execute the following co
 
    This will execute the tests for the `imaging.py` module. You should see output indicating that all tests have passed.
 
-2. **Run Classifying Tests**
+2. **Run Searching Tests**
+
+   ```sh
+   python test_searching.py
+   ```
+
+   This will execute the tests for the `searching.py` module. You should see output indicating that all tests have passed.
+
+3. **Run Classifying Tests**
 
    ```sh
    pytest test_classifying.py
@@ -45,8 +54,12 @@ To run the tests, navigate to the `tests` directory and execute the following co
 - **Test Uniform Image with Delta Visibility**: Ensures that a delta function in the visibility domain produces an approximately uniform image.
 - **Test Uniform Image with Constant Visibility**: Ensures that constant visibility produces an image with a peak at the center.
 
+2. Searching Tests (`test_searching.py`):
+- **Test Baseline Search**: Runs search with baseline parameters (no FFTs, no multithreading)
+- **Test FFT Search**: Runs search with FFT spatial matched filtering
+- **Test Multithreading Search**: Runs search with FFT and multithreading using concurrent.futures module
 
-2. Classifying Tests (`test_classifying.py`):
+3. Classifying Tests (`test_classifying.py`):
 
 - **Test Numpy Image Cube Dataset**: Verifies the custom dataset for loading image cubes.
 - **Test Enhanced CNN**: Ensures the Enhanced CNN model produces the correct output shape.

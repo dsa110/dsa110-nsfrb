@@ -1,8 +1,0 @@
-cmake_minimum_required(VERSION 3.5)
-project(NSFRB_server)
-add_executable(run_server run_server.c)
-add_executable(socket_subclient_test_V3.out socket_subclient_test_V3.c)
-add_executable(simpletestclient.out simpletestclient.c)
-target_link_libraries(run_server m)
-target_link_libraries(socket_subclient_test_V3.out m)
-target_link_libraries(simpletestclient.out m)

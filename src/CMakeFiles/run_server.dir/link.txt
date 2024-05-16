@@ -1,1 +1,0 @@
-/usr/bin/cc     CMakeFiles/run_server.dir/run_server.c.o  -o run_server -lm 

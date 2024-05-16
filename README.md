@@ -36,7 +36,6 @@ from the bash command line. The following sub-modules are defined:
 	- `run_classifier` [DEPRECATED]
 	- `run_NSFRB` [DEPRECATED]
 	- `kill_NSFRB` [DEPRECATED]
-- `src` [DEPRECATED]: C implementation of process server and imaging client
 - `tmpoutput`: Log files for each stage of the NSFRB pipeline
 	- `pipe_log`
 	- `run_log`

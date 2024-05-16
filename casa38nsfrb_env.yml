@@ -260,7 +260,7 @@ dependencies:
     - blimpy==2.1.4
     - boto3==1.26.83
     - botocore==1.29.165
-    - burstfit==0.2.1+10.g1aad5fa.dirty
+    - burstfit==0.2.1-6-g1a8a603-dirty
     - cachelib==0.9.0
     - cachetools==5.3.1
     - caltechdata-api==1.4.3
@@ -271,7 +271,7 @@ dependencies:
     - casjobs==0.0.2
     - cchardet==2.1.7
     - celery==5.3.6
-    - certifi==2023.7.22
+    - certifi==2022.9.24
     - cfod==2021.6.4
     - channels==4.0.0
     - chardet==5.1.0
@@ -310,7 +310,7 @@ dependencies:
     - dsa110-antpos==v1.4.0-dirty
     - dsa110-calib==3.0.0+109.gfb3689c.dirty
     - dsa110-catalogs==0.2
-    - dsa110-event==0.6.7+dirty
+    - dsa110-event==0.6.3-1-ge688981
     - dsa110-meridian-fs==v1.5.7-dirty
     - dsa110-nsfrb==0.1.0
     - dsa110-pyutils==3.8.2+4.gb5ad0b5.dirty
@@ -402,7 +402,7 @@ dependencies:
     - lmfit==1.2.2
     - lxml==4.9.1
     - mako==1.2.0
-    - markdown==3.4.3
+    - markdown==3.3.6
     - markdown-it-py==2.1.0
     - markupsafe==2.1.3
     - mastcasjobs==0.0.5
@@ -569,7 +569,7 @@ dependencies:
     - websocket-client==1.7.0
     - websockets==10.4
     - werkzeug==2.3.6
-    - wheel==0.41.0
+    - wheel==0.37.1
     - whitenoise==6.6.0
     - widgetsnbextension==4.0.10
     - wrapt==1.15.0
