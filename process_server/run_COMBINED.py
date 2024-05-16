@@ -351,6 +351,15 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     return fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
 
+def future_callback(future):
+    """
+    This function prints the result once a thread finishes processing an image
+
+    """
+    printlog("****Thread Completed****",output_file=processfile)
+    printlog(future.result(),output_file=processfile)
+    printlog("************************",output_file=processfile)
+    return
 
 def main():
     #redirect stderr
@@ -416,7 +425,8 @@ def main():
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
     executor = ProcessPoolExecutor(args.maxProcesses)
-   
+    task_list = []
+
     while True: # want to keep accepting connections
         printlog("accepting connection...",output_file=processfile,end='')
         clientSocket,address = servSockD.accept()
@@ -563,14 +573,20 @@ def main():
         printlog(fullimg_array[idx].corrstatus,output_file=processfile)
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            future = executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM)
-            printlog(future.result(),output_file=processfile)
-
+            printlog("Submitting new task for image " + str(idx),output_file=processfile)
+            task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM))
+            
+            #printlog(future.result(),output_file=processfile)
+            task_list[-1].add_done_callback(future_callback)
             #after finishes execution, remove from list by setting element to None
             fullimg_array[idx] = None
-            
+    
+
+        
+
         #sys.stdout.flush()
+    executor.shutdown()
     clientSocket.close()
 
 
