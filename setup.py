@@ -13,3 +13,14 @@ setup(name='dsa110-nsfrb',
 #get local nsfrb directory
 import os
 os.system("pwd > metadata.txt")
+
+#make logfile directory outside of git repo
+os.system("mkdir ../dsa110-nsfrb-logfiles")
+logfiles = ["error_log.txt",
+            "pipe_log.txt",
+            "run_log.txt",
+            "search_log.txt",
+            "process_log.txt"]
+for l in logfiles:
+    os.system("touch ../dsa110-nsfrb-logfiles/" + l)
+    os.system("> ../dsa110-nsfrb-logfiles/" + l)

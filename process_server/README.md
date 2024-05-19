@@ -7,7 +7,6 @@ This folder contains scripts to execute the persistent process server, which rec
 - `run_COMBINED.py`: Python implementation of process server; uses HTTP to receive data and `concurrent.futures` module to multithread.
 - `run_proc_server`: Bash executable script that calls `run_COMBINED.py` so it can be run in the background
 - `kill_proc_server`: Bash executable script that kills process server while in the background
-- `process_log.txt`: Log file 
 - `process_flags.txt`: 8-bit flag storing the receipt status of each HTTP request; this is sent back to the client to prompt a re-send if needed
 
 ## Usage

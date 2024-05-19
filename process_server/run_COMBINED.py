@@ -57,18 +57,18 @@ is received; then it starts the search pipeline
 """
 from nsfrb import searching as sl
 from nsfrb import pipeline
-
+from nsfrb import plotting as pl
 """s
 Directory for output data
 """
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
-output_file = cwd + "/tmpoutput/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
-processfile = cwd + "/process_server/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
+output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
+processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
 cand_dir = cwd + "/candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
-error_file = cwd + "/tmpoutput/error_log.txt"
+error_file = cwd + "-logfiles/error_log.txt"
 """
 Arguments: data file
 """
@@ -272,7 +272,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     if len(fullimg.candidxs) > 0: 
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=processfile,end='')
-        sl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,output_dir=sl.output_dir,show=False)
+        pl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,output_dir=cand_dir,show=False)
         printlog("done!",output_file=processfile)
 
     
