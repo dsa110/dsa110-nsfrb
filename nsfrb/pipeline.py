@@ -2,7 +2,11 @@ import sys
 import numpy as np
 import os
 
-output_file = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
+f = open("../metadata.txt","r")
+cwd = f.read()[:-1]
+f.close()
+
+output_file = cwd + "/tmpoutput/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
 f=open(output_file,"w")
 f.close()
 
@@ -131,7 +135,33 @@ def pipeout(arr,output_file=output_file):
 
 
 
+##defines function to set flags for process server
+pflagdict = dict()
+pflagdict['parse_error'] = 1
+pflagdict['datasize_error'] = 2
+pflagdict['shape_error'] = 4
+pflagdict['invalid'] = 8
+pflagdict['all'] = 15
+flagfile = "/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
+def set_pflag(flag=None,on=True,reset=False):
+    if (flag != None) and (not (flag in pflagdict.keys())): return None
+    
+    with open(flagfile,"r") as flagfileio:
+        pflags = int(flagfileio.read()) 
+        flagfileio.close()
+    if (flag==None) and (not reset):
+        return pflags 
 
+    #make sure the invalid flag is unset
+    pflags = pflags & ~pflagdict['invalid']
+
+    if reset: pflags = 8
+    elif on: pflags = pflags | pflagdict[flag]
+    else: pflags = pflags & ~pflagdict[flag]
+    with open(flagfile,"w") as flagfileio:
+        flagfileio.write(str(int(pflags)))
+        flagfileio.close()
+    return pflags
 
     
 
