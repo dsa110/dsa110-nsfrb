@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#test
 cwd=$(cat ../metadata.txt)
 
 while :
