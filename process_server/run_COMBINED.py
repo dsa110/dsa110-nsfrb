@@ -226,7 +226,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
 
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
@@ -240,7 +240,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     #print("starting process " + str(img_id) + "...")
     timing1 = time.time()
-    fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM)
+    fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise)
    
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
@@ -391,6 +391,7 @@ def main():
     parser.add_argument('--nrows',type=int,help='Number of rows to break image into if multithreading, default = 4',default=4)
     parser.add_argument('--ncols',type=int,help='Number of columns to break image into if multithreading, default = 2',default=2)
     parser.add_argument('--threadDM',action='store_true',help='Break DM trials among multiple threads')
+    parser.add_argument('--samenoise',action='store_true',help='Assume the noise in each pixel is the same')
     args = parser.parse_args()    
     
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
@@ -575,7 +576,7 @@ def main():
             #submit a search task to the process pool
             printlog("Submitting new task for image " + str(idx),output_file=processfile)
             task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM))
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(future_callback)

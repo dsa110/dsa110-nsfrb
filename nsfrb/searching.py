@@ -95,7 +95,7 @@ freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 #width trials
 nwidths=1#4
-widthtrials =np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
+widthtrials =np.array([1])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
@@ -126,7 +126,7 @@ minDM = 171
 maxDM = 4000
 DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 DM_trials = np.concatenate([[0],DM_trials])
-DM_trials = np.array([0,100])
+DM_trials = np.array([0])#np.array([0,100])
 nDMtrials = len(DM_trials)
 
 #snr threshold
@@ -360,7 +360,7 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False):
     #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
-def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plot=False,output_file=""):
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,samenoise=False,plot=False,output_file=""):
     """
     alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
     """
@@ -388,6 +388,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plo
     #convolve for each timeseries; assume already normalized
     image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA))
     noisemap=np.zeros((gridsize_DEC,gridsize_RA))
+    
     for i in range(gridsize_DEC):
         for j in range(gridsize_RA):
             timeseries = image_tesseract_filtered_dm[i,j,:]
@@ -395,17 +396,18 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plo
             peakidx = np.argmax(csig)
 
 
-            #print(np.argmin(csig-np.max(csig)/2),nsamps-np.argmin(csig[::-1]-np.max(csig)/2))
             
-            
-            s=np.nanstd(csig[csig<noiseth*np.nanmax(csig)])#np.nanstd(np.concatenate([csig[:np.nanargmax(csig)-wid],csig[np.nanargmax(csig)+wid+1:]]))
+            #off-pulse mean and standard deviation 
+            if not samenoise or (i == 0 and j == 0):
+                s=np.nanstd(csig[csig<noiseth*np.nanmax(csig)])#np.nanstd(np.concatenate([csig[:np.nanargmax(csig)-wid],csig[np.nanargmax(csig)+wid+1:]]))
+            mn=np.nanmedian(csig[csig<noiseth*np.nanmax(csig)])
             noisemap[i,j] = s
 
             
 
             #print(np.nanmax(csig),s,np.nanmax(csig)/s)
             if s == 0: image_tesseract_binned[i,j] = np.nan
-            else: image_tesseract_binned[i,j] = np.nanmax(csig)/s#/wid
+            else: image_tesseract_binned[i,j] = np.nanmax(csig - mn)/s#/wid
             #print(np.nanargmax(csig))
             if plot:
                 plt.subplot(1,4,3)
@@ -418,6 +420,9 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,plo
                 plt.subplot(1,4,1)
                 plt.plot(timeseries,color='grey',alpha=1)
     
+    #TMP: save noise statistics
+    #np.save("noisestats.npy",noisemap)
+
     if plot:
         plt.subplot(1,4,4)
         plt.hist(noisemap.flatten())
@@ -526,7 +531,7 @@ def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,outpu
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=1e-2,canddict=dict(),usefft=False,
-                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,threadDM=False):
+                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,threadDM=False,samenoise=False):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -621,7 +626,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                     freq_axis,
                                     DM_trials_i,widthtrials,tsamp,SNRthresh,plot,
                                     off,PSF,offpnoise,verbose,output_file,noiseth,dict(),usefft,
-                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i,k,False))
+                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i,k,False,samenoise))
                 
                 else:
                     #make new thread to search sub-image
@@ -633,7 +638,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                     freq_axis,
                                     DM_trials,widthtrials,tsamp,SNRthresh,plot,
                                     off,PSF,offpnoise,verbose,output_file,noiseth,dict(),usefft,
-                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i,0,False))
+                                    False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i,0,False,samenoise))
 
 
         for future in as_completed(task_list):
@@ -678,7 +683,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         maxs2 = []
         for w in range(nwidthtrials):
             for d in range(nDMtrials):
-                image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_dedisp[:,:,:,d],widthtrials[w],noiseth=noiseth,output_file=output_file) 
+                image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_dedisp[:,:,:,d],widthtrials[w],noiseth=noiseth,output_file=output_file,samenoise=samenoise) 
                 if d ==0 and plot:
                     maxs.append(image_tesseract_binned[15, 16,w,d])
                 elif plot:
