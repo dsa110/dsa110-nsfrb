@@ -638,15 +638,15 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
         for future in as_completed(task_list):
             print("---> Result " + str(i) + ":",file=fout)
-            candidxs_i,cands_i,image_tesseract_binned_i,image_tesseract_filtered_i,canddict_i,DM_trials_i = future.result()
-            if threadDM: subDMidx = list(DM_trials).index(DM_trials_i[0])#np.argmin(np.abs(DM_trials_i[0] - DM_trials))
+            candidxs_i,cands_i,image_tesseract_binned_i,image_tesseract_filtered_i,canddict_i,DM_trials_i,raidx_offset_i,decidx_offset_i,dm_offset_i = future.result()
+            #if threadDM: subDMidx = list(DM_trials).index(DM_trials_i[0])#np.argmin(np.abs(DM_trials_i[0] - DM_trials))
 
 
             #save the binned image and candidates
             candidxs = list(candidxs) + list(candidxs_i)
             cands = list(cands) + list(cands_i)
-            if threadDM: image_tesseract_binned[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i,col*gridsize_RA_i:(col+1)*gridsize_RA_i,:,subDMidx:subDMidx+1] = image_tesseract_binned_i    
-            else: image_tesseract_binned[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i,col*gridsize_RA_i:(col+1)*gridsize_RA_i,:,:] = image_tesseract_binned_i
+            if threadDM: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,dm_offset_i:dm_offset_i+1] = image_tesseract_binned_i    
+            else: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,:] = image_tesseract_binned_i
 
             for k in canddict_i.keys():
                 canddict[k] = np.concatenate([canddict[k],canddict_i[k]])
@@ -725,7 +725,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     print(printprefix +"Done! Found " + str(ncands) + " candidates",file=fout)
     if output_file != "":
         fout.close()
-    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials
+    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset
 
 
 
