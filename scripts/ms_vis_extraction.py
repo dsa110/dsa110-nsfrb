@@ -34,7 +34,7 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
         None
     """
     tb = table()
-    tb.open('/media/ubuntu/ssd/sherman/code/CORR20BACKUP/ubuntu/nkosogor/2023-10-03_1459+716.ms')#'/home/ubuntu/nkosogor/2023-10-03_1459+716.ms')
+    tb.open('/home/ubuntu/msherman_nsfrb/test_data/2023-10-03_1459+716.ms')#'/media/ubuntu/ssd/sherman/code/CORR20BACKUP/ubuntu/nkosogor/2023-10-03_1459+716.ms')#'/home/ubuntu/nkosogor/2023-10-03_1459+716.ms')
 
     time_col = tb.getcol('TIME')  # Get the entire TIME column
     # TIME is in Modified Julian Date (MJD) in seconds

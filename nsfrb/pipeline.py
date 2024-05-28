@@ -6,7 +6,7 @@ f = open("../metadata.txt","r")
 cwd = f.read()[:-1]
 f.close()
 
-output_file = cwd + "/tmpoutput/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
+output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
 f=open(output_file,"w")
 f.close()
 

@@ -58,7 +58,7 @@ def base_test(img,PSF,
     time_axis = np.arange(nsamps)*sl.tsamp
     if verbose: ofile = ""
     else: ofile = sl.output_file
-    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
+    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                                                                                     time_axis=time_axis,canddict=dict(),
                                                                                                     PSF=PSF,output_file=ofile,
                                                                                                     usefft=usefft,multithreading=multithreading,threadDM=threadDM)
@@ -100,7 +100,7 @@ def lowSNR_test(img,PSF,
     if verbose: ofile = ""
     else: ofile = sl.output_file
     SNRthresh = 0
-    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
+    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                                                                                     time_axis=time_axis,canddict=dict(),
                                                                                                     PSF=PSF,output_file=ofile,
                                                                                                     usefft=usefft,multithreading=multithreading,threadDM=threadDM)
@@ -158,7 +158,7 @@ def highSNR_test(img,PSF,
     time_axis = np.arange(nsamps)*sl.tsamp
     if verbose: ofile = ""
     else: ofile = sl.output_file
-    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
+    candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                                                                                     time_axis=time_axis,canddict=dict(),
                                                                                                     PSF=PSF,output_file=ofile,
                                                                                                     usefft=usefft,multithreading=multithreading,threadDM=threadDM)

@@ -57,18 +57,18 @@ is received; then it starts the search pipeline
 """
 from nsfrb import searching as sl
 from nsfrb import pipeline
-
+from nsfrb import plotting as pl
 """s
 Directory for output data
 """
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
-output_file = cwd + "/tmpoutput/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
-processfile = cwd + "/process_server/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
+output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
+processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
 cand_dir = cwd + "/candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
-error_file = cwd + "/tmpoutput/error_log.txt"
+error_file = cwd + "-logfiles/error_log.txt"
 """
 Arguments: data file
 """
@@ -157,7 +157,9 @@ corraddrs = {'10.41.0.91' : 0, #sb00/corr03
             '10.41.0.71' : 15, #sb15/corr22
             '10.41.0.5' : 0, #182' : 0, #h23, placeholder
             '10.42.0.115' : 0,#'10.41.0.94' : 0 #corr20
-            '10.42.0.232' : 0
+            '10.42.0.232' : 0,
+            '10.41.0.254' : 0, #h24
+            '10.42.0.228' : 0
 }
 
 dtypelookup = {1 : np.int8,
@@ -226,7 +228,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
 
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
@@ -240,7 +242,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     #print("starting process " + str(img_id) + "...")
     timing1 = time.time()
-    fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM)
+    fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise)
    
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
@@ -272,7 +274,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     if len(fullimg.candidxs) > 0: 
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=processfile,end='')
-        sl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,output_dir=sl.output_dir,show=False)
+        pl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,output_dir=cand_dir,show=False)
         printlog("done!",output_file=processfile)
 
     
@@ -391,6 +393,7 @@ def main():
     parser.add_argument('--nrows',type=int,help='Number of rows to break image into if multithreading, default = 4',default=4)
     parser.add_argument('--ncols',type=int,help='Number of columns to break image into if multithreading, default = 2',default=2)
     parser.add_argument('--threadDM',action='store_true',help='Break DM trials among multiple threads')
+    parser.add_argument('--samenoise',action='store_true',help='Assume the noise in each pixel is the same')
     args = parser.parse_args()    
     
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
@@ -575,7 +578,7 @@ def main():
             #submit a search task to the process pool
             printlog("Submitting new task for image " + str(idx),output_file=processfile)
             task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM))
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(future_callback)
