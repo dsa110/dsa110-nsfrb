@@ -288,11 +288,12 @@ if __name__=="__main__":
     ETCD.add_watch('/cmd/nsfrbvis', populate_queue)#lambda etcd_dict: populate_queue(etcd_dict, hdf5dir=NSFRBHDF5DIR))
 
 
-
-    ETCD.put_dict(f"/cmd/nsfrbvis",
+    #tell etcd that files are available
+    for corr in CORRLIST:
+        ETCD.put_dict(f"/cmd/nsfrbvis",
             {
                 "cmd":"rsync",
-                "val":{"hostname":'h04',
+                "val":{"hostname":corr,
                         "filename":"/home/ubuntu/nsfrb/*hdf5"}
             }
         )
@@ -396,7 +397,7 @@ if __name__=="__main__":
                 ETCD.put_dict(
                     '/cmd/nsfrbvis',
                     {
-                        'cmd': 'copy',
+                        'cmd': 'image',
                         'val': {
                             'calname': calname_fromq,
                             'flist': flist_fromq
