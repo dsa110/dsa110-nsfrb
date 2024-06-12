@@ -32,6 +32,7 @@ CAL_CONF = CONF.get('cal')
 MFS_CONF = CONF.get('fringe')
 CORRLIST = list(CORR_CONF['ch0'].keys())
 CORRLIST = [CORRLIST[i][6:] for i in range(len(CORRLIST))]
+CORRLIST[4] = 'hh07'
 print(CORRLIST)
 NCORR = len(CORRLIST)
 CALTIME = CAL_CONF['caltime_minutes']*u.min
@@ -285,19 +286,20 @@ if __name__=="__main__":
     #ETCD.add_watch('/cmd/cal', populate_queue)
 
     #Add a new watch for nsfrbvis key?
-    ETCD.add_watch('/cmd/nsfrbvis', populate_queue)#lambda etcd_dict: populate_queue(etcd_dict, hdf5dir=NSFRBHDF5DIR))
+    ETCD.add_watch('/cmd/nsfrb', populate_queue)#lambda etcd_dict: populate_queue(etcd_dict, hdf5dir=NSFRBHDF5DIR))
 
 
     #tell etcd that files are available
+    """
     for corr in CORRLIST:
-        ETCD.put_dict(f"/cmd/nsfrbvis",
+        ETCD.put_dict(f"/cmd/nsfrb",
             {
                 "cmd":"rsync",
                 "val":{"hostname":corr,
                         "filename":"/home/ubuntu/nsfrb/*hdf5"}
             }
         )
-
+    """
     # Start all threads
     for name, pinfo in processes.items():
         for i in range(pinfo['nthreads']):
@@ -314,6 +316,7 @@ if __name__=="__main__":
             pinst.start()
 
     try:
+        """
         processes['gather'] = {
             'nthreads': 1,
             'task_fn': gather_files,
@@ -346,7 +349,7 @@ if __name__=="__main__":
             daemon=True
         )]
         processes['assess']['processes'][0].start()
-
+        """
         while True:
             
             for name, pinfo in processes.items():
@@ -373,6 +376,11 @@ if __name__=="__main__":
                 }
             )
             print("/mon/service/nsfrbpreprocess")
+
+
+            print("ASSESS_Q",ASSESS_Q.empty())
+            print("GATHER_Q",GATHER_Q.empty())
+            print("CALIB_Q",CALIB_Q.empty())
             """
             while not CALIB_Q.empty():
                 (calname_fromq, flist_fromq) = CALIB_Q.get()
@@ -387,7 +395,6 @@ if __name__=="__main__":
                     }
                 )
 
-            """
             print("ASSESS_Q",ASSESS_Q.empty())
             print("GATHER_Q",GATHER_Q.empty())
             print("CALIB_Q",CALIB_Q.empty())
@@ -395,7 +402,7 @@ if __name__=="__main__":
                 print("CALIB_Q NOT EMPTY:" ,CALIB_Q)
                 (calname_fromq, flist_fromq) = CALIB_Q.get()
                 ETCD.put_dict(
-                    '/cmd/nsfrbvis',
+                    '/cmd/nsfrb',
                     {
                         'cmd': 'image',
                         'val': {
@@ -404,7 +411,7 @@ if __name__=="__main__":
                         }
                     }
                 )
-            
+            """
             time.sleep(60)
     except (KeyboardInterrupt, SystemExit):
         processes['gather']['processes'][0].terminate()
