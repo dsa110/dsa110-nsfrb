@@ -42,7 +42,7 @@ def base_test(img,PSF,
         SNRthresh,
         gridsize,
         nsamps,
-        nchans,verbose,usefft=False,multithreading=False,threadDM=False):
+        nchans,verbose,usefft=False,multithreading=False,threadDM=False,cuda=False):
     """
     Run search pipeline 
     """
@@ -61,7 +61,7 @@ def base_test(img,PSF,
     candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                                                                                     time_axis=time_axis,canddict=dict(),
                                                                                                     PSF=PSF,output_file=ofile,
-                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM)
+                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM,cuda=cuda)
                                                                                                     
     """
     ASSERTIONS
@@ -80,7 +80,7 @@ def base_test(img,PSF,
 def lowSNR_test(img,PSF,
         gridsize,
         nsamps,
-        nchans,verbose,usefft=False,multithreading=False,threadDM=False):
+        nchans,verbose,usefft=False,multithreading=False,threadDM=False,cuda=False):
     """
     Run search pipeline with low SNR threshold
     """
@@ -103,7 +103,7 @@ def lowSNR_test(img,PSF,
     candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                                                                                     time_axis=time_axis,canddict=dict(),
                                                                                                     PSF=PSF,output_file=ofile,
-                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM)
+                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM,cuda=cuda)
     """
     ASSERTIONS
     """
@@ -139,7 +139,7 @@ def highSNR_test(img,PSF,
         SNRthresh,
         gridsize,
         nsamps,
-        nchans,verbose,usefft=False,multithreading=False,threadDM=False):
+        nchans,verbose,usefft=False,multithreading=False,threadDM=False,cuda=False):
     """
     Run search pipeline with high SNR threshold
     """
@@ -161,7 +161,7 @@ def highSNR_test(img,PSF,
     candidxs,cands,image_tesseract_searched,image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(img,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                                                                                     time_axis=time_axis,canddict=dict(),
                                                                                                     PSF=PSF,output_file=ofile,
-                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM)
+                                                                                                    usefft=usefft,multithreading=multithreading,threadDM=threadDM,cuda=cuda)
     """
     ASSERTIONS
     """
@@ -222,6 +222,48 @@ def test_FFT_implementation():
     highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,usefft=True)
 
     return
+
+
+#GPU accelerated implementation
+def test_GPU_implementation():
+
+    SNRthresh = 3000
+    gridsize = 32
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,usefft=False,cuda=True)
+    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,usefft=False,cuda=True)
+    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,usefft=False,cuda=True)
+
+    return
+
+
+#GPU accelerated implementation with FFT
+def test_FFT_GPU_implementation():
+
+    SNRthresh = 3000
+    gridsize = 32
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,usefft=True,cuda=True)
+    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,usefft=True,cuda=True)
+    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,usefft=True,cuda=True)
+
+    return
+
+
 
 #multithreading implementation
 def test_multithreading_implementation():

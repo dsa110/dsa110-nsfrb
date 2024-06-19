@@ -1,0 +1,48 @@
+ForwardAgent yes
+AddKeysToAgent yes
+ForwardX11   yes
+ForwardX11Trusted yes
+ForwardX11Timeout 1d
+ServerAliveCountMax 10
+ServerAliveInterval 30
+TCPKeepAlive no
+UseKeychain yes
+IdentityFile ~/.ssh/id_rsa
+
+Host github.com
+  AddKeysToAgent yes
+  UseKeychain yes
+  IdentityFile ~/.ssh/id_rsa
+
+Host dsastorage
+     user user
+     hostname dsa-storage.ovro.pvt
+     ProxyJump dsa110maas
+     ForwardAgent yes
+     UseKeychain yes
+     AddKeysToAgent yes
+     ForwardX11Trusted yes
+     ForwardX11 yes
+     LocalForward 9876 localhost:9876
+     LocalForward 9090 webserverUIservice.pro.pvt:9090
+     LocalForward 3000 grafanaservice.pro.pvt:3000
+     LocalForward 5006 bokehservice:5006
+     LocalForward 8901 127.0.0.1:8901
+
+Host dsa110maas
+    user ubuntu
+    hostname dsa110maas.ovro.pvt
+    ProxyJump ovro
+    LocalForward 3000 grafanaservice:3000
+    LocalForward 5008 dsa-storage.ovro.pvt:5008
+    LocalForward 5240 localhost:5240
+    LocalForward 9090 webserveruiservice:9090
+
+
+Host ovro
+    LocalForward 5008 dsa-storage.ovro.pvt:5008
+
+Hostname ssh.ovro.caltech.edu
+User msherman
+ForwardX11Trusted yes
+ForwardX11 yes
