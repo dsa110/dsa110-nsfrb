@@ -340,7 +340,7 @@ def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsiz
 
 from scipy.signal import convolve2d
 from scipy.signal import correlate2d
-def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None):
+def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None,output_file=""):
     """
     Matched filter via convolution w/ DSA-110 core PSF
     """
@@ -352,11 +352,14 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         usingGPU = device.type == "cuda"
     """
-        
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
 
 
     if device != None and device.type=='cuda':
-        print(torch.cuda.is_available())
+        print("DEVICE: ",device,torch.cuda.is_available(),file=fout)
         #create gpu tensors
         image_tesseract_filtered = torch.zeros(image_tesseract.shape)
         #image_tesseract.to(device)
@@ -369,16 +372,30 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None):
         gridsize_DEC = image_tesseract.shape[1]
 
         for j in range(nchans):
+            PSFimg_reshaped = (PSFimg[:,:,0,j])[np.newaxis,np.newaxis,:,:]
+            PSFimg_reshaped.to(device)
+            for i in range(nsamps):        
+                image_tesseract_reshaped = (image_tesseract[:,:,i,j])[np.newaxis,np.newaxis,:,:]
+                image_tesseract_reshaped.to(device)
+                
+                #convolve
+                image_tesseract_filtered[:,:,i,j] = tf.conv2d(image_tesseract_reshaped.cuda(),PSFimg_reshaped.cuda(),padding='same')[0,0,:,:]
+                image_tesseract_reshaped.to("cpu")
+                del image_tesseract_reshaped
+            PSFimg_reshaped.to("cpu")
+            del PSFimg_reshaped
+            """
             image_tesseract_reshaped = ((image_tesseract[:,:,:,j].transpose(0,2)).transpose(1,2))[:,np.newaxis,:,:]###.reshape((nsamps,1,gridsize_RA,gridsize_DEC))
             PSFimg_reshaped = (PSFimg[:,:,0,j])[np.newaxis,np.newaxis,:,:]#.reshape((1,1,gridsize_RA,gridsize_DEC))
             image_tesseract_reshaped.to(device)
             PSFimg_reshaped.to(device)
             #convolve
             image_tesseract_filtered[:,:,:,j] = (tf.conv2d(image_tesseract_reshaped,PSFimg_reshaped,padding='same')[:,0,:,:].transpose(1,2)).transpose(0,2)#.reshape((gridsize_RA,gridsize_DEC,nsamps))
-        image_tesseract_reshaped.to("cpu")
-        PSFimg_reshaped.to("cpu")
-        del image_tesseract_reshaped
-        del PSFimg_reshaped
+        """
+        #image_tesseract_reshaped.to("cpu")
+        #PSFimg_reshaped.to("cpu")
+        #del image_tesseract_reshaped
+        #del PSFimg_reshaped
         torch.cuda.empty_cache()
 
     else:
@@ -391,6 +408,10 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None):
                     image_tesseract_filtered[:,:,i,j] =  np.real(np.fft.ifftshift(np.fft.ifft2(np.fft.fft2(image_tesseract[:,:,i,j])*np.fft.fft2(PSFimg[:,:,i,j]))))#np.abs(np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(np.fft.fft(image_tesseract[:,:,i,j]))*np.fft.fftshift(np.fft.fft(PSFimg[:,:,i,j])))))
                 else:
                     image_tesseract_filtered[:,:,i,j] = convolve2d(image_tesseract[:,:,i,j],PSFimg[:,:,i,j],mode='same') #assume the PSF is already centered
+
+
+    if output_file != "":
+        fout.close()
 
     return image_tesseract_filtered
     
@@ -415,7 +436,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,sam
     loc = nsamps//2
     
     if device != None and device.type=='cuda':
-        print(torch.cuda.is_available())
+        print(torch.cuda.is_available(),file=fout)
         #make tensors for GPU
         boxcar = torch.zeros(image_tesseract_filtered_dm.shape[2])
         image_tesseract_binned = torch.zeros((gridsize_DEC,gridsize_RA))
@@ -490,8 +511,8 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,sam
 
                     plt.subplot(1,4,1)
                     plt.plot(timeseries,color='grey',alpha=1)
-        print("noisemap:",noisemap,sum(torch.isnan(noisemap)))
-        print("img:",image_tesseract_binned,sum(torch.isnan(image_tesseract_binned)))
+        print("noisemap:",noisemap,sum(torch.isnan(noisemap)),file=fout)
+        print("img:",image_tesseract_binned,sum(torch.isnan(image_tesseract_binned)),file=fout)
         image_tesseract_binned = image_tesseract_binned/noisemap
     else:
         #make a boxcar filter for time
@@ -767,7 +788,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             print(printprefix +"Using 2D FFT method...",file=fout)
         
         if usingGPU:
-            image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(PSF),usefft=usefft,device=device).numpy()
+            image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(np.array(PSF,np.float16)),usefft=usefft,device=device,output_file=output_file).numpy()
             
         else:
             image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,usefft=usefft,device=device)
