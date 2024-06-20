@@ -15,4 +15,20 @@ def printlog(txt,output_file=output_file,end='\n'):
         fout.close()
     return
 
+#functions to send candidates to slack; adapted from https://api.slack.com/tutorials/tracks/uploading-files-python
+import logging, os
+from slack_sdk import WebClient
+error_file = cwd + "-logfiles/error_log.txt"
+cand_dir = cwd + "/candidates/"
 
+#initialize Web API client
+client = WebClient(os.environ["SLACK_TOKEN_DSA"])
+candidates_channel_ID = "C01NUV2M0HM"
+def send_candidate_slack(filename,filedir=cand_dir,error_file=error_file):
+    #upload file to bot
+    try:
+        client.files_upload_v2(channel=candidates_channel_ID,title=filename[:-4],file=cand_dir + filename,initial_comment=filename,)
+        return 0
+    except Exception as e:
+        printlog(e,output_file=error_file)
+        return 1

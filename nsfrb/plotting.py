@@ -151,4 +151,4 @@ def search_plots_new(canddict,img,RA_axis,DEC_axis,DM_trials,widthtrials,output_
         plt.show()
     else:
         plt.close()
-    return
+    return "diagnostic_RA_DEC.png"
