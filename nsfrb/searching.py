@@ -20,6 +20,8 @@ from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
+
 fsize=45
 fsize2=35
 plt.rcParams.update({
@@ -733,6 +735,146 @@ def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,outpu
     return dedisp_timeseries
 
 
+#Alternate search code using PyTorchDedispersion (Kosogorov in prep) from LWA
+def run_PyTorchDedisp_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,PSF=default_PSF,output_file="",
+        DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,verbose=False,space_filter=True,canddict=dict(),usefft=False):
+    """
+    This is a wrapper around the PyTorchDedispersion code defined in https://github.com/nkosogor/PyTorchDedispersion/, developed by
+    Nikita Kosogorov for use on the LWA.
+    """
+
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    printprefix = ""#"[" + str(raidx_offset) + str(decidx_offset) + str(dm_offset) + "]"
+
+    #check if cuda is available; if not, exit
+    device = torch.device(random.choice(np.arange(torch.cuda.device_count(),dtype=int)) if torch.cuda.is_available() else "cpu")
+    usingGPU = device.type == "cuda"
+    if not usingGPU:
+        print("GPUs not available, using CPUs",file=fout)
+        return -1
+
+    #get axis sizes
+    gridsize_RA = len(RA_axis)
+    gridsize_DEC = len(DEC_axis)
+    gridsize = gridsize_RA
+    nsamps = len(time_axis)
+    nchans = len(freq_axis)
+    nwidthtrials = len(widthtrials)
+    nDMtrials = len(DM_trials)
+
+    if space_filter:
+        assert(gridsize_RA == gridsize_DEC)
+        #create PSF if the shape doesn't match
+        if PSF.shape != image_tesseract.shape:
+            print(printprefix + "Updating PSF...",file=fout)
+            PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+        #2D matched filter for each timestep and channel
+        print(printprefix +"Spatial matched filtering with DSA PSF...",file=fout)
+        if usefft:
+            print(printprefix +"Using 2D FFT method...",file=fout)
+
+        if usingGPU:
+            image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(np.array(PSF,np.float16)),usefft=usefft,device=device,output_file=output_file).numpy()
+
+        else:
+            image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,usefft=usefft,device=device)
+        print(printprefix +"Done!",file=fout)
+        print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+    else:
+        image_tesseract_filtered = image_tesseract
+
+
+    #loop over each pixel
+    image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))
+
+    cands = []
+    candidxs = []
+    candra_idxs = []
+    canddec_idxs = []
+    candwid_idxs = []
+    canddm_idxs = []
+    candsnrs = []
+    for i in range(gridsize_RA):
+        for j in range(gridsize_DEC):
+            #get data tensor
+            data_tensor = torch.from_numpy(image_tesseract_filtered[j,i,:,:].transpose()).to(device)
+
+            #get freq tensor
+            frequencies_tensor = torch.from_numpy(freq_axis).to(device)
+            freq_start = torch.min(frequencies_tensor)
+
+            #get dm range tensor
+            dm_range = torch.from_numpy(DM_trials).to(device)
+
+            #get time res tensor
+            timeax_tensor = torch.from_numpy(time_axis)
+            time_resolution = time_axis[1]-time_axis[0]
+
+            
+            #get width tensor
+            widths = torch.from_numpy(widthtrials).to(device)
+
+            #window size and snr threshold
+            window_size=len(time_axis)//2
+            snr_threshold = SNRthresh
+    
+            #create dedisp, boxcar, threshold plans
+            dedisp_obj = dedispersion.Dedispersion(data_tensor,
+                                                    frequencies_tensor,
+                                                    dm_range,
+                                                    freq_start,
+                                                    time_resolution)
+            dedisp_data = (dedisp_obj.perform_dedispersion()).sum(dim=2)
+
+            boxcar_obj = boxcar_filter.BoxcarFilter(dedisp_data)
+            filt_data = boxcar_obj.apply_boxcar(widths)
+
+            cand_obj = candidate_finder.CandidateFinder(filt_data,window_size)
+            cand_data = cand_obj.find_candidates(snr_threshold,widths,remove_trend=True)
+            snr_data = cand_obj.calculate_snr(filt_data)
+
+            #add to full result arrays
+            image_tesseract_binned[j,i,:,:] = snr_data.to("cpu").numpy().max(2)
+            cands = np.concatenate([cands,[(RA_axis[i],DEC_axis[j],cand_data[k]['Boxcar Width'],DM_trials[cand_data[k]['DM Index']],cand_data[k]['SNR']) for k in range(len(cand_data))]])
+            candidxs = np.concatenate([candidxs,[(i,j,list(widthtrials).index(cand_data[k]['Boxcar Width']),cand_data[k]['DM Index'],cand_data[k]['SNR']) for k in range(len(cand_data))]])
+
+            candra_idxs = np.concatenate([candra_idxs,[i]*len(cand_data)])
+            canddec_idxs = np.concatenate([canddec_idxs,[j]*len(cand_data)])
+            candwid_idxs = np.concatenate([candwid_idxs,[list(widthtrials).index(cand_data[k]['Boxcar Width']) for k in range(len(cand_data))]])
+            canddm_idxs = np.concatenate([canddm_idxs,[cand_data[k]['DM Index'] for k in range(len(cand_data))]])
+            candsnrs = np.concatenate([candsnrs,[cand_data[k]['SNR'] for k in range(len(cand_data))]])
+
+
+    data_tensor.to("cpu")
+    frequencies_tensor.to("cpu")
+    dm_range.to("cpu")
+    widths.to("cpu")
+    del data_tensor
+    del frequencies_tensor
+    del dm_range
+    del widths
+    torch.cuda.empty_cache()
+        
+
+    #make a dictionary for easy plotting of results
+    canddict['ra_idxs'] = copy.deepcopy(candra_idxs)
+    canddict['dec_idxs'] = copy.deepcopy(canddec_idxs)
+    canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+    canddict['dm_idxs'] = copy.deepcopy(canddm_idxs)        
+    canddict['ras'] = RA_axis[np.array(candra_idxs,dtype=int)]
+    canddict['decs'] = DEC_axis[np.array(canddec_idxs,dtype=int)]
+    canddict['wids'] = widthtrials[np.array(candwid_idxs,dtype=int)]
+    canddict['dms'] = DM_trials[np.array(canddm_idxs,dtype=int)]        
+    canddict['snrs'] = copy.deepcopy(candsnrs)
+    print(printprefix +"Done! Found " + str(len(candsnrs)) + " candidates",file=fout)
+    if output_file != "":
+        fout.close()
+    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials
+    
 #Updated search code
 #run search pipeline with desired DM, width trial range; output candidates to a csv? pkl? txt?
 #takes 4D cube (RA,DEC,TIME,FREQUENCY)
