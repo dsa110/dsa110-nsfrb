@@ -58,6 +58,7 @@ is received; then it starts the search pipeline
 from nsfrb import searching as sl
 from nsfrb import pipeline
 from nsfrb import plotting as pl
+from nsfrb import config
 """s
 Directory for output data
 """
@@ -74,6 +75,7 @@ Arguments: data file
 """
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack 
+from nsfrb.imaging import uv_to_pix
 
 """
 HTTP variables
@@ -103,7 +105,9 @@ class fullimg:
         self.img_id_isot = img_id_isot
         self.img_id_mjd = img_id_mjd
         self.shape = shape
-
+        #get ra and dec axes
+        self.RA_axis,self.DEC_axis = uv_to_pix(self.img_id_mjd,self.shape[0],Lat=37.23,Lon=-118.2851)
+    
     def add_corr_img(self,data,corr_node,testmode=False):
         self.image_tesseract[:,:,:,corr_node] = data
         #if testmode:
@@ -228,13 +232,13 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
 
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
     gridsize=fullimg.image_tesseract.shape[0]
-    RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
-    DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
+    RA_axis = fullimg.RA_axis#np.linspace(-gridsize//2,gridsize//2,gridsize)
+    DEC_axis= fullimg.DEC_axis#np.linspace(-gridsize//2,gridsize//2,gridsize)
     nsamps = fullimg.image_tesseract.shape[2]
     nchans = fullimg.image_tesseract.shape[3]
     time_axis = np.arange(nsamps)*sl.tsamp
@@ -244,10 +248,10 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     timing1 = time.time()
     if PyTorchDedispersion: #uses Nikita's dedisp code
         printlog("Using PyTorchDedispersion",output_file=processfile)
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = sl.run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=sl.output_file,usefft=usefft)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = sl.run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=sl.output_file,usefft=usefft,space_filter=space_filter)
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter)
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
@@ -399,6 +403,7 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
     parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
+    parser.add_argument('--spacefilter',action='store_true', help='Use PSF to spatial matched filter the input image')
     parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
     parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
     parser.add_argument('--multithreading',action='store_true',help='Enable multithreading in search')
@@ -593,7 +598,7 @@ def main():
             #submit a search task to the process pool
             printlog("Submitting new task for image " + str(idx),output_file=processfile)
             task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion))
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,args.spacefilter))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(future_callback)

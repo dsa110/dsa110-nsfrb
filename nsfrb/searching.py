@@ -12,7 +12,7 @@ from scipy.stats import norm
 import os
 from PIL import Image,ImageOps
 #from gen_dmtrials_copy import gen_dm
-
+import time
 import torch
 from torch.nn import functional as tf
 from scipy.interpolate import interp1d
@@ -421,7 +421,7 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None,output_
     #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
-def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,samenoise=False,plot=False,device=None,output_file=""):
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,samenoise=False,plot=False,device=None,output_file="",scrunch=True):
     """
     alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
     """
@@ -474,12 +474,16 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,sam
         
         for i in range(nbatches):
             #move subset of pixels to gpu
-            subimg = image_tesseract_reshaped[i*nbatches:(i+1)*nbatches,:,:]
+            subimg = image_tesseract_reshaped[i*maxbatchsize:(i+1)*maxbatchsize,:,:]
             subimg.to(device)
             
             #convolve
-            csig_all_flat[i*nbatches:(i+1)*nbatches,:,:] = tf.conv1d(torch.nan_to_num(subimg.double()).double(),boxcar_reshaped.double(),padding='same')
-
+            if scrunch:
+                if nsamps%wid != 0: subimg = subimg[:,:,:nsamps - nsamps%wid]
+                csig_all_flat[i*maxbatchsize:(i+1)*maxbatchsize,:,:(nsamps - nsamps%wid)//wid] = subimg.reshape((maxbatchsize,1,(nsamps - nsamps%wid)//wid,wid)).mean(3)
+            else:
+                csig_all_flat[i*maxbatchsize:(i+1)*maxbatchsize,:,:] = tf.conv1d(torch.nan_to_num(subimg.double()).double(),boxcar_reshaped.double(),padding='same')
+            
         subimg.to("cpu")
         boxcar_reshaped.to("cpu")
         del subimg
@@ -580,6 +584,51 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,sam
     
     return image_tesseract_binned
 
+def dedisp_pad_with(vector,pad_width,iaxis,kwargs):
+    #we want to make a padding function which allows different number of pad values for each row
+    padvals= kwargs.get('padvals',0) #padvals is a tuple where each element is an array with length equal to the number of rows. This stores the amount to pad each row with
+    endflag = kwargs.get('endflag',False) #False == pad start, True == pad end
+    device = kwargs.get('device',None)
+    cuda = device.type == 'cuda'
+    currpad_dict = kwargs.get('currpad_dict',dict())
+    currpad = currpad_dict['currpad']
+    ax = kwargs.get("ax",0)
+    dd_value = kwargs.get("dd_value",0)
+
+
+
+    if iaxis != ax: return
+    #we will cut the array to be the same size as the input, so pad_width == 0
+    assert(pad_width == (0,0))
+    
+
+    #use the currpad value to index each padvalue
+    if endflag:
+        padshape = (0,padvals[currpad])
+    else:
+        padshape = (padvals[currpad],0)
+    if not cuda:
+        if endflag:
+            vector[:] = np.pad(vector,padshape,mode='constant',constant_values=dd_value)[-len(vector):]
+        else:
+            vector[:] = np.pad(vector,padshape,mode='constant',constant_values=dd_value)[:len(vector)]
+    else:
+        vector_torch = torch.from_numpy(vector).to(device)
+        if endflag:
+            vector[:] = tf.pad(vector_torch,padshape,mode='constant',value=dd_value).to("cpu").numpy()[-len(vector):]
+        else:
+            vector[:] = tf.pad(vector_torch,padshape,mode='constant',value=dd_value).to("cpu").numpy()[:len(vector)]
+        vector_torch.to("cpu")
+        del vector_torch
+        torch.cuda.empty_cache()
+
+    currpad_dict['currpad'] += 1
+    if currpad_dict['currpad'] >= len(padvals): currpad_dict['currpad'] = 0
+    return 
+
+def dedisp_pad(x,tdelays_idx,device,endflag):
+    currpad_dict = {"currpad":0}
+    return np.pad(x,(0,0),dedisp_pad_with,padvals=tdelays_idx,device=device,currpad_dict=currpad_dict,ax=2,dd_value=0,endflag=endflag)
 
 
 # Brute force dedispersion
@@ -625,6 +674,26 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
         print("Trial DM: " + str(DM) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout,end="")
         nchans = len(freq_axis)
         nsamps = image_tesseract_point.shape[-2]
+
+        #shift each channel
+        """image_tesseract_point.to(device)
+        if neg_flag:
+            arrlow = torch.from_numpy(dedisp_pad(image_tesseract_point,tdelays_idx_low,device=device,endflag=False)).to(device)
+            arrhi = torch.from_numpy(dedisp_pad(image_tesseract_point,tdelays_idx_hi,device=device,endflag=False)).to(device)
+        else:
+            arrlow = torch.from_numpy(dedisp_pad(image_tesseract_point,tdelays_idx_low,device=device,endflag=True)).to(device)
+            arrhi = torch.from_numpy(dedisp_pad(image_tesseract_point,tdelays_idx_hi,device=device,endflag=True)).to(device)
+        dedisp_timeseries_all = (arrlow*(1-tdelays_frac) + arrhi*(tdelays_frac)).mean(3)
+        dedisp_img = arrlow*(1-tdelays_frac) + arrhi*(tdelays_frac)
+        image_tesseract_point.to("cpu")
+        arrlow.to("cpu")
+        arrhi.to("cpu")
+        del arrlow
+        del arrhi
+        torch.cuda.empty_cache()
+
+
+        """
         #shift each channel
         for k in range(nchans):
             #move channel to GPU
@@ -675,6 +744,18 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
         print("Trial DM: " + str(DM) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout,end="")
         nchans = len(freq_axis)
         nsamps = image_tesseract_point.shape[-2]
+        
+        #shift each channel
+        """if neg_flag:
+            arrlow = dedisp_pad(image_tesseract_point,tdelays_idx_low,cuda=False,endflag=False)
+            arrhi = dedisp_pad(image_tesseract_point,tdelays_idx_hi,cuda=False,endflag=False)
+        else:
+            arrlow = dedisp_pad(image_tesseract_point,tdelays_idx_low,cuda=False,endflag=True)
+            arrhi = dedisp_pad(image_tesseract_point,tdelays_idx_hi,cuda=False,endflag=True)
+        dedisp_timeseries_all = (arrlow*(1-tdelays_frac) + arrhi*(tdelays_frac)).mean(3)
+        dedisp_img = arrlow*(1-tdelays_frac) + arrhi*(tdelays_frac)
+        
+        """
         dedisp_timeseries_all = np.zeros(image_tesseract_point.shape[:-1])
         dedisp_img = np.zeros(image_tesseract_point.shape)
         #shift each channel
@@ -699,6 +780,8 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
 
             dedisp_timeseries_all += arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
             dedisp_img[:,:,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+    
+    
     print("Done!",file=fout)
     if output_file != "":
         fout.close()
@@ -888,6 +971,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
     a list of candidates' DM, pulse width, RA, declination, and time of arrival(?)
     """
+    t1 = time.time()
     if output_file != "":
         fout = open(output_file,"a")
     else:
@@ -918,7 +1002,10 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     nsamps = len(time_axis)
     nchans = len(freq_axis)
 
+    print("Time for setup: " + str(time.time()-t1) + " s",file=fout)
+
     if space_filter:
+        t1 = time.time()
         assert(gridsize_RA == gridsize_DEC)
         #create PSF if the shape doesn't match
         if PSF.shape != image_tesseract.shape:
@@ -936,6 +1023,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,usefft=usefft,device=device)
         print(printprefix +"Done!",file=fout)
         print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+        print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
     else: 
         image_tesseract_filtered = image_tesseract
     
@@ -1031,7 +1119,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         ncands = len(cands)
     else: #proceed normally
 
-
+        t1 = time.time()
         #dedisperse --> gridsize x gridsize x time x DM
         nDMtrials = len(DM_trials)
         print(printprefix +"Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
@@ -1045,8 +1133,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_dedisp))),file=fout)
 
         print(printprefix +"Done!",file=fout) 
+        print("Time for dedispersion: " + str(time.time()-t1) + " s",file=fout)
 
-
+        t1 = time.time()
         #boxcar filter and get snr using rolled PSF --> gridsize x gridsize x width x DM (x TOA?)
         nwidthtrials = len(widthtrials)
         image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials)) #stores output array as S/N for each dedispersion and width trial for every pixel
@@ -1067,7 +1156,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                     maxs2.append(image_tesseract_binned[15, 16,w,d])
         print(printprefix +"Done!",file=fout)    
         print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_binned))),file=fout)
-
+        print("Time for boxcar filter: " + str(time.time()-t1) + " s",file=fout)
         if plot:
             plt.figure(figsize=(12,6))
             plt.plot(widthtrials,maxs,'o-')
@@ -1078,6 +1167,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         
 
 
+        t1 = time.time()
         print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
         #find candidates above SNR threshold
         condition = (image_tesseract_binned>SNRthresh).flatten()
@@ -1103,7 +1193,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         canddict['wids'] = copy.deepcopy(candwids)
         canddict['dms'] = copy.deepcopy(canddms)
         canddict['snrs'] = copy.deepcopy(candsnrs)
-
+        print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
     print(printprefix +"Done! Found " + str(ncands) + " candidates",file=fout)
     if output_file != "":
         fout.close()

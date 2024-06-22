@@ -20,6 +20,8 @@ T = 3250 #ms
 fmax  = 1530 #MHz
 fmin = 1280  #MHz
 fc = 1400 #MHz
+lambdamin = (c/(fmax*1e6)) #m
+lambdamax = (c/(fmin*1e6)) #m
 lambdac = (c/(fc*1e6)) #m
 nchans = 16 #16 coarse channels
 chanbw = (fmax-fmin)/nchans #MHz
@@ -31,7 +33,7 @@ pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
 gridsize = 32#256
 RA_point = 0 #rad
 DEC_point = 0 #rad
-
+UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding
 
 
 
