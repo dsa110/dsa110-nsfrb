@@ -24,3 +24,8 @@ logfiles = ["error_log.txt",
 for l in logfiles:
     os.system("touch ../dsa110-nsfrb-logfiles/" + l)
     os.system("> ../dsa110-nsfrb-logfiles/" + l)
+
+#create directory for noise stats if not created already
+os.system("mkdir ../dsa110-nsfrb-noise/")
+
+

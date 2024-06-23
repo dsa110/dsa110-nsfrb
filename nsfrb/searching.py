@@ -421,7 +421,7 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None,output_
     #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
-def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,samenoise=False,plot=False,device=None,output_file="",scrunch=True):
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=True):
     """
     alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
     """
@@ -494,6 +494,55 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,sam
         #peakidx = torch.argmax(csig_all,dim=2)
 
         #noise estimate
+        csig_all.to(device)
+        
+        #mask all nans and values less than noise threshold
+        #mask1 = ~torch.isnan(csig_all)
+        #mask = ~torch.logical_or(~mask1,(csig_all*mask1)<=noiseth*torch.max(csig_all*mask1,dim=2,keepdim=True).values)
+        #print("MASK:" + str(mask.numpy()),file=fout)
+        print("CSIG:" + str(csig_all.numpy()),file=fout)
+        #mask1 = (~torch.isinf(csig_all))*(~torch.isnan(csig_all))
+        mask1 = torch.logical_not(torch.logical_or(torch.isinf(csig_all),torch.isnan(csig_all)))
+        csig_all = torch.nan_to_num(csig_all)
+
+        #csig_all = csig_all*mask1
+        print("MASK1:" + str(mask1.numpy()) + "," + str(mask1.sum()),file=fout)
+        print("QUANTILES:" + str(torch.nanquantile(csig_all,noiseth,dim=2,keepdim=True).numpy()),file=fout)
+        mask = (csig_all) < torch.nanquantile(csig_all,noiseth,dim=2,keepdim=True) #(noiseth*(torch.max(csig_all,dim=2,keepdim=True).values))
+        #csig_all = csig_all*mask1
+        
+        
+        print("MASK:" + str(mask.numpy()) + "," + str(mask.sum()),file=fout)
+        csig_all_masked = csig_all*mask
+        numvalids = (mask*mask1).sum(2)
+        print("NONMASKED VALS:" + str(csig_all_masked.numpy()),file=fout)
+
+        #take std deviation and correct for nan and non-noise data
+        noisemap = torch.std(csig_all_masked)*torch.sqrt(nsamps/numvalids)
+        print("NOISE:"+str(noisemap.numpy()),file=fout)
+        #take off-pulse median
+        meanmap = torch.median(csig_all_masked)
+        print("MEDIAN:"+str(meanmap.numpy()),file=fout)
+        #get snr
+        image_tesseract_binned = (csig_all.max(2).values - meanmap)/noisemap
+       
+
+        csig_all.to("cpu")
+        csig_all_masked.to("cpu")
+        noisemap.to("cpu")
+        meanmap.to("cpu")
+        image_tesseract_binned.to("cpu")
+        numvalids.to("cpu")
+        del csig_all
+        del csig_all_masked
+        del noisemap
+        del meanmap
+        del numvalids
+        torch.cuda.empty_cache()
+        print("FINAL ARRAY:" + str(image_tesseract_binned.numpy()),file=fout)        
+        print(np.max(image_tesseract_binned.numpy()),file=fout)
+        """
+        
         if samenoise:
             csig_filtered = csig_all[0,0,~torch.isnan(csig_all[0,0,:]).bool()]
             s=torch.std(csig_filtered[csig_filtered<noiseth*torch.max(csig_filtered)])
@@ -520,6 +569,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=1/10,sam
         print("noisemap:",noisemap,sum(torch.isnan(noisemap)),file=fout)
         print("img:",image_tesseract_binned,sum(torch.isnan(image_tesseract_binned)),file=fout)
         image_tesseract_binned = image_tesseract_binned/noisemap
+        """
     else:
         #make a boxcar filter for time
         boxcar = np.zeros(image_tesseract_filtered_dm.shape[2])
@@ -964,7 +1014,7 @@ def run_PyTorchDedisp_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,t
 
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
-                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=1e-2,canddict=dict(),usefft=False,
+                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
                    multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,threadDM=False,samenoise=False,cuda=False):
 
     """
