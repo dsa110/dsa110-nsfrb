@@ -57,7 +57,7 @@ cwd = f.read()[:-1]
 f.close()
 sys.path.append(cwd + "/") 
 from nsfrb.config import *
-
+from nsfrb.noise import noise_update,noise_dir
 
 #output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
@@ -97,8 +97,8 @@ time_axis = np.linspace(0,T,nsamps) #ms
 freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 #width trials
-nwidths=1#4
-widthtrials =np.array([1])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
+nwidths=2#1#4
+widthtrials =np.array([1,5])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
@@ -421,7 +421,7 @@ def matched_filter_space(image_tesseract,PSFimg,usefft=False,device=None,output_
     #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
-def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=True):
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=True,exportmaps=False):
     """
     alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
     """
@@ -497,19 +497,15 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=0.9,same
         csig_all.to(device)
         
         #mask all nans and values less than noise threshold
-        #mask1 = ~torch.isnan(csig_all)
-        #mask = ~torch.logical_or(~mask1,(csig_all*mask1)<=noiseth*torch.max(csig_all*mask1,dim=2,keepdim=True).values)
-        #print("MASK:" + str(mask.numpy()),file=fout)
         print("CSIG:" + str(csig_all.numpy()),file=fout)
-        #mask1 = (~torch.isinf(csig_all))*(~torch.isnan(csig_all))
         mask1 = torch.logical_not(torch.logical_or(torch.isinf(csig_all),torch.isnan(csig_all)))
         csig_all = torch.nan_to_num(csig_all)
+        csig_all[torch.logical_or(torch.isinf(csig_all),torch.isnan(csig_all))] = 0
 
-        #csig_all = csig_all*mask1
+
         print("MASK1:" + str(mask1.numpy()) + "," + str(mask1.sum()),file=fout)
-        print("QUANTILES:" + str(torch.nanquantile(csig_all,noiseth,dim=2,keepdim=True).numpy()),file=fout)
-        mask = (csig_all) < torch.nanquantile(csig_all,noiseth,dim=2,keepdim=True) #(noiseth*(torch.max(csig_all,dim=2,keepdim=True).values))
-        #csig_all = csig_all*mask1
+        print("QUANTILES:" + str(torch.nanquantile(csig_all,noiseth)),file=fout)#,dim=2,keepdim=True).numpy()),file=fout)
+        mask = (csig_all) < torch.nanquantile(csig_all,noiseth)#,dim=2,keepdim=True) #(noiseth*(torch.max(csig_all,dim=2,keepdim=True).values))
         
         
         print("MASK:" + str(mask.numpy()) + "," + str(mask.sum()),file=fout)
@@ -519,17 +515,25 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=0.9,same
 
         #take std deviation and correct for nan and non-noise data
         noisemap = torch.std(csig_all_masked)*torch.sqrt(nsamps/numvalids)
-        print("NOISE:"+str(noisemap.numpy()),file=fout)
+        noise = float(torch.mean(noisemap[~torch.logical_or(torch.isinf(noisemap),torch.isnan(noisemap))]).numpy())
+        tmp,noise = noise_update(noise,gridsize_RA,gridsize_DEC,DM,wid)
+        print("NOISE:"+str(noise) + ", " + str(noisemap.numpy()),file=fout)
+        
         #take off-pulse median
-        meanmap = torch.median(csig_all_masked)
+        meanmap = torch.median(csig_all_masked,dim=2).values
         print("MEDIAN:"+str(meanmap.numpy()),file=fout)
+        
         #get snr
-        image_tesseract_binned = (csig_all.max(2).values - meanmap)/noisemap
+        image_tesseract_binned = (csig_all.max(2).values - meanmap)/noise
        
 
         csig_all.to("cpu")
         csig_all_masked.to("cpu")
         noisemap.to("cpu")
+        if exportmaps:
+            f = open(noise_dir + "noisemap_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + "_DM" + str(DM)+ "_W" + str(wid) + ".npy","wb")
+            np.save(f,noisemap.numpy())
+            f.close()
         meanmap.to("cpu")
         image_tesseract_binned.to("cpu")
         numvalids.to("cpu")
@@ -582,8 +586,41 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=0.9,same
         #convolve for each timeseries; assume already normalized
         image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA))
         noisemap=np.zeros((gridsize_DEC,gridsize_RA))
-    
+        csig_all = np.zeros(image_tesseract_filtered_dm.shape)
+
         for i in range(gridsize_DEC):
+            for j in range(gridsize_RA):
+                timeseries = image_tesseract_filtered_dm[i,j,:]
+                csig_all[i,j,:] = np.convolve(np.nan_to_num(timeseries,nan=0),boxcar,'same')
+
+        csig_all[np.isinf(csig_all)] = np.nan
+        mask = csig_all < np.nanpercentile(csig_all,noiseth*100)
+        print("MASK:" + str(mask) + "," + str(mask.sum()),file=fout)
+        
+        csig_all_masked = copy.deepcopy(csig_all)
+        csig_all_masked[~mask] = np.nan
+        numvalids = np.nansum(mask,axis=2)
+        print("NONMASKED VALS:" + str(csig_all[mask]),file=fout)
+
+        #take std deviation and correct for nan and non-noise data
+        noisemap = np.nanstd(csig_all_masked,axis=2)
+        noisemap[np.isinf(noisemap)] = np.nan
+        noise = float(np.nanmean(noisemap))
+        tmp,noise = noise_update(noise,gridsize_RA,gridsize_DEC,DM,wid)
+        print("NOISE:"+str(noise) + ", " + str(noisemap),file=fout)
+
+        #take off-pulse median
+        meanmap = np.nanmedian(csig_all_masked,axis=2)
+        print("MEDIAN:"+str(meanmap),file=fout)
+
+        #get snr
+        image_tesseract_binned = (csig_all.max(axis=2) - meanmap)/noise
+
+        if exportmaps:
+            f = open(noise_dir + "noisemap_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + "_DM" + str(DM)+ "_W" + str(wid) + ".npy","wb")
+            np.save(f,noisemap)
+            f.close()
+        """for i in range(gridsize_DEC):
             for j in range(gridsize_RA):
                 timeseries = image_tesseract_filtered_dm[i,j,:]
                 csig = np.convolve(np.nan_to_num(timeseries,nan=0),boxcar,'same')#/wid#/np.sum(boxcar)
@@ -613,7 +650,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,mode='4d',noiseth=0.9,same
                 
                     plt.subplot(1,4,1)
                     plt.plot(timeseries,color='grey',alpha=1)
-    
+        """
     #TMP: save noise statistics
     #np.save("noisestats.npy",noisemap)
 
@@ -1015,7 +1052,7 @@ def run_PyTorchDedisp_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,t
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
-                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,threadDM=False,samenoise=False,cuda=False):
+                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,threadDM=False,samenoise=False,cuda=False,exportmaps=False):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -1197,9 +1234,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         for w in range(nwidthtrials):
             for d in range(nDMtrials):
                 if usingGPU:
-                    image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(torch.from_numpy(image_tesseract_dedisp[:,:,:,d]),widthtrials[w],noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device).numpy()
+                    image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(torch.from_numpy(image_tesseract_dedisp[:,:,:,d]),widthtrials[w],DM_trials[d],noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps).numpy()
                 else:
-                    image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_dedisp[:,:,:,d],widthtrials[w],noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device) 
+                    image_tesseract_binned[:,:,w,d] = snr_vs_RA_DEC_new(image_tesseract_dedisp[:,:,:,d],widthtrials[w],DM_trials[d],noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps) 
                 if d ==0 and plot:
                     maxs.append(image_tesseract_binned[15, 16,w,d])
                 elif plot:
