@@ -28,4 +28,6 @@ for l in logfiles:
 #create directory for noise stats if not created already
 os.system("mkdir ../dsa110-nsfrb-noise/")
 
+#create candidates directory 
+os.system("mkdir candidates")
 
