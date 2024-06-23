@@ -29,5 +29,9 @@ for l in logfiles:
 os.system("mkdir ../dsa110-nsfrb-noise/")
 
 #create candidates directory 
-os.system("mkdir candidates")
+os.system("mkdir ../dsa110-nsfrb-candidates/")
+
+
+#create directory to store most recent time frame
+os.system("mkdir ../dsa110-nsfrb-frames/")
 

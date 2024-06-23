@@ -62,7 +62,8 @@ from nsfrb.noise import noise_update,noise_dir
 #output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
-cand_dir = cwd + "/candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+frame_dir = cwd + "-frames/"
 f=open(output_file,"w")
 f.close()
 
@@ -96,9 +97,10 @@ DEC_axis = np.linspace(DEC_point-pixsize*gridsize//2,DEC_point+pixsize*gridsize/
 time_axis = np.linspace(0,T,nsamps) #ms
 freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
+
 #width trials
-nwidths=2#1#4
-widthtrials =np.array([1,5])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
+nwidths=1#1#4
+widthtrials =np.array([1])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
@@ -129,7 +131,7 @@ minDM = 171
 maxDM = 4000
 DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 DM_trials = np.concatenate([[0],DM_trials])
-DM_trials = np.array([0])#np.array([0,100])
+DM_trials = np.array([0,1000])#np.array([0,100])
 nDMtrials = len(DM_trials)
 
 #snr threshold
@@ -741,8 +743,38 @@ def dedisp_pad(x,tdelays_idx,device,endflag):
     return np.pad(x,(0,0),dedisp_pad_with,padvals=tdelays_idx,device=device,currpad_dict=currpad_dict,ax=2,dd_value=0,endflag=endflag)
 
 
+def init_last_frame(gridsize_DEC,gridsize_RA,nsamps,nchans,frame_dir=frame_dir):
+    f = open(frame_dir + "last_frame.npy","wb")
+    np.save(f,np.zeros((gridsize_DEC,gridsize_RA,nsamps,nchans)))
+    f.close()
+
+def save_last_frame(image_tesseract,full=False,maxDM=np.max(DM_trials),tsamp=tsamp,frame_dir=frame_dir):
+    """
+    This function writes the given frame to the npy file to store for dedispersion
+    on the next timestep
+    """
+
+    #if full is set, save the full image; otherwise, only save the samples needed for
+    #dedisperion to the maximum value
+    if full:
+        f = open(frame_dir + "last_frame.npy","wb")
+        np.save(f,image_tesseract)
+        f.close()
+    else:
+        tDM_max = (4.15)*maxDM*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
+        maxshift = int(np.ceil(tDM_max/tsamp))
+        f = open(frame_dir + "last_frame.npy","wb")
+        np.save(f,image_tesseract[:,:,-maxshift:,:])
+        f.close()
+
+def get_last_frame(frame_dir=frame_dir,maxDM=np.max(DM_trials)):
+    f = open(frame_dir + "last_frame.npy","rb")
+    image_tesseract = np.load(f)
+    f.close()
+    return image_tesseract
+
 # Brute force dedispersion
-def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file=""):
+def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_last_frame=True):
     """
     This function dedisperses a dynamic spectrum pixel grid of shape gridsize x gridsize x nsamps x nchans by brute force without accounting for edge effects
     """
@@ -753,11 +785,23 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
         usingGPU = device.type == "cuda"
     """
 
+    
+
 
     if output_file != "":
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
+
+
+    #get data from previous timeframe
+    if append_last_frame:
+        truensamps = image_tesseract_point.shape[2]
+        if device != None and device.type == 'cuda':
+            image_tesseract_point= torch.cat([torch.from_numpy(get_last_frame()),image_tesseract_point],dim=2)
+        else:
+            image_tesseract_point = np.concatenate([get_last_frame(),image_tesseract_point],axis=2)
+        print("Appending data from previous timeframe, new shape: " + str(image_tesseract_point.shape),file=fout)
 
     #get delay axis
     neg_flag = DM < 0
@@ -891,10 +935,17 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
             dedisp_timeseries_all += arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
             dedisp_img[:,:,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
     
-    
+    #save frame
+    if append_last_frame:
+        save_last_frame(image_tesseract_point)
+        print("Writing to last_frame.npy",file=fout)
+
+
     print("Done!",file=fout)
     if output_file != "":
         fout.close()
+    if append_last_frame:
+        return dedisp_timeseries_all[:,:,:truensamps], dedisp_img[:,:,:truensamps,:]
     return dedisp_timeseries_all,dedisp_img
 
 

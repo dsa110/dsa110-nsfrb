@@ -19,7 +19,7 @@ def printlog(txt,output_file=output_file,end='\n'):
 import logging, os
 from slack_sdk import WebClient
 error_file = cwd + "-logfiles/error_log.txt"
-cand_dir = cwd + "/candidates/"
+cand_dir = cwd + "-candidates/"
 
 #initialize Web API client
 client = WebClient(os.environ["SLACK_TOKEN_DSA"])
