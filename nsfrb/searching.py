@@ -829,8 +829,31 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
         nchans = len(freq_axis)
         nsamps = image_tesseract_point.shape[-2]
 
-        #shift each channel
-        """image_tesseract_point.to(device)
+        #rearrange shift idxs
+        idxs_all = torch.arange(nsamps).to(device).unsqueeze(1).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],-1,16)
+        shifts_all_hi = -tdelays_idx_hi.to(device).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1)
+        shifts_all_low = -tdelays_idx_low.to(device).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1)
+        corr_shifts_all_hi = (idxs_all - shifts_all_hi)%nsamps
+        corr_shifts_all_low = (idxs_all - shifts_all_low)%nsamps
+        mask = ~torch.logical_or(corr_shifts_all_hi < 0, corr_shifts_all_low < 0)
+
+        #shift, sum but mask the ones with negative indices
+        dedisp_img = torch.gather(image_tesseract_point.to(device),dim=2,index=corr_shifts_all_hi)*(tdelays_frac.to(device)) + torch.gather(image_tesseract_point.to(device),dim=2,index=corr_shifts_all_low)*(1-tdelays_frac.to(device))
+        dedisp_timeseries_all = (dedisp_img*mask).sum(3)
+
+        del idxs_all
+        del shifts_all_hi
+        del shifts_all_low
+        del corr_shifts_all_hi
+        del corr_shifts_all_low
+        del mask
+      
+
+        dedisp_img = dedisp_img.to("cpu")
+        dedisp_timeseries_all = dedisp_timeseries_all.to("cpu")
+        torch.cuda.empty_cache()
+        """#shift each channel
+        image_tesseract_point.to(device)
         if neg_flag:
             arrlow = torch.from_numpy(dedisp_pad(image_tesseract_point,tdelays_idx_low,device=device,endflag=False)).to(device)
             arrhi = torch.from_numpy(dedisp_pad(image_tesseract_point,tdelays_idx_hi,device=device,endflag=False)).to(device)
@@ -847,6 +870,7 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
         torch.cuda.empty_cache()
 
 
+        """
         """
         #shift each channel
         for k in range(nchans):
@@ -888,6 +912,7 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
         channel.to("cpu")
         del channel
         torch.cuda.empty_cache()
+        """
     else:
 
         #Delays
@@ -949,36 +974,63 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
     return dedisp_timeseries_all,dedisp_img
 
 
-def dedisperse_1D(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,output_file=""):
+def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_last_frame=True):
     """
-    This function dedisperses a dynamic spectrum of shape nsamps x nchans by brute force without accounting for edge effects
+    This function dedisperses a dynamic spectrum pixel grid of shape gridsize x gridsize x nsamps x nchans by brute force without accounting for edge effects
     """
+    pass
+
+"""
     if output_file != "":
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
 
+
+    #get data from previous timeframe
+    if append_last_frame:
+        truensamps = image_tesseract_point.shape[2]
+        if device != None and device.type == 'cuda':
+            image_tesseract_point= torch.cat([torch.from_numpy(get_last_frame()),image_tesseract_point],dim=2)
+        else:
+            image_tesseract_point = np.concatenate([get_last_frame(),image_tesseract_point],axis=2)
+        print("Appending data from previous timeframe, new shape: " + str(image_tesseract_point.shape),file=fout)
+
     #get delay axis
-    tdelays = DM*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
-    tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
-    tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
-    tdelays_frac = tdelays/tsamp - tdelays_idx_low
-    print("Trial DM: " + str(DM) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout,end="")
-    nchans = len(freq_axis)
-    dedisp_timeseries = np.zeros(image_tesseract_point.shape[0])
-    #shift each channel
-    for k in range(nchans):
-        #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
-        arrlow =  np.pad(image_tesseract_point[:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
-        arrhi =  np.pad(image_tesseract_point[:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+    #neg_flag = DM < 0
+    #DM = np.abs(DM)
+    if device != None and device.type == 'cuda':
+        #make cuda tensors
+        print(torch.cuda.is_available())
+        print(image_tesseract_point.shape)
+        freq_axis = torch.from_numpy(freq_axis).to(device)
+        dedisp_timeseries_all = torch.zeros(image_tesseract_point.shape[:-1]).
+        dedisp_img = torch.zeros(image_tesseract_point.shape)
+        DM_trials = torch.from_numpy(DM_trials)
+        #add axes for DM trials
+        dedisp_timeseries_all = dedisp_timeseries_all.unsqueeze(0).expand(len(DM_trials),-1,-1,-1)
+        dedisp_img = dedisp_img.unsqueeze(0).expand(len(DM_trials),-1,-1,-1,-1)
 
-        dedisp_timeseries += arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
-    print("Done!",file=fout)
-    if output_file != "":
-        fout.close()
-    return dedisp_timeseries
+        
 
 
+
+        #image_tesseract_point.to(device)
+        #freq_axis.to(device)
+        #dedisp_timeseries_all.to(device)
+        #dedisp_img.to(device)
+
+
+        #Delays
+        tdelays = DM*4.15*(((torch.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
+        tdelays_idx_hi = torch.ceil(tdelays/tsamp).int()
+        tdelays_idx_low = torch.floor(tdelays/tsamp).int()
+        tdelays_frac = tdelays/tsamp - tdelays_idx_low
+        print("Trial DM: " + str(DM) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout,end="")
+        nchans = len(freq_axis)
+        nsamps = image_tesseract_point.shape[-2]
+
+"""
 #Alternate search code using PyTorchDedispersion (Kosogorov in prep) from LWA
 def run_PyTorchDedisp_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,PSF=default_PSF,output_file="",
         DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,verbose=False,space_filter=True,canddict=dict(),usefft=False):
