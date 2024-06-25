@@ -145,6 +145,8 @@ dependencies:
       - influxdb==5.3.2
       - iniconfig==2.0.0
       - jax==0.4.30
+      - jax-cuda12-pjrt==0.4.30
+      - jax-cuda12-plugin==0.4.30
       - jaxlib==0.4.30
       - joblib==1.4.2
       - lazy-loader==0.4
@@ -154,6 +156,16 @@ dependencies:
       - ml-dtypes==0.4.0
       - msgpack==1.0.8
       - numba==0.60.0
+      - nvidia-cublas-cu12==12.5.2.13
+      - nvidia-cuda-cupti-cu12==12.5.39
+      - nvidia-cuda-nvcc-cu12==12.5.40
+      - nvidia-cuda-runtime-cu12==12.5.39
+      - nvidia-cudnn-cu12==9.1.1.17
+      - nvidia-cufft-cu12==11.2.3.18
+      - nvidia-cusolver-cu12==11.6.2.40
+      - nvidia-cusparse-cu12==12.4.1.24
+      - nvidia-nccl-cu12==2.22.3
+      - nvidia-nvjitlink-cu12==12.5.40
       - opt-einsum==3.3.0
       - pluggy==1.5.0
       - pygments==2.18.0
