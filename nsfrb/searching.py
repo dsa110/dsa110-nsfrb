@@ -57,7 +57,7 @@ cwd = f.read()[:-1]
 f.close()
 sys.path.append(cwd + "/") 
 from nsfrb.config import *
-from nsfrb.noise import noise_update,noise_dir
+from nsfrb.noise import noise_update,noise_dir,noise_update_all
 
 #output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
@@ -379,23 +379,38 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
         #image_tesseract.to(device)
         #image_tesseract_filtered.to(device)
         
+
+        #fft implementation
+        if usefft:
+            #take FFT of image and PSF
+            image_tesseract_FFT = torch.fft.fft2(image_tesseract.to(device).to(torch.float64),s=(gridsize,gridsize),dim=(0,1),norm='backward')
+            PSF_kernel_FFT = torch.fft.fft2(PSF_kernel.to(device).to(torch.float64),s=(gridsize,gridsize),dim=(0,1),norm='backward')
+            image_tesseract_filtered = torch.real(torch.fft.ifft2(image_tesseract_FFT*PSF_kernel_FFT,s=(gridsize,gridsize),dim=(0,1),norm='backward')).to("cpu")
+            del image_tesseract_FFT
+            del PSF_kernel_FFT
+            torch.cuda.empty_cache()
+            print(image_tesseract_filtered,file=fout)
+            
+
+
+
+        else:
+            #reshape
+            image_tesseract_reshaped = image_tesseract.transpose(0,2)
+            image_tesseract_reshaped = image_tesseract_reshaped.transpose(1,3)
+            PSFimg_reshaped = ((PSF_kernel[:,:,0,:].transpose(0,2).transpose(1,2))[np.newaxis,:,:,:]).repeat(nchans,1,1,1).to(image_tesseract_reshaped.dtype)
         
-        #reshape
-        image_tesseract_reshaped = image_tesseract.transpose(0,2)
-        image_tesseract_reshaped = image_tesseract_reshaped.transpose(1,3)
-        PSFimg_reshaped = ((PSF_kernel[:,:,0,:].transpose(0,2).transpose(1,2))[np.newaxis,:,:,:]).repeat(nchans,1,1,1).to(image_tesseract_reshaped.dtype)
-        
-        #convolve
-        PSFimg_reshaped.to(device)
-        image_tesseract_reshaped.to(device)
-        image_tesseract_filtered = tf.conv2d(image_tesseract_reshaped.cuda(),PSFimg_reshaped.cuda(),padding='same').transpose(1,3).transpose(0,2)
-        image_tesseract_filtered = image_tesseract_filtered.to("cpu")
-        image_tesseract_reshaped = image_tesseract_reshaped.to("cpu")
-        PSFimg_reshaped = PSFimg_reshaped.to("cpu")
-        del image_tesseract_reshaped
-        del PSFimg_reshaped
-        torch.cuda.empty_cache()
-        print(image_tesseract_filtered,file=fout)
+            #convolve
+            PSFimg_reshaped.to(device)
+            image_tesseract_reshaped.to(device)
+            image_tesseract_filtered = tf.conv2d(image_tesseract_reshaped.cuda(),PSFimg_reshaped.cuda(),padding='same').transpose(1,3).transpose(0,2)
+            image_tesseract_filtered = image_tesseract_filtered.to("cpu")
+            image_tesseract_reshaped = image_tesseract_reshaped.to("cpu")
+            PSFimg_reshaped = PSFimg_reshaped.to("cpu")
+            del image_tesseract_reshaped
+            del PSFimg_reshaped
+            torch.cuda.empty_cache()
+            print(image_tesseract_filtered,file=fout)
         """
         for j in range(nchans):
             PSFimg_reshaped = (PSF_kernel[:,:,0,j])[np.newaxis,np.newaxis,:,:]
@@ -446,7 +461,7 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
     #np.nansum(np.nansum((img/np.array(noises)),3)*np.nanmean(PSFimg,3)/(np.nansum(1/np.array(noises))),axis=(0,1))
 
 
-def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=True,exportmaps=False):
+def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=False,exportmaps=False,usefft=False):
     """
     alternate implementation of SNR w/ 2d convolution to do PSF matched filtering. input is 3d array with axes gridsize x gridsize x nsamps
     """
@@ -464,6 +479,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,s
     
     if device != None and device.type=='cuda':
         print(torch.cuda.is_available(),file=fout)
+
         #make tensors for GPU
         boxcar = torch.zeros(image_tesseract_filtered_dm.shape[2])
         image_tesseract_binned = torch.zeros((gridsize_DEC,gridsize_RA))
@@ -494,8 +510,8 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,s
         boxcar_reshaped.to(device)
 
         #convolve and get peak value
-        maxbatchsize = gridsize_DEC 
-        nbatches = gridsize_RA
+        maxbatchsize = gridsize_DEC*gridsize_RA 
+        nbatches = 1#gridsize_RA
         
         for i in range(nbatches):
             #move subset of pixels to gpu
@@ -695,6 +711,126 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,s
         fout.close()
     
     return image_tesseract_binned
+
+
+def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtrials=widthtrials,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=False,exportmaps=False,usefft=False):
+    """
+    boxcar convolution, input is 4d array with axes gridsize x gridsize x nsamps  x nDMtrials
+    """
+
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    nsamps = image_tesseract_filtered_dm.shape[2]
+    ndms = image_tesseract_filtered_dm.shape[3]
+    nwidths = len(widthtrials)
+    gridsize_RA = image_tesseract_filtered_dm.shape[1]
+    gridsize_DEC = image_tesseract_filtered_dm.shape[0]
+    loc = nsamps//2
+
+    if device != None and device.type=='cuda':
+        print(torch.cuda.is_available(),file=fout)
+        #make tensors for GPU
+        boxcar = torch.zeros(image_tesseract_filtered_dm.shape).unsqueeze(0).expand(nwidths,-1,-1,-1,-1)
+        for i in range(nwidths):
+            wid = widthtrials[i]
+            boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
+        
+        if usefft:
+            #take fourier transform of boxcar and image
+            image_tesseract_FFT = torch.fft.fft(image_tesseract_filtered_dm.to(device),n=nsamps,dim=2,norm='backward')
+            boxcar_FFT = torch.fft.fft(boxcar.to(device),n=nsamps,dim=3,norm='backward')
+            image_tesseract_binned = torch.real(torch.fft.ifftshift(torch.fft.ifft(image_tesseract_FFT.to(device)*boxcar_FFT.to(device),n=nsamps,dim=3,norm='backward'),dim=3)).transpose(3,4) ##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps 
+
+            del image_tesseract_FFT
+            del boxcar_FFT
+            torch.cuda.empty_cache()
+        
+        else:
+            #convolve for each timeseries; assume already normalized
+
+            #reshape input to be [batch_size, channels, sequence_length] = [gridsize*gridsize,1,nsamps]
+            image_tesseract_reshaped = image_tesseract_filtered_dm.transpose(2,3).reshape((gridsize_RA*gridsize_DEC*ndms,1,nsamps)).to(device)
+            boxcar_reshaped = boxcar[:,0,0,:,0:1].transpose(1,2).to(device)
+            image_tesseract_binned = tf.conv1d(image_tesseract_reshaped,boxcar_reshaped.to(image_tesseract_reshaped.dtype),padding='same').reshape(gridsize_DEC,gridsize_RA,ndms,nwidths,nsamps).transpose(0,3).transpose(2,3).transpose(1,2) #output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
+            
+            del image_tesseract_reshaped
+            del boxcar_reshaped
+            torch.cuda.empty_cache()
+
+
+        #mask all nans and values less than noise threshold
+        #print("CSIG:" + str(csig_all.numpy()),file=fout)
+        mask1 = torch.logical_not(torch.logical_or(torch.isinf(image_tesseract_binned),torch.isnan(image_tesseract_binned)))
+        image_tesseract_binned[:] = torch.nan_to_num(image_tesseract_binned[:])
+        image_tesseract_binned[torch.logical_or(torch.isinf(image_tesseract_binned),torch.isnan(image_tesseract_binned))] = 0
+
+
+        print("MASK1:" + str(mask1) + "," + str(mask1.sum()),file=fout)
+        #print("QUANTILES:" + str(torch.nanquantile(image_tesseract_binned,noiseth)),file=fout)#,dim=2,keepdim=True).numpy()),file=fout)
+        mask = (image_tesseract_binned) < torch.nanquantile((image_tesseract_binned.max(dim=4,keepdim=True).values).reshape((nwidths,gridsize_RA*gridsize_DEC,ndms,1)),noiseth,dim=1,keepdim=True).unsqueeze(1)
+        
+        
+        
+        #torch.nanquantile(image_tesseract_binned,noiseth)#,dim=2,keepdim=True) #(noiseth*(torch.max(csig_all,dim=2,keepdim=True).values))
+        mask *= (mask*mask1).sum(4,keepdims=True) > 1 
+
+        print("MASK:" + str(mask) + "," + str(mask.sum()),file=fout)
+        #image_tesseract_binned_masked = image_tesseract_binned*mask
+        numvalids = (mask*mask1).sum(4)
+        print("NONMASKED VALS:" + str(image_tesseract_binned*mask),file=fout)
+        print("STD:" + str(torch.std(
+                                                image_tesseract_binned*mask*mask1,dim=4
+                                                )),file=fout)
+        print("MEDIAN:" + str(torch.nanmedian(
+                                        torch.nanmedian(
+                                            (torch.std(
+                                                image_tesseract_binned*mask*mask1,dim=4
+                                                )*torch.sqrt(nsamps/numvalids)
+                                            ),dim=1
+                                        ).values,dim=1
+                                    )),file=fout)
+        #take std deviation and correct for nan and non-noise data
+        print(image_tesseract_binned.shape,mask.shape,numvalids.shape)
+        noise = torch.from_numpy(noise_update_all(
+                                    torch.nanmedian(
+                                        torch.nanmedian(
+                                            (torch.std(
+                                                image_tesseract_binned*mask*mask1,dim=4
+                                                )*torch.sqrt(nsamps/numvalids)
+                                            ),dim=1
+                                        ).values,dim=1
+                                    ).values.to("cpu").numpy(),
+                                gridsize_RA,gridsize_DEC,DM_trials,widthtrials)).to(device)
+        print("NOISE:"+str(noise),file=fout)
+
+        #get snr
+        print(image_tesseract_binned.shape,mask.shape,numvalids.shape)
+        image_tesseract_binned = ((image_tesseract_binned.max(4).values - torch.median(image_tesseract_binned*mask,dim=4).values)/noise).to("cpu")
+
+        del mask
+        del mask1
+        del numvalids
+        del noise
+        torch.cuda.empty_cache()
+
+        image_tesseract_binned = image_tesseract_binned.transpose(0,2).transpose(0,1)
+
+    else:
+        image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidths,ndms))
+        for i in range(nwidths):
+            wid = widthtrials[i]
+            for j in range(ndms):
+                DM = DM_trials[j]
+                image_tesseract_binned[:,:,i,j] = snr_vs_RA_DEC_new(image_tesseract_filtered_dm[:,:,:,j],wid,DM,mode=mode,noiseth=noiseth,samenoise=samenoise,plot=plot,device=device,output_file=output_file,scrunch=scrunch,exportmaps=exportmaps,usefft=usefft)
+
+                
+
+
+    return image_tesseract_binned
+
 
 def dedisp_pad_with(vector,pad_width,iaxis,kwargs):
     #we want to make a padding function which allows different number of pad values for each row
@@ -1291,7 +1427,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     else:
         device = None
         usingGPU = False
-
+    print("Using device: " + str(device),file=fout)
 
 
     #get axis sizes
@@ -1469,6 +1605,13 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials)) #stores output array as S/N for each dedispersion and width trial for every pixel
     
         print(printprefix +"Starting boxcar filtering with " + str(nwidthtrials) + " trials...",file=fout)
+        
+        
+        if usingGPU:
+            image_tesseract_binned = snr_vs_RA_DEC_allDMW(torch.from_numpy(image_tesseract_dedisp),DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft).numpy()
+        else:
+            image_tesseract_binned = snr_vs_RA_DEC_allDMW(image_tesseract_dedisp,DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft)
+        """
         #PSF parameters
         maxs = []
         maxs2 = []
@@ -1482,17 +1625,18 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                     maxs.append(image_tesseract_binned[15, 16,w,d])
                 elif plot:
                     maxs2.append(image_tesseract_binned[15, 16,w,d])
+        """
         print(printprefix +"Done!",file=fout)    
         print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_binned))),file=fout)
         print("Time for boxcar filter: " + str(time.time()-t1) + " s",file=fout)
-        if plot:
+        """if plot:
             plt.figure(figsize=(12,6))
             plt.plot(widthtrials,maxs,'o-')
             #plt.plot(widthtrials,maxs2,'o-')
             #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(5/np.arange(1,10)),color='red')
             #plt.plot(np.arange(1,10),maxs[np.argmin(np.abs(widthtrials-5))]*np.sqrt(np.arange(1,10)/5),color='blue')
             plt.show()
-        
+        """
 
 
         t1 = time.time()

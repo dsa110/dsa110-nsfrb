@@ -30,7 +30,7 @@ telescope_diameter = 4.65 #m
 
 #resolution parameters
 pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
-gridsize = 32#256
+gridsize = 300#256
 RA_point = 0 #rad
 DEC_point = 0 #rad
 UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding

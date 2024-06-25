@@ -29,7 +29,7 @@ import csv
 import copy
 
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
-
+from nsfrb.noise import init_noise
 fsize=45
 fsize2=35
 plt.rcParams.update({
@@ -416,11 +416,20 @@ def main():
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     parser.add_argument('--PyTorchDedispersion',action='store_true',help='Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
     parser.add_argument('--exportmaps',action='store_true',help='Output noise maps for each DM and width trial to the noise directory')
+    parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
+    parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
     args = parser.parse_args()    
    
 
     #initialize last_frame 
-    sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps,args.nchans)
+    if args.initframes:
+        printlog("Initializing previous frames...",output_file=processfile)
+        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps,args.nchans)
+
+    #initialize noise stats
+    if args.initnoise:
+        printlog("Initializing noise statistics...",output_file=processfile)
+        init_noise()
 
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
     #total expected number of bytes for each sub-band image
