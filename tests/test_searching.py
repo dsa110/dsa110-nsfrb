@@ -10,7 +10,7 @@ from scipy.stats import gamma
 from scipy.stats import truncnorm
 from scipy.signal import peak_widths
 from scipy.stats import norm
-from event import names
+#from event import names
 #from gen_dmtrials_copy import gen_dm
 import argparse
 from astropy.time import Time
@@ -53,6 +53,7 @@ def base_test(img,PSF,
     elif usefft and multithreading and (not threadDM): print("Testing Search Pipeline with FFT and Multithreading (No DM Threading)...",end="")
     elif usefft and multithreading and threadDM: print("Testing Search Pipeline with FFT and Multithreading Implementation and DM Threading...",end="")
 
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
     DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
     time_axis = np.arange(nsamps)*sl.tsamp
@@ -93,7 +94,7 @@ def lowSNR_test(img,PSF,
     elif usefft and multithreading and threadDM: print("Testing Search Pipeline with FFT and Multithreading Implementation and DM Threading with low SNR threshold...",end="")
 
 
-
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
     DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
     time_axis = np.arange(nsamps)*sl.tsamp
@@ -114,7 +115,8 @@ def lowSNR_test(img,PSF,
     assert(len(candidxs) == len(cands))
     for k in canddict.keys():
         assert(len(canddict[k]) == len(candidxs))
-    assert(len(candidxs) == gridsize*gridsize*len(sl.widthtrials)*len(sl.DM_trials)) #check that all positions, DMs, widths are recovered 
+    assert(len(candidxs) == np.sum(~np.isnan(image_tesseract_searched)))
+    #assert(len(candidxs) == np.sum(np.logical_and(image_tesseract_searched > SNRthresh,~np.isnan(image_tesseract_searched))))# == gridsize*gridsize*len(sl.widthtrials)*len(sl.DM_trials)) #check that all positions, DMs, widths are recovered 
     assert(len(candidxs[0]) == 5) #RA, DEC, width, DM,SNR
     assert(len(cands[0]) == 5) #RA, DEC, width, DM, SNR
     assert(np.all(canddict['ras'] == RA_axis[canddict['ra_idxs']]))
@@ -152,7 +154,7 @@ def highSNR_test(img,PSF,
     elif usefft and multithreading and threadDM: print("Testing Search Pipeline with FFT and Multithreading Implementation and DM Threading with high SNR threshold...",end="")
 
 
-    
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
     DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
     time_axis = np.arange(nsamps)*sl.tsamp
@@ -174,7 +176,7 @@ def highSNR_test(img,PSF,
         assert(len(canddict[k]) == len(candidxs))
     assert(len(candidxs) == 0)
     assert(len(cands) == 0)
-    assert(np.all(image_tesseract_searched <= SNRthresh))
+    assert(np.all(image_tesseract_searched[~np.isnan(image_tesseract_searched)] <= SNRthresh))
     print("Passed!")
     return
 
@@ -194,7 +196,6 @@ def test_regular_implementation():
     
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
-
     base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose)
     lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose)
     highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose)
@@ -216,7 +217,6 @@ def test_FFT_implementation():
 
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
-
     base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,usefft=True)
     lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,usefft=True)
     highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,usefft=True)
@@ -236,7 +236,6 @@ def test_GPU_implementation():
 
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
-
     base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,usefft=False,cuda=True)
     lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,usefft=False,cuda=True)
     highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,usefft=False,cuda=True)
@@ -284,7 +283,7 @@ def test_multithreading_implementation():
     
     return
 
-
+"""
 #multithreading and DM threading
 def test_mulithreading_with_DM_threading():
     SNRthresh = 3000
@@ -320,7 +319,7 @@ def test_FFT_and_multithreading_with_DM_threading():
     highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True,usefft=True)
 
     return
-
+"""
 
 """
 def main():

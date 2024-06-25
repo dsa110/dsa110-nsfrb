@@ -163,6 +163,7 @@ def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerange
         bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
         elev = result['antmon']['ant_el'].values[bestidx]
         alt = 180-elev
+        alt = elev - 90
         antpos = AltAz(obstime=tobs,location=loc,az=0*u.deg,alt=alt*u.deg)
 
         #(4) convert to ICRS frame

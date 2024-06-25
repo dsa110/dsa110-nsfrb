@@ -383,7 +383,7 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
         #reshape
         image_tesseract_reshaped = image_tesseract.transpose(0,2)
         image_tesseract_reshaped = image_tesseract_reshaped.transpose(1,3)
-        PSFimg_reshaped = ((PSF_kernel[:,:,0,:].transpose(0,2).transpose(1,2))[np.newaxis,:,:,:]).repeat(nchans,1,1,1)
+        PSFimg_reshaped = ((PSF_kernel[:,:,0,:].transpose(0,2).transpose(1,2))[np.newaxis,:,:,:]).repeat(nchans,1,1,1).to(image_tesseract_reshaped.dtype)
         
         #convolve
         PSFimg_reshaped.to(device)
@@ -1498,7 +1498,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         t1 = time.time()
         print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
         #find candidates above SNR threshold
-        condition = (image_tesseract_binned>SNRthresh).flatten()
+        condition = (image_tesseract_binned>=SNRthresh).flatten()
         ncands = np.sum(condition)
         canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*nDMtrials*nwidthtrials)[condition],(gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))#[1].shape
     
