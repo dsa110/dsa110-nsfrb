@@ -370,12 +370,12 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     return fullimg.image_tesseract_searched#, SNRthresh#fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
 
-def future_callback(future,SNRthresh):
+def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis):
     """
     This function prints the result once a thread finishes processing an image
     """
     printlog(future.result(),output_file=processfile)
-    pl.binary_plot(future.result(),SNRthresh)
+    pl.binary_plot(future.result(),SNRthresh,timestepisot,RA_axis,DEC_axis)
     printlog("****Thread Completed****",output_file=processfile)
     printlog(future.result(),output_file=processfile)
     printlog("************************",output_file=processfile)
@@ -614,11 +614,13 @@ def main():
         if fullimg_array[idx].is_full():
             #submit a search task to the process pool
             printlog("Submitting new task for image " + str(idx),output_file=processfile)
+            RA_axis_idx = copy.deepcopy(fullimg_array[idx].RA_axis)
+            DEC_axis_idx= copy.deepcopy(fullimg_array[idx].DEC_axis)
             task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,args.spacefilter,args.kernelsize,args.exportmaps))
             
             #printlog(future.result(),output_file=processfile)
-            task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh))
+            task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx))
             #after finishes execution, remove from list by setting element to None
             fullimg_array[idx] = None
     
