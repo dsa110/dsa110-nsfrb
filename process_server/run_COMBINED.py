@@ -259,7 +259,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     #only save if we find candidates
     if len(fullimg.candidxs)==0:
         printlog("No candidates found",output_file=processfile)
-        return fullimg.cands,fullimg.candidxs,len(fullimg.cands)
+        return fullimg.image_tesseract_searched#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
 
 
 
@@ -289,9 +289,10 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     printlog("obtaining image cutouts...",output_file=processfile,end='')
     fullimg.subimgs = np.zeros((len(fullimg.unique_cands),subimgpix,subimgpix,fullimg.image_tesseract_binned.shape[3]),dtype=np.float16)
+    """
     for i in range(len(fullimg.unique_cands)):
         fullimg.subimgs[i,:,:,:] = sl.get_subimage(fullimg.image_tesseract_binned,fullimg.unique_cands[i][0],fullimg.unique_cands[i][1],save=False,subimgpix=subimgpix)[:,:,int(fullimg.unique_cands[i][2]),:]
-
+    """
     data_array = np.nan_to_num(fullimg.subimgs,nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
 
 
@@ -317,7 +318,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     #only save if we find candidates
     if len(finalidxs)==0: 
         printlog("No candidates found",output_file=processfile)
-        return fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
+        return fullimg.image_tesseract_searched #fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
 
 
     #save predictions/probabilities to a csv
@@ -367,13 +368,14 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     
 
-    return fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
+    return fullimg.image_tesseract_searched#, SNRthresh#fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
 
-def future_callback(future):
+def future_callback(future,SNRthresh):
     """
     This function prints the result once a thread finishes processing an image
-
     """
+    printlog(future.result(),output_file=processfile)
+    pl.binary_plot(future.result(),SNRthresh)
     printlog("****Thread Completed****",output_file=processfile)
     printlog(future.result(),output_file=processfile)
     printlog("************************",output_file=processfile)
@@ -616,7 +618,7 @@ def main():
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,args.spacefilter,args.kernelsize,args.exportmaps))
             
             #printlog(future.result(),output_file=processfile)
-            task_list[-1].add_done_callback(future_callback)
+            task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh))
             #after finishes execution, remove from list by setting element to None
             fullimg_array[idx] = None
     
