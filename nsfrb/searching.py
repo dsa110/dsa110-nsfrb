@@ -1112,7 +1112,7 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
     return dedisp_timeseries_all,dedisp_img
 
 
-def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_last_frame=True,_idx=0):
+def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_last_frame=True,_idx=0,multithreading=False,maxProcesses=15):
     """
     This function dedisperses a dynamic spectrum pixel grid of shape gridsize x gridsize x nsamps x nchans by brute force without accounting for edge effects
     """
@@ -1156,6 +1156,7 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
 
 
         #Delays
+        gridsize = image_tesseract_point.shape[0]
         nchans = len(freq_axis)
         nsamps = image_tesseract_point.shape[-2]
         tdelays = (((DM_trials.unsqueeze(1).expand(-1,nchans))*4.15*(((torch.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose(0,1))
@@ -1200,10 +1201,33 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
         torch.cuda.empty_cache()
         """
         
+        if multithreading:
+            #just multithread the gather stages
+            dedisp_img_hi = torch.zeros(image_tesseract_point.shape).unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
+            dedisp_img_low = torch.zeros(image_tesseract_point.shape).unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
+
+            executor = ProcessPoolExecutor(maxProcesses)
+            task_list_hi = []
+            task_list_low = []
+            subgridsize = gridsize//maxProcesses
+            for i in range(maxProcesses):
+                task_list_hi.append(executor.submit(torch.gather,
+                    image_tesseract_point_DM.half()[i*subgridsize:(i+1)*subgridsize,
+                                                    i*subgridsize:(i+1)*subgridsize,:,:,:],
+                                                    2,torch.clip(corr_shifts_all_hi,min=0,max=nsamps-1)))
+                task_list_low.append(executor.submit(torch.gather,
+                    image_tesseract_point_DM.half()[i*subgridsize:(i+1)*subgridsize,
+                                                    i*subgridsize:(i+1)*subgridsize,:,:,:],
+                                                    2,torch.clip(corr_shifts_all_low,min=0,max=nsamps-1)))
+            for i in range(maxProcesses):
+                dedisp_img_hi[i*subgridsize:(i+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] = task_list_hi[i].result()[i*subgridsize:(i+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:]
+                dedisp_img_low[i*subgridsize:(i+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] = task_list_low[i].result()[i*subgridsize:(i+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:]
+            executor.shutdown()
+        else:
+            dedisp_img_hi = (torch.gather(image_tesseract_point_DM.half(),dim=2,index=torch.clip(corr_shifts_all_hi,min=0,max=nsamps-1)))
+            dedisp_img_low = (torch.gather(image_tesseract_point_DM.half(),dim=2,index=torch.clip(corr_shifts_all_low,min=0,max=nsamps-1)))
         
-        dedisp_img_hi = (torch.gather(image_tesseract_point_DM.half(),dim=2,index=torch.clip(corr_shifts_all_hi,min=0,max=nsamps-1)))
         dedisp_img_hi = (dedisp_img_hi.to(device)*tdelays_frac.half().to(device)).to("cpu")
-        dedisp_img_low = (torch.gather(image_tesseract_point_DM.half(),dim=2,index=torch.clip(corr_shifts_all_low,min=0,max=nsamps-1)))
         dedisp_img_low = (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device))).to("cpu")
         dedisp_img = dedisp_img_low + dedisp_img_hi
 
