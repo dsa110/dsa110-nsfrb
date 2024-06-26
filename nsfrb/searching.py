@@ -386,6 +386,7 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
             image_tesseract_FFT = torch.fft.fft2(image_tesseract.to(device).to(torch.float64),s=(gridsize,gridsize),dim=(0,1),norm='backward')
             PSF_kernel_FFT = torch.fft.fft2(PSF_kernel.to(device).to(torch.float64),s=(gridsize,gridsize),dim=(0,1),norm='backward')
             image_tesseract_filtered = torch.real(torch.fft.ifft2(image_tesseract_FFT*PSF_kernel_FFT,s=(gridsize,gridsize),dim=(0,1),norm='backward')).to("cpu")
+            torch.cuda.empty_cache()
             del image_tesseract_FFT
             del PSF_kernel_FFT
             torch.cuda.empty_cache()
@@ -407,6 +408,7 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
             image_tesseract_filtered = image_tesseract_filtered.to("cpu")
             image_tesseract_reshaped = image_tesseract_reshaped.to("cpu")
             PSFimg_reshaped = PSFimg_reshaped.to("cpu")
+            torch.cuda.empty_cache()
             del image_tesseract_reshaped
             del PSFimg_reshaped
             torch.cuda.empty_cache()
@@ -1120,6 +1122,9 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
     else:
         fout = sys.stdout
 
+    if device != None and device.type == 'cuda':
+        if device.index == 0: device = torch.device(1)
+        else: device = torch.device(0)
 
     #get data from previous timeframe
     if append_last_frame:
@@ -1134,61 +1139,83 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
     #neg_flag = DM < 0
     #DM = np.abs(DM)
     if device != None and device.type == 'cuda':
+        
+        
+        
         #make cuda tensors
         print(torch.cuda.is_available())
         print(image_tesseract_point.shape)
-        freq_axis = torch.from_numpy(freq_axis).to(device)
+        freq_axis = torch.from_numpy(freq_axis)
         dedisp_timeseries_all = torch.zeros(image_tesseract_point.shape[:-1])
-        dedisp_img = torch.zeros(image_tesseract_point.shape)
+        #dedisp_img = torch.zeros(image_tesseract_point.shape).unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
         DM_trials = torch.from_numpy(DM_trials)
         #add axes for DM trials
         dedisp_timeseries_all = dedisp_timeseries_all.unsqueeze(3).expand(-1,-1,-1,len(DM_trials))
-        dedisp_img = dedisp_img.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
         image_tesseract_point_DM = image_tesseract_point.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
                 
-
-
-
-        #image_tesseract_point.to(device)
-        #freq_axis.to(device)
-        #dedisp_timeseries_all.to(device)
-        #dedisp_img.to(device)
 
 
         #Delays
         nchans = len(freq_axis)
         nsamps = image_tesseract_point.shape[-2]
-        tdelays = ((DM_trials.to(device).unsqueeze(1).expand(-1,nchans))*4.15*(((torch.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose(0,1)
+        tdelays = (((DM_trials.unsqueeze(1).expand(-1,nchans))*4.15*(((torch.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose(0,1))
         tdelays_idx_hi = torch.ceil(tdelays/tsamp).int()
         tdelays_idx_low = torch.floor(tdelays/tsamp).int()
         tdelays_frac = tdelays/tsamp - tdelays_idx_low
         print("Trial DM: " + str(DM_trials.shape) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout,end="")
-
+        torch.cuda.empty_cache()
 
         #rearrange shift idxs
-        idxs_all = torch.arange(nsamps).to(device).unsqueeze(1).unsqueeze(1).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],-1,16,len(DM_trials))
-        corr_shifts_all_hi = -tdelays_idx_hi.to(device).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1,-1)
-        corr_shifts_all_low = -tdelays_idx_low.to(device).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1,-1)
+        idxs_all = torch.arange(nsamps).unsqueeze(1).unsqueeze(1).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],-1,16,len(DM_trials))
+        corr_shifts_all_hi = -tdelays_idx_hi.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1,-1)
+        corr_shifts_all_low = -tdelays_idx_low.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1,-1)
         corr_shifts_all_hi -= idxs_all#(idxs_all - shifts_all_hi)%nsamps
         corr_shifts_all_low -= idxs_all#(idxs_all - shifts_all_low)%nsamps
         corr_shifts_all_hi *= -1 
         corr_shifts_all_low *= -1
         corr_shifts_all_hi %= nsamps
         corr_shifts_all_low %= nsamps
-        corr_shifts_all_hi[:] = corr_shifts_all_hi[:].to(torch.int64)
-        corr_shifts_all_low[:] = corr_shifts_all_low[:].to(torch.int64)
+        corr_shifts_all_hi = corr_shifts_all_hi.long()
+        corr_shifts_all_low = corr_shifts_all_low.long()
         #mask = ~torch.logical_or(corr_shifts_all_hi < 0, corr_shifts_all_low < 0)
 
         #shift, sum but mask the ones with negative indices
         tdelays_frac = tdelays_frac.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1,-1)
 
-        dedisp_img = (torch.gather(image_tesseract_point_DM.to(device),dim=2,index=corr_shifts_all_hi.to(torch.int64))*(tdelays_frac.to(device))).to("cpu") + (torch.gather(image_tesseract_point_DM.to(device),dim=2,index=corr_shifts_all_low.to(torch.int64))*(1-tdelays_frac.to(device))).to("cpu")
-        dedisp_timeseries_all = (dedisp_img*(~torch.logical_or(corr_shifts_all_hi.to("cpu") < 0, corr_shifts_all_low.to("cpu") < 0))).sum(3)
+        print("IMG:"+str(image_tesseract_point_DM),file=fout)
+        print("TDEL_HI:" + str(corr_shifts_all_hi),file=fout)
+        print("TDEL_LOW:" + str(corr_shifts_all_low),file=fout)
+        print("TDEL_FRAC:" + str(tdelays_frac),file=fout)
 
+        """
+        dedisp_img_hi = (torch.gather(image_tesseract_point_DM.half().to(device),dim=2,index=torch.clip(corr_shifts_all_hi.to(device),min=0,max=nsamps-1))).to("cpu")
+        torch.cuda.empty_cache()
+        dedisp_img_hi = (dedisp_img_hi.to(device)*tdelays_frac.half().to(device)).to("cpu")
+        torch.cuda.empty_cache()
+        dedisp_img_low = (torch.gather(image_tesseract_point_DM.half().to(device),dim=2,index=torch.clip(corr_shifts_all_low.to(device),min=0,max=nsamps-1))).to("cpu")
+        torch.cuda.empty_cache()
+        dedisp_img_low = (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device))).to("cpu")
+        torch.cuda.empty_cache()
+        dedisp_img += (dedisp_img_low.to(device) + dedisp_img_hi.to(device)).to("cpu")
+        torch.cuda.empty_cache()
+        """
+        
+        
+        dedisp_img_hi = (torch.gather(image_tesseract_point_DM.half(),dim=2,index=torch.clip(corr_shifts_all_hi,min=0,max=nsamps-1)))
+        dedisp_img_hi = (dedisp_img_hi.to(device)*tdelays_frac.half().to(device)).to("cpu")
+        dedisp_img_low = (torch.gather(image_tesseract_point_DM.half(),dim=2,index=torch.clip(corr_shifts_all_low,min=0,max=nsamps-1)))
+        dedisp_img_low = (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device))).to("cpu")
+        dedisp_img = dedisp_img_low + dedisp_img_hi
+
+        #dedisp_img = (torch.gather(image_tesseract_point_DM.to(device),dim=2,index=corr_shifts_all_hi.to(device))*(tdelays_frac.to(device))).to("cpu") + (torch.gather(image_tesseract_point_DM.to(device),dim=2,index=corr_shifts_all_low.to(device))*(1-tdelays_frac.to(device))).to("cpu")
+        dedisp_timeseries_all = (dedisp_img*(~torch.logical_or(corr_shifts_all_hi.to("cpu") < 0, corr_shifts_all_low.to("cpu") < 0))).sum(3)
+        torch.cuda.empty_cache()
         del idxs_all
         del corr_shifts_all_hi
         del corr_shifts_all_low
         del image_tesseract_point_DM
+        del dedisp_img_hi
+        del dedisp_img_low
 
         dedisp_img = dedisp_img.to("cpu")
         dedisp_timeseries_all = dedisp_timeseries_all.to("cpu")
@@ -1559,7 +1586,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         nDMtrials = len(DM_trials)
         print(printprefix +"Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
         image_tesseract_dedisp = np.zeros((gridsize_DEC,gridsize_RA,nsamps,nDMtrials)) 
-        ndmbatches = 4
+        ndmbatches = 1
         dmbatchsize = nDMtrials//ndmbatches
     
 
