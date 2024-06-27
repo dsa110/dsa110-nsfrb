@@ -79,6 +79,8 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         noise_dict = dict()
 
     #update entry for DM, width trial
+
+    print("INPUT NOISE MEDIAN:" + str(noise),file=fout)
     noise_final = np.zeros((len(widthtrials),len(DM_trials)))
     for i in range(len(DM_trials)):
         DM = DM_trials[i]
@@ -95,7 +97,7 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
                 nextnoise = (prevnoise*prevN + noise[j,i])/nextN
                 noise_dict[DM][width] = [nextN, nextnoise]
             noise_final[j,i] = noise_dict[DM][width][1]
-
+    print("OUTPUT_NOISE MEDIAN:" + str(noise_final),file=fout)
     f = open(fname,"wb")
     pkl.dump(noise_dict,f)
     f.close()
@@ -105,6 +107,6 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
     return noise_final 
 
 def init_noise(noise_dir=noise_dir):
-    if len(glob.glob("rm " + noise_dir + "/*pkl")) > 0:
+    if len(glob.glob(noise_dir + "/*pkl")) > 0:
         os.system("rm " + noise_dir + "/*pkl")
     return
