@@ -20,7 +20,8 @@ logfiles = ["error_log.txt",
             "pipe_log.txt",
             "run_log.txt",
             "search_log.txt",
-            "process_log.txt"]
+            "process_log.txt",
+            "inject_log.txt"]
 for i in range(len(logfiles)):
     l = logfiles[i]
     os.system("touch ../dsa110-nsfrb-logfiles/" + l)

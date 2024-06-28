@@ -142,6 +142,7 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
             msg=send_data(time_start_isot, dirty_images_all[:,:,:,i] ,verbose=verbose_flag,retries=5,keepalive_time=10)
             if verbose_flag: print(msg)
             time.sleep(1)
+        
         selected_rows.close()
         
     tb.close()
