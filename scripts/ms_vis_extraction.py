@@ -134,6 +134,7 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
         dirty_images_all = np.pad(dirty_images_all,((0,0),(0,0),(11,12),(0,0)))
         print(dirty_images_all.shape)
         dirty_images_all += norm.rvs(loc=0,scale=np.nanmax(dirty_images_all)/100,size=dirty_images_all.shape)
+        #np.save("tmpfile.npy",dirty_images_all) 
         #print(sl.snr_vs_RA_DEC_new(dirty_images_all.mean(3),1))
         gridsize = 300
         for i in range(NUM_CHANNELS//AVERAGING_FACTOR):
@@ -141,7 +142,6 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
             msg=send_data(time_start_isot, dirty_images_all[:,:,:,i] ,verbose=verbose_flag,retries=5,keepalive_time=10)
             if verbose_flag: print(msg)
             time.sleep(1)
-        
         selected_rows.close()
         
     tb.close()

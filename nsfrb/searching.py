@@ -379,12 +379,13 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
         #image_tesseract.to(device)
         #image_tesseract_filtered.to(device)
         
-
+        print("IMG:" + str(image_tesseract) + "," + str(torch.sum(torch.isinf(image_tesseract))) + "," + str(torch.sum(image_tesseract==0)) + "," + str(torch.sum(torch.isnan(image_tesseract))),file=fout)
+        print("PSF:" + str(PSF_kernel) + "," + str(torch.sum(torch.isinf(PSF_kernel))) + "," + str(torch.sum(PSF_kernel==0)) + "," + str(torch.sum(torch.isnan(PSF_kernel))),file=fout)
         #fft implementation
         if usefft:
             #take FFT of image and PSF
-            image_tesseract_FFT = torch.fft.fft2(image_tesseract.to(device).to(torch.float64),s=(gridsize,gridsize),dim=(0,1),norm='backward')
-            PSF_kernel_FFT = torch.fft.fft2(PSF_kernel.to(device).to(torch.float64),s=(gridsize,gridsize),dim=(0,1),norm='backward')
+            image_tesseract_FFT = torch.fft.fft2(image_tesseract.double().to(device),s=(gridsize,gridsize),dim=(0,1),norm='backward')
+            PSF_kernel_FFT = torch.fft.fft2(PSF_kernel.double().to(device),s=(gridsize,gridsize),dim=(0,1),norm='backward')
             image_tesseract_filtered = torch.real(torch.fft.ifft2(image_tesseract_FFT*PSF_kernel_FFT,s=(gridsize,gridsize),dim=(0,1),norm='backward')).to("cpu")
             torch.cuda.empty_cache()
             del image_tesseract_FFT
@@ -397,17 +398,11 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
 
         else:
             #reshape
-            image_tesseract_reshaped = image_tesseract.transpose(0,2)
-            image_tesseract_reshaped = image_tesseract_reshaped.transpose(1,3)
-            PSFimg_reshaped = ((PSF_kernel[:,:,0,:].transpose(0,2).transpose(1,2))[np.newaxis,:,:,:]).repeat(nchans,1,1,1).to(image_tesseract_reshaped.dtype)
+            image_tesseract_reshaped = (image_tesseract.transpose(0,2).transpose(1,3)).double()
+            PSFimg_reshaped = (((PSF_kernel[:,:,0,:].transpose(0,2).transpose(1,2)).unsqueeze(0)).expand(nchans,-1,-1,-1)).double()#to(image_tesseract_reshaped.dtype)
         
             #convolve
-            PSFimg_reshaped.to(device)
-            image_tesseract_reshaped.to(device)
-            image_tesseract_filtered = tf.conv2d(image_tesseract_reshaped.cuda(),PSFimg_reshaped.cuda(),padding='same').transpose(1,3).transpose(0,2)
-            image_tesseract_filtered = image_tesseract_filtered.to("cpu")
-            image_tesseract_reshaped = image_tesseract_reshaped.to("cpu")
-            PSFimg_reshaped = PSFimg_reshaped.to("cpu")
+            image_tesseract_filtered = tf.conv2d(image_tesseract_reshaped.to(device),PSFimg_reshaped.to(device),padding='same').transpose(1,3).transpose(0,2).to("cpu")
             torch.cuda.empty_cache()
             del image_tesseract_reshaped
             del PSFimg_reshaped
@@ -1264,12 +1259,15 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
             if device.index == 0: device2 = torch.device(1)
             else: device2 = torch.device(0)
             print("MOVING TO DEVICE 2," + str(device2),file=fout)
-
+            
             #if device != None and device.type == 'cuda':
             #    if device.index == 0: device = torch.device(1)
             #    else: device = torch.device(0)
             subgridsize = gridsize//DMbatches
             image_tesseract_point_DM = image_tesseract_point.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
+            print("IMG:"+str(image_tesseract_point_DM)+ "," + str(torch.sum(torch.isinf(image_tesseract_point_DM))),file=fout)
+            print("IMG HALF:"+str(image_tesseract_point_DM.half()) + "," + str(torch.sum(torch.isinf(image_tesseract_point_DM.half()))),file=fout)
+            print("JUST REAL SAMPLES:" +str(image_tesseract_point_DM[:,:,11:13,:,0])+ "," + str(torch.sum(torch.isinf(image_tesseract_point_DM[:,:,11:13,:,0]))),file=fout)
             #print("IMG:"+str(image_tesseract_point_DM),file=fout)
             dedisp_img_hi = torch.zeros(image_tesseract_point_DM.shape)#.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
             dedisp_img_low = torch.zeros(image_tesseract_point_DM.shape)#.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
@@ -1277,11 +1275,11 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
             tdelays_frac = tdelays_frac.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(subgridsize,subgridsize,nsamps,-1,-1).to(device2)
             corr_shifts_all_hi_i = corr_shifts_all_hi.long().unsqueeze(0).unsqueeze(0).expand(subgridsize,subgridsize,-1,-1,-1).to(device2)
             corr_shifts_all_low_i = corr_shifts_all_low.long().unsqueeze(0).unsqueeze(0).expand(subgridsize,subgridsize,-1,-1,-1).to(device2)
-            dedisp_img_i = torch.zeros((subgridsize,subgridsize,nsamps,nchans,len(DM_trials))).half().to(device2)
+            dedisp_img_i = torch.zeros((subgridsize,subgridsize,nsamps,nchans,len(DM_trials))).double().to(device2)
             
             for j in range(DMbatches):
                 for i in range(DMbatches):
-                    image_tesseract_point_DM_i = image_tesseract_point_DM.half()[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:].to(device2)
+                    image_tesseract_point_DM_i = image_tesseract_point_DM.double()[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:].to(device2)
                 
                     torch.gather(input=image_tesseract_point_DM_i,dim=2,index=corr_shifts_all_hi_i,out=dedisp_img_i)
                     dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] += (dedisp_img_i*tdelays_frac).to("cpu").float()
@@ -1305,12 +1303,12 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
             corr_shifts_all_low = corr_shifts_all_low.long().unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],-1,-1,-1)
             image_tesseract_point_DM = image_tesseract_point.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
             print("IMG:"+str(image_tesseract_point_DM),file=fout)
-            dedisp_img_hi = (torch.gather(image_tesseract_point_DM.half().to("cpu"),dim=2,index=torch.clip(corr_shifts_all_hi.to("cpu"),min=0,max=nsamps-1)))
-            dedisp_img_low = (torch.gather(image_tesseract_point_DM.half().to("cpu"),dim=2,index=torch.clip(corr_shifts_all_low.to("cpu"),min=0,max=nsamps-1)))
+            dedisp_img_hi = (torch.gather(image_tesseract_point_DM.double().to("cpu"),dim=2,index=torch.clip(corr_shifts_all_hi.to("cpu"),min=0,max=nsamps-1)))
+            dedisp_img_low = (torch.gather(image_tesseract_point_DM.double().to("cpu"),dim=2,index=torch.clip(corr_shifts_all_low.to("cpu"),min=0,max=nsamps-1)))
         
             #dedisp_img_hi = (dedisp_img_hi.to(device)*tdelays_frac.half().to(device)).to("cpu")
             #dedisp_img_low = (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device))).to("cpu")
-            dedisp_img = ((dedisp_img_hi.to(device)*tdelays_frac.half().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device)))).to("cpu")
+            dedisp_img = ((dedisp_img_hi.to(device)*tdelays_frac.double().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.double().to(device)))).to("cpu")
         
         
 
@@ -1596,7 +1594,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             print(printprefix +"Using 2D FFT method...",file=fout)
         
         if usingGPU:
-            image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(np.array(PSF,np.float16)),kernel_size=kernel_size,usefft=usefft,device=device,output_file=output_file).numpy()
+            image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(PSF),kernel_size=kernel_size,usefft=usefft,device=device,output_file=output_file).numpy()
             
         else:
             image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,kernel_size=kernel_size,usefft=usefft,device=device)
