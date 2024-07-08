@@ -138,7 +138,12 @@ dependencies:
       - casadata==2024.6.24
       - casatasks==6.6.3.22
       - casatools==6.6.3.22
+      - codecov==2.1.13
+      - coverage==7.5.4
       - cython==0.29.37
+      - docstring-parser==0.16
+      - dsa110-antpos==1.4.0
+      - dsa110-calib==3.0.1+4.gb9cf416.dirty
       - dsa110-event==0.7.0
       - dsa110-nsfrb==0.1.0
       - dsa110-pyutils==3.6.1
@@ -178,9 +183,11 @@ dependencies:
       - pygments==2.18.0
       - pytest==8.2.2
       - pytorchdedispersion==0.1.0
+      - pyuvdata==3.0.0
       - rich==13.7.1
       - scikit-image==0.24.0
       - scikit-learn==1.5.0
+      - setuptools-scm==8.1.0
       - slack-sdk==3.30.0
       - structlog==24.2.0
       - tenacity==8.5.0
