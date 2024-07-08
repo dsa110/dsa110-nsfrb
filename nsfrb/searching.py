@@ -384,9 +384,9 @@ def matched_filter_space(image_tesseract,PSFimg,kernel_size,usefft=False,device=
         #fft implementation
         if usefft:
             #take FFT of image and PSF
-            image_tesseract_FFT = torch.fft.fft2(image_tesseract.double().to(device),s=(gridsize,gridsize),dim=(0,1),norm='backward')
-            PSF_kernel_FFT = torch.fft.fft2(PSF_kernel.double().to(device),s=(gridsize,gridsize),dim=(0,1),norm='backward')
-            image_tesseract_filtered = torch.real(torch.fft.ifft2(image_tesseract_FFT*PSF_kernel_FFT,s=(gridsize,gridsize),dim=(0,1),norm='backward')).to("cpu")
+            image_tesseract_FFT = torch.fft.fft2(image_tesseract.double().to(device),s=(gridsize_DEC,gridsize_RA),dim=(0,1),norm='backward')
+            PSF_kernel_FFT = torch.fft.fft2(PSF_kernel.double().to(device),s=(gridsize_DEC,gridsize_RA),dim=(0,1),norm='backward')
+            image_tesseract_filtered = torch.real(torch.fft.ifft2(image_tesseract_FFT*PSF_kernel_FFT,s=(gridsize_DEC,gridsize_RA),dim=(0,1),norm='backward')).to("cpu")
             torch.cuda.empty_cache()
             del image_tesseract_FFT
             del PSF_kernel_FFT
@@ -1141,6 +1141,7 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
     if append_frame:
         truensamps = image_tesseract_point.shape[2]
         if device != None and device.type == 'cuda':
+            print("YOLOLOL",get_last_frame().shape,image_tesseract_point.shape)
             image_tesseract_point= torch.cat([torch.from_numpy(get_last_frame()),image_tesseract_point],dim=2)
         else:
             image_tesseract_point = np.concatenate([get_last_frame(),image_tesseract_point],axis=2)
@@ -1580,7 +1581,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     nchans = len(freq_axis)
 
     print("Time for setup: " + str(time.time()-t1) + " s",file=fout)
-
+    print("PRE-FILTER SHAPE: " + str(image_tesseract.shape) + ","  + str(PSF.shape),file=fout)
     if space_filter:
         t1 = time.time()
         assert(gridsize_RA == gridsize_DEC)
@@ -1603,7 +1604,8 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
     else: 
         image_tesseract_filtered = image_tesseract
-    
+    print("POST-FILTER SHAPE: " + str(image_tesseract_filtered.shape) + ","  + str(PSF.shape),file=fout)
+    print(gridsize,file=fout)
     
 
     #use the concurrent futures package to search sub-images separately; we have to do this AFTER the spatial matched filter so that the PSF structure is suppressed

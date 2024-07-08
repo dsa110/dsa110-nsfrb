@@ -52,7 +52,7 @@ def base_test(img,PSF,
     elif multithreading and threadDM and (not usefft): print("Testing Search Pipeline with Multithreading Implementation and DM Threading...",end="")
     elif usefft and multithreading and (not threadDM): print("Testing Search Pipeline with FFT and Multithreading (No DM Threading)...",end="")
     elif usefft and multithreading and threadDM: print("Testing Search Pipeline with FFT and Multithreading Implementation and DM Threading...",end="")
-
+    print("yololol",gridsize,img.shape,PSF.shape)
     sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     RA_axis = np.linspace(-gridsize//2,gridsize//2,gridsize)
     DEC_axis=np.linspace(-gridsize//2,gridsize//2,gridsize)
@@ -193,7 +193,7 @@ def test_regular_implementation():
     nchans =  16
     ofile = sl.output_file
     verbose = False
-    
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
     base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose)
@@ -214,7 +214,7 @@ def test_FFT_implementation():
     nchans =  16
     ofile = sl.output_file
     verbose = False
-
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
     base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,usefft=True)
@@ -233,7 +233,7 @@ def test_GPU_implementation():
     nchans =  16
     ofile = sl.output_file
     verbose = False
-
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
     base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,usefft=False,cuda=True)
@@ -252,7 +252,7 @@ def test_FFT_GPU_implementation():
     nchans =  16
     ofile = sl.output_file
     verbose = False
-
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
 
@@ -274,6 +274,7 @@ def test_multithreading_implementation():
     ofile = sl.output_file
     verbose = False
 
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
     PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
     img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
 
