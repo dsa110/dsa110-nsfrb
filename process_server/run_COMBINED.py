@@ -434,9 +434,8 @@ def main():
    
     #initialize jax functions
     if args.usejax:
-        jax_funcs.inner_dedisperse_jit(image_tesseract_point=np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),
-                                    DM_trials_in=sl.DM_trials[:len(sl.DM_trials)//args.DMbatches],
-                                    tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
+        jax_funcs.inner_dedisperse_jit(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
+                                    DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
 
     #initialize last_frame 
     if args.initframes:
