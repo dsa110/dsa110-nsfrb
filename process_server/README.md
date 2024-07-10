@@ -40,6 +40,17 @@ Optional arguments are defined below:
 - `--ncols`: Number of columns to break image into if multithreading, default = 2 
 - `--threadDM` : Break DM trials among multiple threads
 - `--samenoise`: Assume the noise in each pixel is the same 
+- `--cuda`: Uses CUDA to accelerate computation with GPUs via Pytorch and/or JAX. The cuda flag overrides the multithreading option
+- `--toslack`: Send candidate summary plots to Slack
+- `--PyTorchDedispersion`: Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion
+- `--exportmaps`: Output noise maps for each DM and width trial to the noise directory
+- `--initframes`: Initializes previous frames for dedispersion
+- `--initnoise`: Initializes noise statistics for S/N estimates
+- `--savesearch`: Saves the searched image as a numpy array
+- `--appendframe`: Use the previous image to fill in dedispersion search
+- `--DMbatches`: Number of pixel batches to submit dedispersion to the GPUs , default=1
+- `--usejax`: Use JAX Just-In-Time compilation for GPU acceleration
+
 
 To kill process server:
 
