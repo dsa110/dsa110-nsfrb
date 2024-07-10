@@ -14,6 +14,7 @@ from PIL import Image,ImageOps
 #from gen_dmtrials_copy import gen_dm
 import time
 import torch
+torch.multiprocessing.set_start_method("spawn") 
 from torch.nn import functional as tf
 from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
@@ -58,6 +59,7 @@ f.close()
 sys.path.append(cwd + "/") 
 from nsfrb.config import *
 from nsfrb.noise import noise_update,noise_dir,noise_update_all
+from nsfrb import jax_funcs
 
 #output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
@@ -1123,7 +1125,7 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
     return dedisp_timeseries_all,dedisp_img
 
 
-def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_frame=True,_idx=0,multithreading=False,maxProcesses=1,DMbatches=1):
+def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_frame=True,_idx=0,multithreading=False,maxProcesses=1,DMbatches=1,usejax=True):
     """
     This function dedisperses a dynamic spectrum pixel grid of shape gridsize x gridsize x nsamps x nchans by brute force without accounting for edge effects
     """
@@ -1140,7 +1142,7 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
     #get data from previous timeframe
     if append_frame:
         truensamps = image_tesseract_point.shape[2]
-        if device != None and device.type == 'cuda':
+        if device != None and device.type == 'cuda' and not usejax:
             print("YOLOLOL",get_last_frame().shape,image_tesseract_point.shape)
             image_tesseract_point= torch.cat([torch.from_numpy(get_last_frame()),image_tesseract_point],dim=2)
         else:
@@ -1150,10 +1152,17 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
     #get delay axis
     #neg_flag = DM < 0
     #DM = np.abs(DM)
-    if device != None and device.type == 'cuda':
+    if device != None and device.type == 'cuda' and usejax:
+        dedisp_timeseries_all = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],len(DM_trials)))
+        dedisp_img = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],image_tesseract_point.shape[3],len(DM_trials)))
+        DMbatchsize = len(DM_trials)//DMbatches
+        for i in range(DMbatches):
+            dedisp_timeseries_all[:,:,:,i*DMbatchsize:(i+1)*DMbatchsize],dedisp_img[:,:,:,:,i*DMbatchsize:(i+1)*DMbatchsize] = jax_funcs.inner_dedisperse_jit(image_tesseract_point,DM_trials_in=DM_trials[i*DMbatchsize:(i+1)*DMbatchsize],tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+    
+    elif device != None and device.type == 'cuda':
         
         
-        
+   
         #make cuda tensors
         print(torch.cuda.is_available())
         print(image_tesseract_point.shape)
@@ -1190,7 +1199,7 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
         corr_shifts_all_hi = -tdelays_idx_hi.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1,-1)
         corr_shifts_all_low = -tdelays_idx_low.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],nsamps,-1,-1)
         """
-        idxs_all = (torch.arange(nsamps).unsqueeze(1).unsqueeze(1)).expand(-1,16,len(DM_trials)).to(device)
+        idxs_all = (torch.arange(nsamps).unsqueeze(1).unsqueeze(1)).expand(-1,nchans,len(DM_trials)).to(device)
         corr_shifts_all_hi = torch.clip(((-tdelays_idx_hi.unsqueeze(0).expand(nsamps,-1,-1) + idxs_all))%nsamps,min=0,max=nsamps-1)#(idxs_all - shifts_all_hi)%nsamps
         corr_shifts_all_low = torch.clip(((-tdelays_idx_low.unsqueeze(0).expand(nsamps,-1,-1) + idxs_all))%nsamps,min=0,max=nsamps-1)#(idxs_all - shifts_all_low)%nsamps
         #corr_shifts_all_hi = corr_shifts_all_hi.long().unsqueeze(0).unsqueeze(0).expand(image_tesseract_point.shape[0],image_tesseract_point.shape[1],-1,-1,-1)
@@ -1543,7 +1552,8 @@ def run_PyTorchDedisp_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,t
 def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
-                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1):
+                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
+                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,usejax=True):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -1722,8 +1732,10 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             """
             if multithreading: 
                 image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,maxProcesses=maxProcesses)[0].numpy()
+            elif usejax:
+                image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)[0]
             else:
-                image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches)[0].numpy()
+                image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)[0].numpy()
         else:
             if multithreading:
                 image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,maxProcesses=maxProcesses)[0]

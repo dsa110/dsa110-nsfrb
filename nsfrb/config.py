@@ -37,4 +37,3 @@ UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding
 
 
 
-
