@@ -166,3 +166,6 @@ offline/casa*log
 
 #candidates dir
 candidates/
+
+#release history
+RELEASE-VERSION

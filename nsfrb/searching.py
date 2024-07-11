@@ -1155,9 +1155,11 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
     if device != None and device.type == 'cuda' and usejax:
         dedisp_timeseries_all = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],len(DM_trials)))
         dedisp_img = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],image_tesseract_point.shape[3],len(DM_trials)))
-        DMbatchsize = len(DM_trials)//DMbatches
-        for i in range(DMbatches):
-            dedisp_timeseries_all[:,:,:,i*DMbatchsize:(i+1)*DMbatchsize],dedisp_img[:,:,:,:,i*DMbatchsize:(i+1)*DMbatchsize] = jax_funcs.inner_dedisperse_jit(image_tesseract_point,DM_trials_in=DM_trials[i*DMbatchsize:(i+1)*DMbatchsize],tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+        gridsize = image_tesseract_point.shape[0]
+        subgridsize = gridsize//DMbatches
+        for j in range(DMbatches):
+            for i in range(DMbatches):
+                dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] = jax_funcs.inner_dedisperse_jit(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
     
     elif device != None and device.type == 'cuda':
         
