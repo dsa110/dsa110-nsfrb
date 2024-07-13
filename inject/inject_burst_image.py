@@ -123,7 +123,7 @@ def make_image_cube(PSFimg=sl.default_PSF,snr=1000,width=5,loc=0.5,gridsize=sl.g
 
     #if DM is given, disperse before adding noise
     if DM != 0:
-        tmp,sourceimg = dedisperse_allDM(sourceimg,DM=-DM)[:,:,:,:,0]
+        tmp,sourceimg = dedisperse_allDM(sourceimg,DM=-DM,keepfreqaxis=True)[:,:,:,:,0]
     for i in range(nchans):
         sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
         noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)

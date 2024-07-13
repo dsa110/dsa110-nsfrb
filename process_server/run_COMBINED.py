@@ -434,6 +434,14 @@ def main():
    
     #initialize jax functions
     if args.usejax:
+        #if args.initframes: nsamps = args.nsamps*2
+        #else: nsamps = args.nsamps
+        #printlog("Initializing DM trial shifts...",output_file=processfile)
+        #jax_funcs.init_dm_arrays(sl.DM_trials,sl.freq_axis,nsamps=nsamps,tsamp=sl.tsamp,gridsize_RA=args.gridsize//args.DMbatches,gridsize_DEC=args.gridsize//args.DMbatches)
+        #printlog("TDELAYS:" + str(config.tdelays_frac),output_file=processfile)
+        #printlog("CORR_LOW:" + str(config.corr_shifts_all_low),output_file=processfile)
+        #printlog("CORR_HI:" + str(config.corr_shifts_all_hi),output_file=processfile)
+        printlog("Initializing JIT functions...",output_file=processfile)
         jax_funcs.inner_dedisperse_jit(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
                                     DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
 

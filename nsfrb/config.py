@@ -36,4 +36,8 @@ DEC_point = 0 #rad
 UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding
 
 
-
+#for jax use only: pre-defined shift values for dedisp
+tdelays_frac = None
+corr_shifts_all_hi = None
+corr_shifts_all_low = None
+image_tesseract_point_DM = None

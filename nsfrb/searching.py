@@ -20,7 +20,7 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 
 fsize=45
@@ -103,6 +103,11 @@ freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 #width trials
 nwidths=1#1#4
 widthtrials =np.array([1])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
+#widthtrials = np.logspace(0,3,nwidths,base=2,dtype=int)
+
+#widthtrials = np.array(2**np.arange(5),dtype=int)
+#nwidths = len(widthtrials)
+
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
@@ -1125,7 +1130,7 @@ def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=N
     return dedisp_timeseries_all,dedisp_img
 
 
-def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_frame=True,_idx=0,multithreading=False,maxProcesses=1,DMbatches=1,usejax=True):
+def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_frame=True,_idx=0,multithreading=False,maxProcesses=1,DMbatches=1,usejax=True,keepfreqaxis=False):
     """
     This function dedisperses a dynamic spectrum pixel grid of shape gridsize x gridsize x nsamps x nchans by brute force without accounting for edge effects
     """
@@ -1159,7 +1164,10 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
         subgridsize = gridsize//DMbatches
         for j in range(DMbatches):
             for i in range(DMbatches):
-                dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] = jax_funcs.inner_dedisperse_jit(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+                if keepfreqaxis:
+                    dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] = jax_funcs.inner_dedisperse_keepfreqaxis_jit(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+                else:
+                    dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
     
     elif device != None and device.type == 'cuda':
         
@@ -1242,7 +1250,7 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
             dedisp_img_low = torch.zeros(image_tesseract_point.shape).unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
 
 
-            executor = ProcessPoolExecutor(maxProcesses)
+            executor = ThreadPoolExecutor(maxProcesses)
             task_list_hi = []
             task_list_low = []
             subgridsize = gridsize//maxProcesses
@@ -1266,7 +1274,10 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
             executor.shutdown()
             #dedisp_img_hi = (dedisp_img_hi.to(device)*tdelays_frac.half().to(device)).to("cpu")
             #dedisp_img_low = (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device))).to("cpu")
-            dedisp_img = ((dedisp_img_hi.to(device)*tdelays_frac.half().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device)))).to("cpu")
+            if keepfreqaxis:
+                dedisp_img = ((dedisp_img_hi.to(device)*tdelays_frac.half().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device)))).to("cpu")
+            else:
+                dedisp_timeseries_all = (((dedisp_img_hi.to(device)*tdelays_frac.half().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device)))).sum(3)).to("cpu").float()
         elif torch.cuda.is_available():
             if device.index == 0: device2 = torch.device(1)
             else: device2 = torch.device(0)
@@ -1283,7 +1294,10 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
             #print("IMG:"+str(image_tesseract_point_DM),file=fout)
             dedisp_img_hi = torch.zeros(image_tesseract_point_DM.shape)#.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
             dedisp_img_low = torch.zeros(image_tesseract_point_DM.shape)#.unsqueeze(4).expand(-1,-1,-1,-1,len(DM_trials))
-            dedisp_img = torch.zeros(image_tesseract_point_DM.shape)
+            if keepfreqaxis:
+                dedisp_img = torch.zeros(image_tesseract_point_DM.shape)
+            else:
+                dedisp_timeseries_all = torch.zeros((gridsize,gridsize,nsamps,len(DM_trials)))
             tdelays_frac = tdelays_frac.unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(subgridsize,subgridsize,nsamps,-1,-1).to(device2)
             corr_shifts_all_hi_i = corr_shifts_all_hi.long().unsqueeze(0).unsqueeze(0).expand(subgridsize,subgridsize,-1,-1,-1).to(device2)
             corr_shifts_all_low_i = corr_shifts_all_low.long().unsqueeze(0).unsqueeze(0).expand(subgridsize,subgridsize,-1,-1,-1).to(device2)
@@ -1294,10 +1308,15 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
                     image_tesseract_point_DM_i = image_tesseract_point_DM.double()[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:].to(device2)
                 
                     torch.gather(input=image_tesseract_point_DM_i,dim=2,index=corr_shifts_all_hi_i,out=dedisp_img_i)
-                    dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] += (dedisp_img_i*tdelays_frac).to("cpu").float()
+                    if keepfreqaxis:
+                        dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] += (dedisp_img_i*tdelays_frac).to("cpu").float()
+                    else:
+                        dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] += (dedisp_img_i*tdelays_frac).sum(3).to("cpu").float()
                     torch.gather(input=image_tesseract_point_DM_i,dim=2,index=corr_shifts_all_low_i,out=dedisp_img_i)
-                    dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] += (dedisp_img_i*(1-tdelays_frac)).to("cpu").float()
-
+                    if keepfreqaxis:
+                        dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] += (dedisp_img_i*(1-tdelays_frac)).to("cpu").float()
+                    else:
+                        dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] += (dedisp_img_i*(1-tdelays_frac)).sum(3).to("cpu").float()
 
 
             
@@ -1320,14 +1339,16 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
         
             #dedisp_img_hi = (dedisp_img_hi.to(device)*tdelays_frac.half().to(device)).to("cpu")
             #dedisp_img_low = (dedisp_img_low.to(device)*(1 - tdelays_frac.half().to(device))).to("cpu")
-            dedisp_img = ((dedisp_img_hi.to(device)*tdelays_frac.double().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.double().to(device)))).to("cpu")
-        
+            if keepfreqaxis:
+                dedisp_img = ((dedisp_img_hi.to(device)*tdelays_frac.double().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.double().to(device)))).to("cpu")
+            else:
+                dedisp_timeseries_all = ((dedisp_img_hi.to(device)*tdelays_frac.double().to(device)) + (dedisp_img_low.to(device)*(1 - tdelays_frac.double().to(device)))).sum(3).to("cpu")
         
 
         #dedisp_img = (torch.gather(image_tesseract_point_DM.to(device),dim=2,index=corr_shifts_all_hi.to(device))*(tdelays_frac.to(device))).to("cpu") + (torch.gather(image_tesseract_point_DM.to(device),dim=2,index=corr_shifts_all_low.to(device))*(1-tdelays_frac.to(device))).to("cpu")
         #dedisp_timeseries_all = (dedisp_img*(~torch.logical_or(corr_shifts_all_hi.to("cpu") < 0, corr_shifts_all_low.to("cpu") < 0))).sum(3)
         print("SHAPES:" + str(tdelays_idx_hi.to("cpu").shape),file=fout)
-        dedisp_timeseries_all = (dedisp_img.sum(3)).to("cpu").float()#*(~torch.logical_or(tdelays_idx_hi.unsqueeze(0).unsqueeze(0).unsqueeze(0).to("cpu")>=nsamps,tdelays_idx_low.unsqueeze(0).unsqueeze(0).unsqueeze(0).to("cpu")>=nsamps))).sum(3)
+        #dedisp_timeseries_all = (dedisp_img.sum(3)).to("cpu").float()#*(~torch.logical_or(tdelays_idx_hi.unsqueeze(0).unsqueeze(0).unsqueeze(0).to("cpu")>=nsamps,tdelays_idx_low.unsqueeze(0).unsqueeze(0).unsqueeze(0).to("cpu")>=nsamps))).sum(3)
         torch.cuda.empty_cache()
 
         #del idxs_all
@@ -1349,9 +1370,11 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
 
 
     else:
-
-        dedisp_timeseries_all = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],len(DM_trials)))
-        dedisp_img = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],image_tesseract_point.shape[3],len(DM_trials)))
+        if keepfreqaxis:
+            dedisp_img = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],image_tesseract_point.shape[3],len(DM_trials)))
+        else:
+            dedisp_timeseries_all = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],len(DM_trials)))
+        
         for j in range(len(DM_trials)):
             DM = DM_trials[j]
                 
@@ -1387,23 +1410,34 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
                     arrhi =  np.pad(image_tesseract_point[:,:,:,k],padshape,mode="constant",constant_values=0)[:,:,tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
 
                 print(padshape,file=fout)
-
-                dedisp_timeseries_all[:,:,:,j] += arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
-                dedisp_img[:,:,:,k,j] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+                
+                if keepfreqaxis:
+                    dedisp_img[:,:,:,k,j] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+                else:
+                    dedisp_timeseries_all[:,:,:,j] += arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
 
     #save frame
     if append_frame:
         save_last_frame(image_tesseract_point)
         print("Writing to last_frame.npy",file=fout)
 
-    print("DEDISPERSED_ALL:" + str(dedisp_img),file=fout)
-    print("DEDISPERSED: " + str(dedisp_timeseries_all),file=fout)
+    if keepfreqaxis:
+        print("DEDISPERSED_ALL:" + str(dedisp_img),file=fout)
+    else:
+        print("DEDISPERSED: " + str(dedisp_timeseries_all),file=fout)
     print("Done!",file=fout)
     if output_file != "":
         fout.close()
     if append_frame:
-        return dedisp_timeseries_all[:,:,:truensamps,:], dedisp_img[:,:,:truensamps,:,:]
-    return dedisp_timeseries_all,dedisp_img
+        if keepfreqaxis:
+            return dedisp_img[:,:,:truensamps,:,:]
+        else:
+            return dedisp_timeseries_all[:,:,:truensamps,:]
+    else:
+        if keepfreqaxis:
+            return dedisp_img
+        else:
+            return dedisp_timeseries_all
 
 
 
@@ -1625,7 +1659,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #initialize a pool of processes for concurent execution
         if threadDM:maxProcesses = nrows*ncols*len(DM_trials)
         else: maxProcesses = nrows*ncols
-        executor = ProcessPoolExecutor(maxProcesses) 
+        executor = ThreadPoolExecutor(maxProcesses) 
 
         #submit a search task to the process pool for each subimage
         assert(gridsize_DEC%nrows == 0) #gridsize must be divisible by number of rows and cols
@@ -1733,16 +1767,16 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                 
             """
             if multithreading: 
-                image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,maxProcesses=maxProcesses)[0].numpy()
+                image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,maxProcesses=maxProcesses).numpy()
             elif usejax:
-                image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)[0]
+                image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)
             else:
-                image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)[0].numpy()
+                image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax).numpy()
         else:
             if multithreading:
-                image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,maxProcesses=maxProcesses)[0]
+                image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,maxProcesses=maxProcesses)
             else:
-                image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches)[0]
+                image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches)
         """
         image_tesseract_dedisp = np.zeros((gridsize_DEC,gridsize_RA,nsamps,nDMtrials)) #stores output array as dedispersion transform for every pixel
         for d in range(nDMtrials):
