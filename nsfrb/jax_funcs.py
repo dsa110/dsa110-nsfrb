@@ -7,6 +7,42 @@ This file defines jit compiled functions to accelerate GPU compilation and compu
 """
 
 @jax.jit
+def inner_snr_fft_jit(image_tesseract_filtered_dm,boxcar):
+    """
+    This function replaces pyptorch with JAX so that JIT computation can be invoked
+    """
+   
+
+
+    #take fourier transform of boxcar and image
+    image_tesseract_binned = jax.device_put(np.real(jnp.fft.ifftshift(
+                                            jnp.fft.ifft(
+                                                jnp.fft.fft(jnp.array(image_tesseract_filtered_dm),n=image_tesseract_filtered_dm.shape[2],axis=2,norm='backward')*jnp.fft.fft(jnp.array(boxcar),n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),
+                                                                                                                                            n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),axes=3)).transpose((0,1,2,4,3)),jax.devices("cpu")[0]) ##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
+    del image_tesseract_filtered_dm
+    del boxcar
+
+    return image_tesseract_binned 
+    
+@jax.jit
+def inner_snr_conv_jit(image_tesseract_filtered_dm,boxcar):
+    """
+    This function replaces pyptorch with JAX so that JIT computation can be invoked
+    """
+
+
+
+    #take fourier transform of boxcar and image
+    
+    
+    image_tesseract_binned = jax.device_put(jnp.apply_along_axis(func1d=lambda x : jnp.convolve(x[:image_tesseract_filtered_dm.shape[2]],x[image_tesseract_filtered_dm.shape[2]:],mode='same'),axis=3,arr=jnp.concatenate([jnp.array(image_tesseract_filtered_dm[jnp.newaxis,:,:,:,:]).repeat(boxcar.shape[0],axis=0),jnp.array(boxcar)],axis=3)),jax.devices("cpu")[0])
+   
+    del image_tesseract_filtered_dm
+    del boxcar
+
+    return image_tesseract_binned
+
+@jax.jit
 def inner_dedisperse_jit(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in):#,fout):
     """
     This function replaces pytorch with JAX so that JIT computation can be invoked

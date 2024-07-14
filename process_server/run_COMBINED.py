@@ -444,7 +444,8 @@ def main():
         printlog("Initializing JIT functions...",output_file=processfile)
         jax_funcs.inner_dedisperse_jit(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
                                     DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
-
+        jax_funcs.inner_snr_fft_jit(image_tesseract_filtered_dm=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
+                                    boxcar=np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))))
     #initialize last_frame 
     if args.initframes:
         printlog("Initializing previous frames...",output_file=processfile)

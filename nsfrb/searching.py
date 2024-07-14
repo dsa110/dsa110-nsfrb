@@ -101,12 +101,12 @@ freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 
 #width trials
-nwidths=1#1#4
-widthtrials =np.array([1])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
+#nwidths=2#1#4
+#widthtrials =np.array([1,2])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
 #widthtrials = np.logspace(0,3,nwidths,base=2,dtype=int)
 
-#widthtrials = np.array(2**np.arange(5),dtype=int)
-#nwidths = len(widthtrials)
+widthtrials = np.array(2**np.arange(5),dtype=int)
+nwidths = len(widthtrials)
 
 
 #DM trials
@@ -717,7 +717,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,s
     return image_tesseract_binned
 
 
-def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtrials=widthtrials,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=False,exportmaps=False,usefft=False):
+def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtrials=widthtrials,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=False,exportmaps=False,usefft=False,batches=1,usejax=False):
     """
     boxcar convolution, input is 4d array with axes gridsize x gridsize x nsamps  x nDMtrials
     """
@@ -732,9 +732,50 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
     nwidths = len(widthtrials)
     gridsize_RA = image_tesseract_filtered_dm.shape[1]
     gridsize_DEC = image_tesseract_filtered_dm.shape[0]
+    subgridsize_RA = int(gridsize_RA//batches)
+    subgridsize_DEC = int(gridsize_DEC//batches)
     loc = nsamps//2
 
+
     if device != None and device.type=='cuda':
+        #make tensors for GPU
+        boxcar = torch.zeros(image_tesseract_filtered_dm.shape).unsqueeze(0).expand(nwidths,-1,-1,-1,-1)
+        for i in range(nwidths):
+            wid = widthtrials[i]
+            boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
+        print("BOXCAR SHAPE " + str(boxcar.shape),file=fout)
+        fout.close()
+        fout = open(output_file,"a")
+        if usefft:
+            image_tesseract_binned = torch.zeros((nwidths,gridsize_DEC,gridsize_RA,ndms,nsamps)).to(device)
+            for i in range(batches):
+                for j in range(batches):
+
+                    #take fourier transform of boxcar and image
+                    if usejax:
+                        image_tesseract_binned[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(jax_funcs.inner_snr_fft_jit(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy()))).to(device)
+                    else:
+                        image_tesseract_binned[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.real(torch.fft.ifftshift(
+                                                                                                                                        torch.fft.ifft(
+                                                                                                                                            torch.fft.fft(
+                                                                                                                                                image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].to(device),
+                                                                                                                                            n=nsamps,dim=2,norm='backward')*torch.fft.fft(
+                                                                                                                                                boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].to(device),n=nsamps,dim=3,norm='backward'),
+                                                                                                                                            n=nsamps,dim=3,norm='backward'),dim=3)).transpose(3,4) ##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
+        else:
+            image_tesseract_binned = torch.zeros((nwidths,gridsize_DEC,gridsize_RA,ndms,nsamps)).to(device)
+            for i in range(batches):
+                for j in range(batches):
+                    #convolve for each timeseries; assume already normalized; JAX takes too long, always use pytorch
+                    #if usejax:
+                    #    image_tesseract_binned[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(jax_funcs.inner_snr_conv_jit(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy()))).to(device)
+                    #else:
+                    image_tesseract_binned[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = tf.conv1d(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].transpose(2,3).reshape((subgridsize_RA*subgridsize_DEC*ndms,1,nsamps)).to(device),
+                                                        boxcar[:,0,0,:,0:1].transpose(1,2).to(device).to(image_tesseract_filtered_dm.dtype),padding='same').reshape(subgridsize_DEC,subgridsize_RA,ndms,nwidths,nsamps).transpose(0,3).transpose(2,3).transpose(1,2) #output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
+        print("BINNED IMG SHAPE:" + str(image_tesseract_binned.shape),file=fout)
+
+        torch.cuda.empty_cache()
+        """
         print(torch.cuda.is_available(),file=fout)
         #make tensors for GPU
         boxcar = torch.zeros(image_tesseract_filtered_dm.shape).unsqueeze(0).expand(nwidths,-1,-1,-1,-1)
@@ -743,6 +784,20 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
             boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
         
         if usefft:
+            image_tesseract_binned = torch.zeros((nwidths,gridsize_DEC,gridsize_RA,ndms,nsamps)).to(device)
+            for i in range(batches):
+                for j in range(batches):
+
+                    #take fourier transform of boxcar and image
+                    image_tesseract_binned[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.real(torch.fft.ifftshift(
+                                                                                                                                        torch.fft.ifft(
+                                                                                                                                            torch.fft.fft(
+                                                                                                                                                image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].to(device),
+                                                                                                                                            n=nsamps,dim=2,norm='backward')*torch.fft.fft(
+                                                                                                                                                boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].to(device),n=nsamps,dim=3,norm='backward'),
+                                                                                                                                            n=nsamps,dim=3,norm='backward'),dim=3)).transpose(3,4) ##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
+            print("BINNED IMG SHAPE:" + str(image_tesseract_binned.shape),file=fout)
+
             #take fourier transform of boxcar and image
             image_tesseract_FFT = torch.fft.fft(image_tesseract_filtered_dm.to(device),n=nsamps,dim=2,norm='backward')
             boxcar_FFT = torch.fft.fft(boxcar.to(device),n=nsamps,dim=3,norm='backward')
@@ -751,9 +806,15 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
             del image_tesseract_FFT
             del boxcar_FFT
             torch.cuda.empty_cache()
-        
         else:
             #convolve for each timeseries; assume already normalized
+            image_tesseract_binned = torch.zeros((nwidths,gridsize_DEC,gridsize_RA,ndms,nsamps)).to(device)
+            for i in range(batches):
+                for j in range(batches):
+
+                    #reshape input to be [batch_size, channels, sequence_length] = [gridsize*gridsize,1,nsamps]
+                    image_tesseract_binned[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = tf.conv1d(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].transpose(2,3).reshape((subgridsize_RA*subgridsize_DEC*ndms,1,nsamps)).to(device),
+                                                        boxcar[:,0,0,:,0:1].transpose(1,2).to(device).to(image_tesseract_filtered_dm.dtype),padding='same').reshape(subgridsize_DEC,subgridsize_RA,ndms,nwidths,nsamps).transpose(0,3).transpose(2,3).transpose(1,2) #output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
 
             #reshape input to be [batch_size, channels, sequence_length] = [gridsize*gridsize,1,nsamps]
             image_tesseract_reshaped = image_tesseract_filtered_dm.transpose(2,3).reshape((gridsize_RA*gridsize_DEC*ndms,1,nsamps)).to(device)
@@ -763,6 +824,7 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
             del image_tesseract_reshaped
             del boxcar_reshaped
             torch.cuda.empty_cache()
+        """
         #np.save("tmp.npy",image_tesseract_binned.to("cpu").numpy())
 
         #np.save("tmp_DM.npy",image_tesseract_filtered_dm.to("cpu").numpy())
@@ -827,8 +889,11 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
         print("NOISE:"+str(noise),file=fout)
 
         #get snr
-        print(image_tesseract_binned.shape,mask.shape,numvalids.shape)
-        image_tesseract_binned = ((image_tesseract_binned.max(4).values - torch.nanmedian(image_tesseract_binned*mask1*mask2,dim=4).values)/noise).to("cpu")
+        
+        print(str(image_tesseract_binned.shape) + " " + str(mask.shape) + " " + str(numvalids.shape),file=fout)
+        print("HEEEERE:" + str(image_tesseract_binned.shape) + "," + str(noise.shape),file=fout)
+        fout.close()
+        image_tesseract_binned = ((image_tesseract_binned.max(4).values - torch.nanmedian(image_tesseract_binned*mask1*mask2,dim=4).values)/noise.unsqueeze(1).unsqueeze(1)).cpu()#to("cpu")
 
         del mask
         del mask1
@@ -1800,9 +1865,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         
         
         if usingGPU:
-            image_tesseract_binned = snr_vs_RA_DEC_allDMW(torch.from_numpy(image_tesseract_dedisp),DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft).numpy()
+            image_tesseract_binned = snr_vs_RA_DEC_allDMW(torch.from_numpy(image_tesseract_dedisp),DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=DMbatches,usejax=usejax).numpy()
         else:
-            image_tesseract_binned = snr_vs_RA_DEC_allDMW(image_tesseract_dedisp,DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft)
+            image_tesseract_binned = snr_vs_RA_DEC_allDMW(image_tesseract_dedisp,DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=DMbatches)
         """
         #PSF parameters
         maxs = []
