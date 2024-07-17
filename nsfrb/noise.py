@@ -58,7 +58,7 @@ def noise_update(noise,gridsize_RA,gridsize_DEC,DM,width,noise_dir=noise_dir,out
     return noise_dict[DM][width]
 
 
-def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file):
+def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file,writeonly=False,readonly=False):
     """
     This function retrieves and updates the running mean standard deviation 
     noise for a given DM and pulse width.
@@ -77,7 +77,9 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
     except:
         print("Creating noise file " + fname + "...",file=fout)
         noise_dict = dict()
-
+        
+        if readonly:
+            return np.zeros((len(widthtrials),len(DM_trials))),0
     #update entry for DM, width trial
 
     print("INPUT NOISE MEDIAN:" + str(noise),file=fout)
@@ -85,17 +87,22 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
     for i in range(len(DM_trials)):
         DM = DM_trials[i]
         for j in range(len(widthtrials)):
+            
             width = widthtrials[j]
             if (DM not in noise_dict.keys()) or (width not in noise_dict[DM].keys()):
                 if DM not in noise_dict.keys():
                     noise_dict[DM] = dict()
-                noise_dict[DM][width] = [1, noise[j,i]]
-
-            else:
+                if not readonly:
+                    noise_dict[DM][width] = [1, noise[j,i]]
+                else:
+                    noise_dict[DM][width] = [1, np.nan]
+            elif not writeonly and not readonly:
                 prevN, prevnoise = noise_dict[DM][width]
                 nextN = prevN + 1
                 nextnoise = (prevnoise*prevN + noise[j,i])/nextN
                 noise_dict[DM][width] = [nextN, nextnoise]
+            elif writeonly: #writeonly set to true if noise has already been updated, so just increment the number and write the new noise
+                noise_dict[DM][width] = [nextN+1, noise[j,i]]
             noise_final[j,i] = noise_dict[DM][width][1]
     print("OUTPUT_NOISE MEDIAN:" + str(noise_final),file=fout)
     f = open(fname,"wb")
@@ -104,6 +111,8 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
 
     if output_file != "":
         fout.close()
+    if readonly:
+        return noise_final, prevN
     return noise_final 
 
 def init_noise(noise_dir=noise_dir):
