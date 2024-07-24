@@ -68,7 +68,9 @@ def build_np_header(shape,descr='<f8',fortran_order=False,headersize=128):
     return headerbytes
     
 
-def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time):
+def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time,port=port,ipaddress=ipaddress):
+    host = ipaddress + ":" + str(port)
+
     if type(array) != bytes and shape is None:
         shape = array.shape
     elif shape is None:
@@ -135,7 +137,7 @@ def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbo
             r = http.urlopen(method='PUT',
                             url=url,
                             body=body,
-                            headers=make_header(content_length),
+                            headers=make_header(content_length,host=host),
                             timeout=keepalive_time,
                             retries=retries)
         

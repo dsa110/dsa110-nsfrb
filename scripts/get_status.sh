@@ -9,6 +9,12 @@ do
 	echo $1 second refresh interval...
 	echo "------------------------------------------------------	Start NSFRB Status Report	------------------------------------------------------"
 	echo ""
+        echo ">>>>>>>>>>>>>>> binary_log.txt"
+        cat ${cwd}-logfiles/binary_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt
+        echo ">>>>>>>>>>>>>>>"
+	
+	
+	echo ""
 	echo ">>>>>>>>>>>>>>> run_log.txt"
 	tail -$2 ${cwd}-logfiles/run_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt
 	echo ">>>>>>>>>>>>>>>"
@@ -33,6 +39,12 @@ do
         echo ">>>>>>>>>>>>>>> process_log.txt"
         tail -$2 ${cwd}-logfiles/process_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
         echo ">>>>>>>>>>>>>>>"
+
+	echo ""
+        echo ">>>>>>>>>>>>>>> inject_log.txt"
+        tail -$2 ${cwd}-logfiles/inject_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
+        echo ">>>>>>>>>>>>>>>"
+
 	echo "------------------------------------------------------	End NSFRB Status Report		------------------------------------------------------"
 	sleep $1
 done

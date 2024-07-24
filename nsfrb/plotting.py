@@ -1,5 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
+import csv
+f = open("../metadata.txt","r")
+cwd = f.read()[:-1]
+f.close()
+sys.path.append(cwd + "/")
+
+binary_file = cwd + "-logfiles/binary_log.txt"
 
 def plot_uv_coverage(u, v, title='u-v Coverage'):
     """
@@ -151,4 +159,58 @@ def search_plots_new(canddict,img,RA_axis,DEC_axis,DM_trials,widthtrials,output_
         plt.show()
     else:
         plt.close()
+    return "diagnostic_RA_DEC.png"
+
+def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_file=binary_file):
+    """
+    This function writes a binary image representation to file
+    for monitoring.
+    """
+    size = 10
+    #take max over trial width, DM
+    binplot = np.nanmax(image_tesseract,axis=(2,3))
+    binplotdets = binplot >= SNRthresh
+
+
+    #downscale
+    gridsize = binplot.shape[0]
+    if gridsize%size != 0:
+        binplot = binplot[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2)),
+                        gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
+        RA_axis = RA_axis[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
+        DEC_axis = DEC_axis[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
+    gridsize = binplot.shape[0]
+    binplot = np.nanmax(binplot.reshape((size,gridsize//size,size,gridsize//size)),(1,3))
+    binplotdets = binplot >= SNRthresh
+    RA_axis = RA_axis.reshape((size,gridsize//size)).mean(1)
+    DEC_axis = DEC_axis.reshape((size,gridsize//size)).mean(1)
+
+    #normalize
+    binplot = (binplot - np.nanpercentile(binplot,10))/(np.nanpercentile(binplot,90) - np.nanpercentile(binplot,10))
+    binplot = np.array(10*np.clip(binplot,0,1),dtype=int)
+
+    #write to file
+    with open(binary_file,"w") as csvfile:
+        csvfile.write(" "*(89//2 - len(timestep_isot)//2) + str(timestep_isot) + "\n")
+        csvfile.write(" "*89 + "\t\tD\n")
+        csvfile.write("-"*89 + "\n")
+        wtr = csv.writer(csvfile,delimiter='\t')
+        d = "DECLINATION"
+        for i in range(binplot.shape[0]):
+            row = np.array(binplot[i,:],dtype=str)
+            row[binplotdets[i,:]] = "X" #"◎"
+            row[~binplotdets[i,:]] = "·"
+            wtr.writerow(["|"] + list(row) + ["|"] + [str(np.around(DEC_axis[i],1))]  + [d[1 + i]])
+            wtr.writerow([])
+        csvfile.write("-"*89 + "\n")
+        wtr.writerow(["|"] + list(np.array(np.around(RA_axis,1),dtype=str)) + ["|"])
+        csvfile.write(" "*(89//2 - 15//2) + "RIGHT ASCENSION" + "\n")
+        
+    csvfile.close()
     return
+
+
+
+
+
+

@@ -2,8 +2,8 @@ from setuptools import setup
 from version import get_git_version
 
 setup(name='dsa110-nsfrb',
-      #version=get_git_version(),
-      version="0.1.0",
+      version=get_git_version(),
+      #version="0.1.0",
       url='http://github.com/dsa110/dsa110-nsfrb',
       python_requires='>3.8',
 #      requirements=['seaborn', 'astropy', 'hdbscan', 'progress'],
@@ -20,7 +20,24 @@ logfiles = ["error_log.txt",
             "pipe_log.txt",
             "run_log.txt",
             "search_log.txt",
-            "process_log.txt"]
-for l in logfiles:
+            "process_log.txt",
+            "inject_log.txt"]
+for i in range(len(logfiles)):
+    l = logfiles[i]
     os.system("touch ../dsa110-nsfrb-logfiles/" + l)
     os.system("> ../dsa110-nsfrb-logfiles/" + l)
+
+#create directory for noise stats if not created already
+os.system("mkdir ../dsa110-nsfrb-noise/")
+
+#create candidates directory 
+os.system("mkdir ../dsa110-nsfrb-candidates/")
+
+
+#create directory to store most recent time frame
+os.system("mkdir ../dsa110-nsfrb-frames/")
+
+#create directories for fast visibilities if not created already
+os.system("mkdir ../dsa110-nsfrb-fast-visibilities/")
+for s in ["lxd110h03","lxd110h04","lxd110h05","lxd110h06","lxd110h07","lxd110h08","lxd110h10","lxd110h11","lxd110h12","lxd110h14","lxd110h15","lxd110h16","lxd110h18","lxd110h19","lxd110h21","lxd110h22"]:
+    os.system("mkdir ../dsa110-nsfrb-fast-visibilities/" + s)

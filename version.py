@@ -116,7 +116,7 @@ def get_git_version(abbrev=7):
     if version[0] == 'v':
         version = version[1:]
     version = version.replace("-", "+", 1)
-
+    
     return version
 
 

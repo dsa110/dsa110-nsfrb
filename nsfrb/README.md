@@ -16,7 +16,9 @@ This folder defines sub-modules for the NSFRB pipeline, which consists of formin
 - `TXclient`: This module contains functions send image data over http from the correlator nodes to the T4 system
 - `plotting`: This module contains plotting functions for UV baselines and dirty images
 - `config.py`: This contains relevant parameters and constants for the NSFRB search
-- `outputlogging.py`: This manages logging of output from each subsystem. Most log files (aside from the process server logs) are in the `dsa110-nsfrb/tmpoutput` directory.
+- `outputlogging.py`: This manages logging of output from each subsystem. Log files (aside from the process server logs) are in the `dsa110-nsfrb-logfiles` directory.
+- `noise.py`: This manages creation and updating of noise statistics for the NSFRB images
+- `jax_funcs.py`: This contains functions compiled using JAX's Just-In-Time compilation strategy (see https://jax.readthedocs.io/en/latest/jit-compilation.html for details)
 
 ## Usage
 
