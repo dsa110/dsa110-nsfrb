@@ -102,7 +102,11 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
                 nextnoise = (prevnoise*prevN + noise[j,i])/nextN
                 noise_dict[DM][width] = [nextN, nextnoise]
             elif writeonly: #writeonly set to true if noise has already been updated, so just increment the number and write the new noise
+                prevN, prevnoise = noise_dict[DM][width]
+                nextN = prevN + 1
                 noise_dict[DM][width] = [nextN+1, noise[j,i]]
+            elif readonly:
+                prevN, prevnoise = noise_dict[DM][width]
             noise_final[j,i] = noise_dict[DM][width][1]
     print("OUTPUT_NOISE MEDIAN:" + str(noise_final),file=fout)
     f = open(fname,"wb")

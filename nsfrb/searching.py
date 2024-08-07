@@ -755,7 +755,10 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
                     for j in range(batches):
     
                         #take fourier transform of boxcar and image
-                        outtup = jax_funcs.inner_snr_fft_jit(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),prev_noise,prev_noise_N,noiseth)
+                        """if j%2 == 0:
+                            outtup = jax_funcs.inner_snr_fft_jit_0(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),prev_noise,prev_noise_N,noiseth)
+                        else:"""
+                        outtup = jax_funcs.inner_snr_fft_jit_1(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),prev_noise,prev_noise_N,noiseth)
                         image_tesseract_binned[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(outtup[0]))
                         total_noise += torch.from_numpy(np.array(outtup[1]))/(batches**2) 
                         print("NOISE:" + str(torch.from_numpy(np.array(outtup[1]))/(batches**2)),file=fout)
@@ -1201,7 +1204,12 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
                 if keepfreqaxis:
                     dedisp_img[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:,:] = jax_funcs.inner_dedisperse_keepfreqaxis_jit(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
                 else:
-                    dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+                    if i%2 == 0:
+                        print("DEVICE " + str(int(i%2)),file=fout)
+                        dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit_0(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+                    else:
+                        print("DEVICE " + str(int(i%2)),file=fout)
+                        dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit_1(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
     
     elif device != None and device.type == 'cuda':
         

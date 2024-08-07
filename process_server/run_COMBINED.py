@@ -442,9 +442,14 @@ def main():
         #printlog("CORR_LOW:" + str(config.corr_shifts_all_low),output_file=processfile)
         #printlog("CORR_HI:" + str(config.corr_shifts_all_hi),output_file=processfile)
         printlog("Initializing JIT functions...",output_file=processfile)
-        jax_funcs.inner_dedisperse_jit(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
+        jax_funcs.inner_dedisperse_jit_0(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
                                     DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
-        jax_funcs.inner_snr_fft_jit(image_tesseract_filtered_dm=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
+        jax_funcs.inner_dedisperse_jit_1(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
+                                    DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
+        jax_funcs.inner_snr_fft_jit_0(image_tesseract_filtered_dm=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
+                                    boxcar=np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
+                                    noise=np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),past_noise_N=1,noiseth=0.1)
+        jax_funcs.inner_snr_fft_jit_1(image_tesseract_filtered_dm=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
                                     boxcar=np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
                                     noise=np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),past_noise_N=1,noiseth=0.1)
     #initialize last_frame 
