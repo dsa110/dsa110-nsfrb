@@ -443,8 +443,21 @@ def main():
         #printlog("CORR_LOW:" + str(config.corr_shifts_all_low),output_file=processfile)
         #printlog("CORR_HI:" + str(config.corr_shifts_all_hi),output_file=processfile)
         printlog("Initializing JIT functions...",output_file=processfile)
+        if args.appendframe:
+            tDM_max = (4.15)*np.max(sl.DM_trials)*((1/sl.fmin/1e-3)**2 - (1/sl.fmax/1e-3)**2) #ms
+            maxshift = int(np.ceil(tDM_max/sl.tsamp))
+        else: maxshift = 0
         for i in range(args.DMbatches):
             for j in range(args.DMbatches):
+
+                jax_funcs.dedisp_snr_fft_jit_0(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),sl.DM_trials,sl.tsamp,sl.freq_axis,np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float16),np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),past_noise_N=1,noiseth=0.1,i=i,j=j)
+                jax_funcs.dedisp_snr_fft_jit_1(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),sl.DM_trials,sl.tsamp,sl.freq_axis,np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float16),np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),past_noise_N=1,noiseth=0.1,i=i,j=j)
+
+        """
+                jax_funcs.dedisp_snr_fft_jit_0,np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis_in,np.array(boxcar,dtype=np.float32),np.array(prev_noise,dtype=np.float32),prev_noise_N,noiseth,i,j
+
+
+
                 jax_funcs.inner_dedisperse_jit_0(image_tesseract_point=np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),dtype=np.float32),
                                     DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis,i=i,j=j)
                 jax_funcs.inner_dedisperse_jit_1(image_tesseract_point=np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),dtype=np.float32),
@@ -458,6 +471,8 @@ def main():
                 jax_funcs.inner_snr_fft_jit_1(image_tesseract_filtered_dm=np.array(np.random.normal(size=(args.gridsize//args.SNRbatches,args.gridsize//args.SNRbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float64),
                                     boxcar=np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.SNRbatches,args.gridsize//args.SNRbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float64),
                                     noise=np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float64),past_noise_N=1,noiseth=0.1,i=i,j=j)
+    """
+    
     #initialize last_frame 
     if args.initframes:
         printlog("Initializing previous frames...",output_file=processfile)
