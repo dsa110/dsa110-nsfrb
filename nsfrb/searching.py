@@ -1738,8 +1738,90 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     print(gridsize,file=fout)
     
 
+    #REVISED IMPLEMENTATION: DO DEDISP AND BOXCAR TOGETHER SO WE DON'T HAVE TO KEEP MOVING TO/FROM GPU
+    if usefft and usingGPU and usejax:
+        t1 = time.time()
+        nwidths,ndms = len(widthtrials),len(DM_trials)
+        #get data from previous timeframe
+        if append_frame:
+            truensamps = image_tesseract_filtered.shape[2]
+            image_tesseract_filtered = np.concatenate([get_last_frame(),image_tesseract_filtered],axis=2)
+            nsamps = image_tesseract_filtered.shape[2]
+            print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered.shape),file=fout)
+        
+            #save frame
+            save_last_frame(image_tesseract_filtered)
+            print("Writing to last_frame.npy",file=fout)
+        else:
+            truensamps = nsamps = image_tesseract_filtered.shape[2]
+
+        #subgrid
+        subgridsize_RA = gridsize_RA//DMbatches
+        subgridsize_DEC = gridsize_DEC//DMbatches
+        loc = truensamps//2
+        #boxcar prep
+        boxcar = torch.zeros((subgridsize_DEC,subgridsize_RA,truensamps,ndms)).unsqueeze(0).expand(nwidths,-1,-1,-1,-1)
+        for i in range(len(widthtrials)):
+            wid = widthtrials[i]
+            boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
+        
+        #noise prep
+        total_noise = torch.zeros((nwidths,ndms))
+        prev_noise,prev_noise_N = noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
+
+        executor = ThreadPoolExecutor(DMbatches*DMbatches)#maxProcesses)
+        task_list = []
+        image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,len(widthtrials),len(DM_trials)))
+        for i in range(DMbatches):
+            for j in range(DMbatches):
+                if j%2 == 0:
+                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis,np.array(boxcar,dtype=np.float16),np.array(prev_noise,dtype=np.float16),prev_noise_N,noiseth,i,j))
+                else:
+                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_1,np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis,np.array(boxcar,dtype=np.float16),np.array(prev_noise,dtype=np.float16),prev_noise_N,noiseth,i,j))
+        
+        #get results
+        for t in task_list:
+            outtup = t.result()
+            i,j = outtup[2],outtup[3]
+            image_tesseract_binned[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:] =  np.array(outtup[0])
+            total_noise += np.array(outtup[1])/(DMbatches**2)
+        executor.shutdown()
+        noise_update_all(total_noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,writeonly=True) 
+        print("Time for DM and SNR:" + str(time.time()-t1),file=fout)
+
+        #sort candidates
+        t1 = time.time()
+        print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
+        #find candidates above SNR threshold
+        condition = (image_tesseract_binned>=SNRthresh).flatten()
+        ncands = np.sum(condition)
+        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
+
+        canddecs = DEC_axis[canddec_idxs]
+        candras = RA_axis[candra_idxs]
+        candwids = widthtrials[candwid_idxs]
+        canddms = DM_trials[canddm_idxs]
+        candsnrs = image_tesseract_binned.flatten()[condition]
+
+        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
+        cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
+
+        #make a dictionary for easy plotting of results
+        canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
+        canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
+        canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+        canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
+        canddict['ras'] = copy.deepcopy(candras)
+        canddict['decs'] = copy.deepcopy(canddecs)
+        canddict['wids'] = copy.deepcopy(candwids)
+        canddict['dms'] = copy.deepcopy(canddms)
+        canddict['snrs'] = copy.deepcopy(candsnrs)
+        print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
+
+
+
     #use the concurrent futures package to search sub-images separately; we have to do this AFTER the spatial matched filter so that the PSF structure is suppressed
-    if multithreading: 
+    elif multithreading: 
         #initialize a pool of processes for concurent execution
         if threadDM:maxProcesses = nrows*ncols*len(DM_trials)
         else: maxProcesses = nrows*ncols
@@ -1867,7 +1949,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             if usingGPU:
                 image_tesseract_dedisp[:,:,:,d] = dedisperse(torch.from_numpy(image_tesseract_filtered),DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device)[0].numpy()
             else:
-                image_tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract_filtered,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device)[0]
+                image_[:truensamps]tesseract_dedisp[:,:,:,d] = dedisperse(image_tesseract_filtered,DM=DM_trials[d],tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device)[0]
         """
         #print(image_tesseract_dedisp.shape)
         print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_dedisp))),file=fout)
