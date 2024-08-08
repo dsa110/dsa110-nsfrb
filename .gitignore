@@ -169,3 +169,9 @@ candidates/
 
 #release history
 RELEASE-VERSION
+
+
+#nsys reports
+report*nsys*rep
+./*/report*nsys*rep
+*nsys*
