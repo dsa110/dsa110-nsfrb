@@ -1,4 +1,6 @@
 import numpy as np
+import jax
+import jax.numpy as jnp
 import sys
 from matplotlib import pyplot as plt
 import random
@@ -717,7 +719,7 @@ def snr_vs_RA_DEC_new(image_tesseract_filtered_dm,wid,DM,mode='4d',noiseth=0.9,s
     return image_tesseract_binned
 
 
-def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtrials=widthtrials,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=False,exportmaps=False,usefft=False,batches=1,usejax=False):
+def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtrials=widthtrials,mode='4d',noiseth=0.9,samenoise=False,plot=False,device=None,output_file="",scrunch=False,exportmaps=False,usefft=False,batches=1,usejax=False,maxProcesses=5):
     """
     boxcar convolution, input is 4d array with axes gridsize x gridsize x nsamps  x nDMtrials
     """
@@ -743,28 +745,57 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
         for i in range(nwidths):
             wid = widthtrials[i]
             boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
-        print("BOXCAR SHAPE " + str(boxcar.shape),file=fout)
-        fout.close()
-        fout = open(output_file,"a")
+        #print("BOXCAR SHAPE " + str(boxcar.shape),file=fout)
         if usefft:
             if usejax:
                 image_tesseract_binned = torch.zeros((gridsize_DEC,gridsize_RA,nwidths,ndms))
+                #image_tesseract_binned = jax.device_put(jnp.zeros((gridsize_DEC,gridsize_RA,nwidths,ndms)),jax.devices("cpu")[0])
                 total_noise = torch.zeros((nwidths,ndms))
                 prev_noise,prev_noise_N = noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
+                
+                
+                executor = ThreadPoolExecutor(maxProcesses)#ProcessPoolExecutor(args.maxProcesses)
+                task_list = []
                 for i in range(batches):
-                    for j in range(batches):
-    
+                    for j in range(0,batches,2):
                         #take fourier transform of boxcar and image
-                        """if j%2 == 0:
-                            outtup = jax_funcs.inner_snr_fft_jit_0(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),prev_noise,prev_noise_N,noiseth)
-                        else:"""
-                        outtup = jax_funcs.inner_snr_fft_jit_1(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),prev_noise,prev_noise_N,noiseth)
-                        image_tesseract_binned[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(outtup[0]))
-                        total_noise += torch.from_numpy(np.array(outtup[1]))/(batches**2) 
-                        print("NOISE:" + str(torch.from_numpy(np.array(outtup[1]))/(batches**2)),file=fout)
-                noise_update_all(total_noise.numpy(),gridsize_RA,gridsize_DEC,DM_trials,widthtrials,writeonly=True) 
-                print("BINNED IMG SHAPE:" + str(image_tesseract_binned.shape),file=fout)
-                print("BINNED IMG:" + str(image_tesseract_binned),file=fout)
+
+                        task_list.append(executor.submit(jax_funcs.inner_snr_fft_jit_0,np.array(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64),np.array(boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64),np.array(prev_noise,dtype=np.float64),prev_noise_N,noiseth,i,j))
+                        #outtup = jax_funcs.inner_snr_fft_jit_0(np.array(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64),np.array(boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64),np.array(prev_noise,dtype=np.float64),prev_noise_N,noiseth)
+                        #image_tesseract_binned[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(outtup[0]))
+                        #total_noise += torch.from_numpy(np.array(outtup[1]))/(batches**2)
+
+                        if j+1 < batches:
+                            task_list.append(executor.submit(jax_funcs.inner_snr_fft_jit_1,np.array(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j+1)*subgridsize_RA:(j+1+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64),np.array(boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j+1)*subgridsize_RA:(j+1+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64),np.array(prev_noise,dtype=np.float64),prev_noise_N,noiseth,i,j+1))
+                            #outtup = jax_funcs.inner_snr_fft_jit_1(np.array(image_tesseract_filtered_dm[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64),np.array(boxcar[:,i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:].numpy(),dtype=np.float64()),np.array(prev_noise,dtype=np.float64),prev_noise_N,noiseth)
+                            #image_tesseract_binned[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j+1)*subgridsize_RA:(j+1+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(outtup[0]))
+                            #total_noise += torch.from_numpy(np.array(outtup[1]))/(batches**2)
+
+
+                        #outtup = task_list[0].result()
+                        #image_tesseract_binned[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(outtup[0]))
+                        #total_noise += torch.from_numpy(np.array(outtup[1]))/(batches**2)
+                            
+                        #if j+1 < batches:
+                        #    outtup = task_list[1].result()
+                        #    image_tesseract_binned[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j+1)*subgridsize_RA:(j+1+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(outtup[0]))
+                        #    total_noise += torch.from_numpy(np.array(outtup[1]))/(batches**2)   
+                            
+                            
+                        #print("NOISE:" + str(torch.from_numpy(np.array(outtup[1]))/(batches**2)),file=fout)
+                
+                
+                for t in task_list:
+                    outtup = t.result()
+                    i,j = outtup[2],outtup[3]
+                    image_tesseract_binned[i*subgridsize_DEC:(i+1)*subgridsize_DEC,j*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = torch.from_numpy(np.array(outtup[0]))
+                    total_noise += torch.from_numpy(np.array(outtup[1])/(batches**2))
+                executor.shutdown()
+                
+                image_tesseract_binned = torch.from_numpy(np.array(image_tesseract_binned))
+                #noise_update_all(total_noise.numpy(),gridsize_RA,gridsize_DEC,DM_trials,widthtrials,writeonly=True) 
+                #print("BINNED IMG SHAPE:" + str(image_tesseract_binned.shape),file=fout)
+                #print("BINNED IMG:" + str(image_tesseract_binned),file=fout)
                 
             else:
                 image_tesseract_binned = torch.zeros((nwidths,gridsize_DEC,gridsize_RA,ndms,nsamps)).to(device)
@@ -1199,6 +1230,10 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
         dedisp_img = np.zeros((image_tesseract_point.shape[0],image_tesseract_point.shape[1],image_tesseract_point.shape[2],image_tesseract_point.shape[3],len(DM_trials)))
         gridsize = image_tesseract_point.shape[0]
         subgridsize = gridsize//DMbatches
+
+        if not keepfreqaxis:
+            executor = ThreadPoolExecutor(5)
+            task_list = []
         for j in range(DMbatches):
             for i in range(DMbatches):
                 if keepfreqaxis:
@@ -1206,11 +1241,18 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
                 else:
                     if i%2 == 0:
                         print("DEVICE " + str(int(i%2)),file=fout)
-                        dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit_0(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+                        #dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit_0(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+                        task_list.append(executor.submit(jax_funcs.inner_dedisperse_jit_0,np.array(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis,i,j))
                     else:
-                        print("DEVICE " + str(int(i%2)),file=fout)
-                        dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit_1(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
-    
+                        print("DEVICE " + str(int((i+1)%2)),file=fout)
+                        #dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = jax_funcs.inner_dedisperse_jit_1(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],DM_trials_in=DM_trials,tsamp=tsamp,freq_axis_in=freq_axis)#,fout=fout)
+                        task_list.append(executor.submit(jax_funcs.inner_dedisperse_jit_0,np.array(image_tesseract_point[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis,i,j))
+
+        if not keepfreqaxis:
+            for t in task_list:
+                dat,i,j = t.result()
+                dedisp_timeseries_all[j*subgridsize:(j+1)*subgridsize,i*subgridsize:(i+1)*subgridsize,:,:] = dat
+            executor.shutdown()
     elif device != None and device.type == 'cuda':
         
         
@@ -1631,7 +1673,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
                    multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
-                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,usejax=True):
+                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -1842,9 +1884,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         
         
         if usingGPU:
-            image_tesseract_binned = snr_vs_RA_DEC_allDMW(torch.from_numpy(image_tesseract_dedisp),DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=DMbatches,usejax=usejax).numpy()
+            image_tesseract_binned = snr_vs_RA_DEC_allDMW(torch.from_numpy(image_tesseract_dedisp),DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=SNRbatches,usejax=usejax).numpy()
         else:
-            image_tesseract_binned = snr_vs_RA_DEC_allDMW(image_tesseract_dedisp,DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=DMbatches)
+            image_tesseract_binned = snr_vs_RA_DEC_allDMW(image_tesseract_dedisp,DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=SNRbatches)
         """
         #PSF parameters
         maxs = []

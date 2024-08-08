@@ -7,7 +7,7 @@ This file defines jit compiled functions to accelerate GPU compilation and compu
 """
 
 @jax.jit
-def inner_snr_fft_jit_1(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,noiseth):
+def inner_snr_fft_jit_1(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,noiseth,i,j):
     """
     This function replaces pyptorch with JAX so that JIT computation can be invoked
     """
@@ -28,7 +28,8 @@ def inner_snr_fft_jit_1(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,no
     mask = ((image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
     #image_tesseract_binned.at[:,:,:,:,:].set(jnp.nan_to_num(image_tesseract_binned,nan=0,posinf=0,neginf=0))
     #mask.at[:,:,:,:,:].set(mask*(image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True))) #less than noise threshold
-    nsamps = image_tesseract_binned.shape[4]
+    nw,subgridsize_DEC,subgridsize_RA,ndms,nsamps = image_tesseract_binned.shape#[4]
+
     #compute noise and update
     #noise = jnp.array(noise)
     noise = jax.device_put(jnp.array(noise),jax.devices()[1]).at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
@@ -40,27 +41,20 @@ def inner_snr_fft_jit_1(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,no
                                             ),axis=1
                                         ))))/(past_noise_N+1))
 
-    """
-    noise.at[:,:].set((noise*past_noise_N + (jnp.nanmedian(
-                                            jnp.nanmedian(
-                                                jnp.nanstd(
-                                                    image_tesseract_binned*mask,axis=4
-                                                    )*jnp.sqrt(nsamps/(mask.sum(4))
-                                                ),axis=1
-                                            ),axis=1
-                                        )))/(past_noise_N+1))
-    """
-
     image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise,(1,2)))))[:,:,:,:,0].transpose(1,2,0,3)#0,2).transpose(0,1))
 
-    #image_tesseract_binned_new = jax.device_put(((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(new_noise,(1,2))).transpose(1,2,0,3),jax.devices("cpu")[0])
+    #imgout[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j)*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = imgout.at[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j)*subgridsize_RA:(j+1)*subgridsize_RA,:,:].set(jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]))
+
 
 
     del mask
-    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0])
+    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]),i,j 
+
+
+
 
 @jax.jit
-def inner_snr_fft_jit_0(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,noiseth):
+def inner_snr_fft_jit_0(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,noiseth,i,j):
     """
     This function replaces pyptorch with JAX so that JIT computation can be invoked
     """
@@ -81,7 +75,8 @@ def inner_snr_fft_jit_0(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,no
     mask = ((image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
     #image_tesseract_binned.at[:,:,:,:,:].set(jnp.nan_to_num(image_tesseract_binned,nan=0,posinf=0,neginf=0))
     #mask.at[:,:,:,:,:].set(mask*(image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True))) #less than noise threshold
-    nsamps = image_tesseract_binned.shape[4]
+    nw,subgridsize_DEC,subgridsize_RA,ndms,nsamps = image_tesseract_binned.shape#[4]
+    
     #compute noise and update
     #noise = jnp.array(noise)
     noise = jax.device_put(jnp.array(noise),jax.devices()[0]).at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
@@ -93,24 +88,13 @@ def inner_snr_fft_jit_0(image_tesseract_filtered_dm,boxcar,noise,past_noise_N,no
                                             ),axis=1
                                         ))))/(past_noise_N+1))
     
-    """
-    noise.at[:,:].set((noise*past_noise_N + (jnp.nanmedian(
-                                            jnp.nanmedian(
-                                                jnp.nanstd(
-                                                    image_tesseract_binned*mask,axis=4
-                                                    )*jnp.sqrt(nsamps/(mask.sum(4))
-                                                ),axis=1
-                                            ),axis=1
-                                        )))/(past_noise_N+1))
-    """
 
     image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise,(1,2)))))[:,:,:,:,0].transpose(1,2,0,3)#0,2).transpose(0,1))
     
-    #image_tesseract_binned_new = jax.device_put(((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(new_noise,(1,2))).transpose(1,2,0,3),jax.devices("cpu")[0])
+    #imgout[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j)*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = imgout.at[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j)*subgridsize_RA:(j+1)*subgridsize_RA,:,:].set(jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]))
     
-
     del mask
-    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]) 
+    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]),i,j
 
 
 @jax.jit
@@ -133,7 +117,7 @@ def inner_snr_conv_jit(image_tesseract_filtered_dm,boxcar):
 
 
 @jax.jit
-def inner_dedisperse_jit_1(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in):#,fout):
+def inner_dedisperse_jit_1(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,i,j):#,fout):
     """
     This function replaces pytorch with JAX so that JIT computation can be invoked
     """
@@ -202,10 +186,10 @@ def inner_dedisperse_jit_1(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in
 
 
 
-    return dedisp_timeseries_all_cpu#,dedisp_img_cpu
+    return dedisp_timeseries_all_cpu,i,j#,dedisp_img_cpu
 
 @jax.jit
-def inner_dedisperse_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in):#,fout):
+def inner_dedisperse_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,i,j):#,fout):
     """
     This function replaces pytorch with JAX so that JIT computation can be invoked
     """
@@ -278,7 +262,7 @@ def inner_dedisperse_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in
     
 
 
-    return dedisp_timeseries_all_cpu#,dedisp_img_cpu
+    return dedisp_timeseries_all_cpu,i,j#,dedisp_img_cpu
 
 
 #@jax.jit

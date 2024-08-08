@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import socket
 import time
 from matplotlib import pyplot as plt
@@ -282,6 +283,31 @@ def test_multithreading_implementation():
     lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,multithreading=True)
     highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,multithreading=True)
     
+    return
+
+
+
+
+def test_boxcar_filter():
+    SNRthresh = 3000
+    gridsize = 300
+    nsamps = 25
+    nchans =  16
+    ofile = sl.output_file
+    verbose = False
+    batches = 4
+
+    sl.init_last_frame(gridsize,gridsize,nsamps,nchans)
+    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
+    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
+
+    device = torch.device(random.choice(np.arange(torch.cuda.device_count(),dtype=int)) if torch.cuda.is_available() else "cpu")
+
+
+    imgout = sl.snr_vs_RA_DEC_allDMW(torch.from_numpy(img),DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,mode='4d',noiseth=0.9,samenoise=True,plot=False,device=device,usefft=True,batches=batches,usejax=True,maxProcesses=5)
+    imgout = sl.snr_vs_RA_DEC_allDMW(torch.from_numpy(img),DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,mode='4d',noiseth=0.9,samenoise=True,plot=False,device=device,usefft=True,batches=batches,usejax=True,maxProcesses=5)
+    imgout = sl.snr_vs_RA_DEC_allDMW(torch.from_numpy(img),DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,mode='4d',noiseth=0.9,samenoise=True,plot=False,device=device,usefft=True,batches=batches,usejax=True,maxProcesses=5)
+    imgout = sl.snr_vs_RA_DEC_allDMW(torch.from_numpy(img),DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,mode='4d',noiseth=0.9,samenoise=True,plot=False,device=device,usefft=True,batches=batches,usejax=True,maxProcesses=5)
     return
 
 """

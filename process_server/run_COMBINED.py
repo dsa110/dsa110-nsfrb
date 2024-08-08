@@ -233,7 +233,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
 
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,usejax):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
@@ -252,7 +252,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = sl.run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=sl.output_file,usefft=usefft,space_filter=space_filter)
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax)
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
@@ -427,7 +427,8 @@ def main():
     parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
     parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
     parser.add_argument('--appendframe',action='store_true',help='Use the previous image to fill in dedispersion search')
-    parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, defauls = 1',default=1)
+    parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
+    parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
     args = parser.parse_args()    
 
@@ -442,16 +443,21 @@ def main():
         #printlog("CORR_LOW:" + str(config.corr_shifts_all_low),output_file=processfile)
         #printlog("CORR_HI:" + str(config.corr_shifts_all_hi),output_file=processfile)
         printlog("Initializing JIT functions...",output_file=processfile)
-        jax_funcs.inner_dedisperse_jit_0(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
-                                    DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
-        jax_funcs.inner_dedisperse_jit_1(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
-                                    DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
-        jax_funcs.inner_snr_fft_jit_0(image_tesseract_filtered_dm=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
-                                    boxcar=np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
-                                    noise=np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),past_noise_N=1,noiseth=0.1)
-        jax_funcs.inner_snr_fft_jit_1(image_tesseract_filtered_dm=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
-                                    boxcar=np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
-                                    noise=np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),past_noise_N=1,noiseth=0.1)
+        for i in range(args.DMbatches):
+            for j in range(args.DMbatches):
+                jax_funcs.inner_dedisperse_jit_0(image_tesseract_point=np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),dtype=np.float32),
+                                    DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis,i=i,j=j)
+                jax_funcs.inner_dedisperse_jit_1(image_tesseract_point=np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),dtype=np.float32),
+                                    DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis,i=i,j=j)
+            
+        for i in range(args.SNRbatches):
+            for j in range(args.SNRbatches):
+                jax_funcs.inner_snr_fft_jit_0(image_tesseract_filtered_dm=np.array(np.random.normal(size=(args.gridsize//args.SNRbatches,args.gridsize//args.SNRbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float64),
+                                    boxcar=np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.SNRbatches,args.gridsize//args.SNRbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float64),
+                                    noise=np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float64),past_noise_N=1,noiseth=0.1,i=i,j=j)
+                jax_funcs.inner_snr_fft_jit_1(image_tesseract_filtered_dm=np.array(np.random.normal(size=(args.gridsize//args.SNRbatches,args.gridsize//args.SNRbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float64),
+                                    boxcar=np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.SNRbatches,args.gridsize//args.SNRbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float64),
+                                    noise=np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float64),past_noise_N=1,noiseth=0.1,i=i,j=j)
     #initialize last_frame 
     if args.initframes:
         printlog("Initializing previous frames...",output_file=processfile)
@@ -647,7 +653,7 @@ def main():
             DEC_axis_idx= copy.deepcopy(fullimg_array[idx].DEC_axis)
             task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.usejax))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx))
