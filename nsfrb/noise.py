@@ -58,6 +58,18 @@ def noise_update(noise,gridsize_RA,gridsize_DEC,DM,width,noise_dir=noise_dir,out
     return noise_dict[DM][width]
 
 
+def get_noise_dict(gridsize_RA,gridsize_DEC):
+    #find noise pkl file
+    fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) +".pkl"
+    try:
+        f = open(fname,"rb")
+        noise_dict = pkl.load(f)
+        f.close()
+    except:
+        print("Initializing to Empty Noise Dict",file=fout)#Creating noise file " + fname + "...",file=fout)
+        noise_dict = dict()
+    return noise_dict
+
 def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file,writeonly=False,readonly=False):
     """
     This function retrieves and updates the running mean standard deviation 

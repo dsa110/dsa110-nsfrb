@@ -100,16 +100,6 @@ DEC_axis = np.linspace(DEC_point-pixsize*gridsize//2,DEC_point+pixsize*gridsize/
 time_axis = np.linspace(0,T,nsamps) #ms
 freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
-
-#width trials
-#nwidths=2#1#4
-#widthtrials =np.array([1,2])#np.array([1,2]) #np.logspace(0,3,nwidths,base=2,dtype=int)
-#widthtrials = np.logspace(0,3,nwidths,base=2,dtype=int)
-
-widthtrials = np.array(2**np.arange(5),dtype=int)
-nwidths = len(widthtrials)
-
-
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
     #tol = 1.25 # S/N loss tolerance
@@ -172,33 +162,23 @@ DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 nDMtrials = len(DM_trials)
 
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,gridsize,nsamps)
-"""
 
-tdelays = -(((DM_trials[:,np.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
+#make boxcar filters in advance
+widthtrials = np.array(2**np.arange(5),dtype=int)
+nwidths = len(widthtrials)
+def gen_boxcar_filter(widthtrials,gridsize,truensamps,nDMtrials):
+    nwidths = len(widthtrials)
+    boxcar = torch.zeros((nwidths,gridsize,gridsize,truensamps,nDMtrials))
+    loc = int(truensamps//2)
+    for i in range(nwidths):
+        wid = widthtrials[i]
+        boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
 
-tdelaysall = np.zeros((nDM,nchans*2),dtype=np.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
-tdelaysall[:,1::2] = (np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
-tdelaysall[:,0::2] = (np.array(np.floor(tdelays/tsamp),dtype=np.int8))
-tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)
+    return boxcar
+full_boxcar_filter = gen_boxcar_filter(widthtrials,gridsize,nsamps,nDMtrials)
 
-#rearrange shift idxs and expand axes
-
-#--case 1: appending previous frame
-tDM_max = (4.15)*np.max(DM_trials)*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
-maxshift = int(np.ceil(tDM_max/tsamp))
-idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
-corr_shifts_all_append = np.array(np.clip(((-tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
-tdelays_frac_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
-
-#--case 2: not appending previous frame
-maxshift = 0#int(np.ceil(tDM_max/sl.tsamp))
-idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
-corr_shifts_all_no_append = np.array(np.clip(((-tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
-tdelays_frac_no_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
-
-"""
-
-
+#get the current noise map from file
+current_noise = noise_update_all(None,gridsize,gridsize,DM_trials,widthtrials,readonly=True) #noise.get_noise_dict(gridsize,gridsize)
 
 #DM_trials = np.concatenate([[0],DM_trials])
 #DM_trials = np.array([0,1000])#np.array([0,100])
@@ -1622,6 +1602,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     
 
     #REVISED IMPLEMENTATION: DO DEDISP AND BOXCAR TOGETHER SO WE DON'T HAVE TO KEEP MOVING TO/FROM GPU
+    total_noise=None
     if usefft and usingGPU and usejax:
         t1 = time.time()
         nwidths,ndms = len(widthtrials),len(DM_trials)
@@ -1646,16 +1627,12 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #subgrid
         subgridsize_RA = gridsize_RA//DMbatches
         subgridsize_DEC = gridsize_DEC//DMbatches
-        loc = truensamps//2
-        #boxcar prep
-        boxcar = torch.zeros((nwidths,subgridsize_DEC,subgridsize_RA,truensamps,ndms))
-        for i in range(len(widthtrials)):
-            wid = widthtrials[i]
-            boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
+        boxcar = full_boxcar_filter[:,:subgridsize_DEC,:subgridsize_RA,:,:]
         
         #noise prep
         total_noise = torch.zeros((nwidths,ndms))
-        prev_noise,prev_noise_N = noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
+        
+        prev_noise,prev_noise_N = current_noise #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
 
         print("Time for Prep" + str(time.time()-t1),file=fout)
         t1 = time.time()
@@ -1677,7 +1654,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             image_tesseract_binned[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:] =  np.array(outtup[0])
             total_noise += np.array(outtup[1])/(DMbatches**2)
         executor.shutdown()
-        noise_update_all(total_noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,writeonly=True) 
+        #noise_update_all(total_noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,writeonly=True) 
         print("Time for DM and SNR:" + str(time.time()-t1),file=fout)
 
         #sort candidates
@@ -1919,7 +1896,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     print(printprefix +"Done! Found " + str(ncands) + " candidates",file=fout)
     if output_file != "":
         fout.close()
-    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset
+    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
 
 
 

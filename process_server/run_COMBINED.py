@@ -30,7 +30,7 @@ import csv
 import copy
 
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
-from nsfrb.noise import init_noise
+from nsfrb.noise import init_noise,noise_update_all,get_noise_dict
 from nsfrb.simulating import make_PSF_cube
 fsize=45
 fsize2=35
@@ -250,13 +250,18 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     #print("starting process " + str(img_id) + "...")
     timing1 = time.time()
     if PyTorchDedispersion: #uses Nikita's dedisp code
+        total_noise = None
         printlog("Using PyTorchDedispersion",output_file=processfile)
         fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = sl.run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=sl.output_file,usefft=usefft,space_filter=space_filter)
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax)
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
+    
+    #update noise stats
+    if total_noise is not None:
+        sl.current_noise = (noise_update_all(total_noise,gridsize,gridsize,sl.DM_trials,sl.widthtrials),sl.current_noise[1] + 1)
 
     if savesearch:
         f = open(cand_dir + fullimg.img_id_isot + ".npy","wb")
@@ -454,9 +459,13 @@ def main():
         sl.DM_trials = np.array(sl.gen_dm(sl.minDM,sl.maxDM,1.5,config.fc*1e-3,config.nchans,config.tsamp,config.chanbw))#[0:1]
         sl.nDMtrials = len(sl.DM_trials)
 
+        sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,config.gridsize,config.nsamps,sl.nDMtrials)
+
         sl.corr_shifts_all_append,sl.tdelays_frac_append,sl.corr_shifts_all_no_append,sl.tdelays_frac_no_append = sl.gen_dm_shifts(sl.DM_trials,sl.freq_axis,config.tsamp,config.gridsize,config.nsamps) 
 
         sl.default_PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+
+        sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
 
     #initialize jax functions
     if args.usejax:
@@ -521,6 +530,7 @@ def main():
     if args.initnoise:
         printlog("Initializing noise statistics...",output_file=processfile)
         init_noise()
+        sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
 
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
     #total expected number of bytes for each sub-band image
