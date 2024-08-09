@@ -30,6 +30,30 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
     truensamps = boxcar.shape[3]
 
     tdelays = -(((DM_trials[:,jnp.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
+    
+    tdelaysall = jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16)
+    tdelaysall = tdelaysall.at[:,1::2].set(jnp.array(jnp.ceil(tdelays/tsamp),dtype=jnp.int16))
+    tdelaysall = tdelaysall.at[:,0::2].set(jnp.array(jnp.floor(tdelays/tsamp),dtype=jnp.int16))
+    tdelays_frac = jnp.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)
+
+    #rearrange shift idxs and expand axes
+    idxs_all = (np.arange(nsamps)[:,jnp.newaxis,jnp.newaxis]).repeat(len(DM_trials),axis=1).repeat(2*nchans,axis=2)
+    corr_shifts_all = jnp.clip(((-tdelaysall[jnp.newaxis,:,:].repeat(nsamps,axis=0) + idxs_all))%nsamps,a_min=0,a_max=nsamps-1)[jnp.newaxis,jnp.newaxis,:truensamps,:,:].repeat(image_tesseract_point.shape[0],axis=0).repeat(image_tesseract_point.shape[1],axis=1)
+    tdelays_frac = tdelays_frac[jnp.newaxis,jnp.newaxis,jnp.newaxis,:,:].repeat(image_tesseract_point.shape[0],axis=0).repeat(image_tesseract_point.shape[1],axis=1).repeat(truensamps,axis=2)
+    image_tesseract_point_DM = image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(len(DM_trials),axis=3).repeat(2,axis=4)
+    
+    #apply delays
+    image_tesseract_filtered_dm = ((jnp.take_along_axis(jnp.array(image_tesseract_point_DM),indices=jnp.array(corr_shifts_all),axis=2))*tdelays_frac).sum(4) 
+
+    del DM_trials
+    del freq_axis
+    del tdelays
+    del tdelaysall
+    del tdelays_frac
+    del idxs_all
+    del corr_shifts_all
+    del image_tesseract_point_DM
+    """
     tdelays_idx_hi = jnp.array(jnp.ceil(tdelays/tsamp),dtype=jnp.int16)
     tdelays_idx_low = jnp.array(jnp.floor(tdelays/tsamp),dtype=jnp.int16)
     tdelays_frac = tdelays/tsamp - tdelays_idx_low
@@ -80,7 +104,7 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
     #jax.clear_caches()
 
     #return dedisp_timeseries_all_cpu,i,j#,dedisp_img_cpu
-
+    """
 
     #####NOW BOXCAR FILTER
     #take fourier transform of boxcar and image
@@ -142,6 +166,32 @@ def dedisp_snr_fft_jit_1(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
     truensamps = boxcar.shape[3]
 
     tdelays = -(((DM_trials[:,jnp.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
+
+    tdelaysall = jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16)
+    tdelaysall = tdelaysall.at[:,1::2].set(jnp.array(jnp.ceil(tdelays/tsamp),dtype=jnp.int16))
+    tdelaysall = tdelaysall.at[:,0::2].set(jnp.array(jnp.floor(tdelays/tsamp),dtype=jnp.int16))
+    tdelays_frac = jnp.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)
+
+    #rearrange shift idxs and expand axes
+    idxs_all = (np.arange(nsamps)[:,jnp.newaxis,jnp.newaxis]).repeat(len(DM_trials),axis=1).repeat(2*nchans,axis=2)
+    corr_shifts_all = jnp.clip(((-tdelaysall[jnp.newaxis,:,:].repeat(nsamps,axis=0) + idxs_all))%nsamps,a_min=0,a_max=nsamps-1)[jnp.newaxis,jnp.newaxis,:truensamps,:,:].repeat(image_tesseract_point.shape[0],axis=0).repeat(image_tesseract_point.shape[1],axis=1)
+    tdelays_frac = tdelays_frac[jnp.newaxis,jnp.newaxis,jnp.newaxis,:,:].repeat(image_tesseract_point.shape[0],axis=0).repeat(image_tesseract_point.shape[1],axis=1).repeat(truensamps,axis=2)
+    image_tesseract_point_DM = image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(len(DM_trials),axis=3).repeat(2,axis=4)
+
+    #apply delays
+    image_tesseract_filtered_dm = ((jnp.take_along_axis(jnp.array(image_tesseract_point_DM),indices=jnp.array(corr_shifts_all),axis=2))*tdelays_frac).sum(4)
+
+    del DM_trials
+    del freq_axis
+    del tdelays
+    del tdelaysall
+    del tdelays_frac
+    del idxs_all
+    del corr_shifts_all
+    del image_tesseract_point_DM
+
+
+    """
     tdelays_idx_hi = jnp.array(jnp.ceil(tdelays/tsamp),dtype=jnp.int16)
     tdelays_idx_low = jnp.array(jnp.floor(tdelays/tsamp),dtype=jnp.int16)
     tdelays_frac = tdelays/tsamp - tdelays_idx_low
@@ -191,11 +241,11 @@ def dedisp_snr_fft_jit_1(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
     #del dedisp_timeseries_all
     #del dedisp_img
     #jax.clear_caches()
-
+    
 
 
     #return dedisp_timeseries_all_cpu,i,j#,dedisp_img_cpu
-
+    """
 
     #####NOW BOXCAR FILTER
     #take fourier transform of boxcar and image
