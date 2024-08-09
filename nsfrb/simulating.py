@@ -7,7 +7,10 @@ import pandas as pd
 import random
 from antpos.utils import get_itrf
 from nsfrb.config import IMAGE_SIZE, c    
-
+import sys
+from PIL import Image,ImageOps
+from nsfrb import config
+from scipy.stats import norm
 
 def get_core_coordinates():
     """
@@ -212,7 +215,7 @@ def simulate_far_field_rfi(u, v, NUM_CHANNELS, num_baselines, pixel_resolution, 
         NUM_CHANNELS (int): The number of frequency channels.
         num_baselines (int): The number of baselines.
         pixel_resolution (float): The pixel resolution of the image.
-        noise_std_dev (float, optional): The standard deviation of the noise. Defaults to 5.
+        noise_std_dev (float, optional): The standard deviation of the noise. Defaults to 5.#print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
         desired_snr (float, optional): The desired signal-to-noise ratio (SNR) of the RFI. Defaults to 7.
 
     Returns:
@@ -234,3 +237,192 @@ def simulate_far_field_rfi(u, v, NUM_CHANNELS, num_baselines, pixel_resolution, 
 
     return rfi
 
+
+
+"""
+Below are Myles's functions to quickly simulated injections and a model PSF based on Nikita's simualtions
+"""
+
+f = open("../metadata.txt","r")
+cwd = f.read()[:-1]
+f.close()
+sys.path.append(cwd + "/")
+log_file = cwd + "-logfiles/inject_log.txt"
+
+def make_PSF_cube(gridsize=config.gridsize,nchans=config.nchans,nsamps=config.nsamps,RFI=False,output_file=log_file,datagridsize=256):
+    """
+    This function creates a frequency-dependent PSF based on Nikita's source simulation pipeline. It
+    uses pre-defined images and downsamples to the desired resolution. The PSF is duplicated along the time
+    axis.   
+    """
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+    #get pngs for a point source from Nikita's images
+    dirname = cwd + "/simulations_and_classifications/src_examples/observation_2/images/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"
+    pngs = os.listdir(dirname)
+    sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
+    freqs = []
+    fs = []
+
+    print("Creating PSF with shape " + str(sourceimg.shape) + " using " + str(datagridsize) + "x" + str(datagridsize) + " images in " + dirname + "...",file=fout)
+    for png in pngs:
+        print(png,file=fout)
+        if ".png" in png:
+            #get frequency
+            freq = float(png[png.index("avg_") + 4: png.index("avg_") + 11])
+            freqs.append(freq)
+            fs.append(png)
+
+
+    #need to check that datagridsize/gridsize compatible
+    if datagridsize > gridsize and datagridsize%gridsize != 0:
+        diff = datagridsize%gridsize
+        datagridsizecut = datagridsize - diff
+    elif datagridsize > gridsize:
+        diff = 0
+        datagridsizecut = datagridsize
+
+
+    #print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
+    if datagridsize > gridsize:
+        print("Downsampling by factor " + str(datagridsizecut//gridsize) + "...",file=fout,end="")
+    freqs_sorted = np.sort(freqs)
+    fs_sorted = [x for x, _ in sorted(zip(fs, freqs))]
+    #downsample and copy over time and frequency axes
+    for i in range(nchans):
+        for j in range(nsamps):
+
+            #print(np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i]))).shape)
+            fullim = np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i])))
+            print(fullim.shape,file=fout)
+
+            if datagridsize == gridsize:
+                sourceimg[:,:,j,i] = fullim
+
+            elif datagridsize < gridsize:
+                diff = gridsize - datagridsize
+                fullim = np.pad(fullim, (diff//2,diff - (diff//2)),mode='constant')
+                sourceimg[:,:,j,i] = fullim
+
+            elif datagridsize > gridsize:
+                if datagridsize%gridsize != 0:
+                    fullim = fullim[diff//2:(diff//2) + datagridsizecut,diff//2:(diff//2)+ datagridsizecut]
+
+                sourceimg[:,:,j,i] = fullim.reshape((gridsize,datagridsize//gridsize,gridsize,datagridsize//gridsize)).mean((1,3))
+
+    #roll if not perfectly centered
+    maxpix = tuple(np.array(np.unravel_index(np.argmax(sourceimg[:,:,0,0].flatten()),(gridsize,gridsize))))
+    centerpix = ((gridsize//2) - 1,(gridsize//2) - 1)
+    if maxpix != centerpix:
+
+        rolledPSFimg = np.roll(np.roll(sourceimg,shift=centerpix[0]-maxpix[0],axis=0),shift=centerpix[1]-maxpix[1],axis=1)
+        rolledPSFimg[gridsize - (maxpix[0]-centerpix[0]):,:,:,:] = 0
+        rolledPSFimg[:,gridsize - (maxpix[1]-centerpix[1]):,:,:] = 0
+    else: rolledPSFimg = PSFimg
+    #cutout image
+    #PSFimg = rolledPSFimg[gridsize//2:gridsize//2 + gridsize,gridsize//2:gridsize//2 + gridsize]
+
+    print("Complete!",file=fout)
+    if output_file != "":
+        fout.close()
+    return rolledPSFimg
+
+
+
+
+def make_image_cube(PSFimg,snr=1000,width=5,loc=0.5,gridsize=config.gridsize,nchans=config.nchans,nsamps=config.nsamps,RFI=False,DM=0,output_file=log_file,datagridsize=256):
+    #get pngs
+    """
+    This function makes test images with finite width using Nikita's test pngs
+    """
+
+
+
+    dirname = cwd + "/simulations_and_classifications/src_examples/observation_2/images/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"#testimgs_2024-03-18/"#{a}x{a}_images/"#src_examples/observation_1/images/".format(a=gridsize)
+    pngs = os.listdir(dirname)
+    sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
+    freqs = []
+    fs = []
+
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    #need to rescale by 2
+    snr = snr/2
+
+    for png in pngs:
+        print(png,file=fout)
+        if ".png" in png:
+            #get frequency
+            freq = float(png[png.index("avg_") + 4: png.index("avg_") + 11])
+            freqs.append(freq)
+            fs.append(png)
+
+    #need to check that datagridsize/gridsize compatible
+    if datagridsize > gridsize and datagridsize%gridsize != 0:
+        diff = datagridsize%gridsize
+        datagridsizecut = datagridsize - diff
+    elif datagridsize > gridsize:
+        diff = 0
+        datagridsizecut = datagridsize
+
+
+    #print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
+    if datagridsize > gridsize:
+        print("Downsampling by factor " + str(datagridsizecut//gridsize) + "...",file=fout,end="")
+    freqs_sorted = np.sort(freqs)
+    fs_sorted = [x for x, _ in sorted(zip(fs, freqs))]
+    #downsample and copy over time and frequency axes
+    for i in range(nchans):
+        for j in range(nsamps):
+
+            #print(np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i]))).shape)
+            fullim = np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i])))
+            print(fullim.shape,file=fout)
+
+            if datagridsize == gridsize:
+                sourceimg[:,:,j,i] = fullim
+
+            elif datagridsize < gridsize:
+                diff = gridsize - datagridsize
+                fullim = np.pad(fullim, (diff//2,diff - (diff//2)),mode='constant')
+                sourceimg[:,:,j,i] = fullim
+
+            elif datagridsize > gridsize:
+                if datagridsize%gridsize != 0:
+                    fullim = fullim[diff//2:(diff//2) + datagridsizecut,diff//2:(diff//2)+ datagridsizecut]
+
+                sourceimg[:,:,j,i] = fullim.reshape((gridsize,datagridsize//gridsize,gridsize,datagridsize//gridsize)).mean((1,3))
+
+
+    #now add noise based on the SNR
+    #PSFimg = make_PSF_cube(loc=loc,gridsize=gridsize,nchans=nchans,nsamps=nsamps)
+    #sourceimg = sourceimg[gridsize//2:gridsize//2 + gridsize,gridsize//2:gridsize//2 + gridsize]
+    noises = []
+    for i in range(nchans):
+        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]/(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]))#/np.sum(PSFimg[:,:,:,i]))
+
+
+        print(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]),np.sum(PSFimg[:,:,:,i]),file=fout)
+
+
+        #img[16,16,500:500+wid,:] = snr/wid
+        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr#/np.sum(PSFimg[:,:,0,i])
+
+        sourceimg[:,:,:int(loc*nsamps),:] = 0
+        sourceimg[:,:,int(loc*nsamps) + width:,:] = 0
+
+    #if DM is given, disperse before adding noise
+    if DM != 0:
+        tmp,sourceimg = dedisperse_allDM(sourceimg,DM=-DM,keepfreqaxis=True)[:,:,:,:,0]
+    for i in range(nchans):
+        sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
+        noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
+
+    if output_file != "":
+        fout.close()
+    return sourceimg

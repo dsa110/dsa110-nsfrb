@@ -21,7 +21,7 @@ from torch.nn import functional as tf
 from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
-
+from nsfrb import simulating as sim
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 
@@ -77,8 +77,7 @@ Search parameters
 """
 #tsamp = 130 #ms
 #T = 3250 #ms
-nsamps = int(T/tsamp)
-
+#nsamps = int(T/tsamp)
 #fmax  = 1530 #MHz
 #fmin = 1280 #MHz
 #c = 3e8 #m/s
@@ -136,12 +135,74 @@ def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
 
     #print('DM trials:',ndms)
     return dms
+
+def gen_dm_shifts(DM_trials,freq_axis,tsamp,gridsize,nsamps):
+    nDM = len(DM_trials)
+    nchans = len(freq_axis)
+    fmin =np.nanmin(freq_axis)
+    fmax = np.nanmax(freq_axis)
+
+    tdelays = -(((DM_trials[:,np.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
+
+    tdelaysall = np.zeros((nDM,nchans*2),dtype=np.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
+    tdelaysall[:,1::2] = (np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
+    tdelaysall[:,0::2] = (np.array(np.floor(tdelays/tsamp),dtype=np.int8))
+    tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)
+
+    #rearrange shift idxs and expand axes
+
+    #--case 1: appending previous frame
+    tDM_max = (4.15)*np.max(DM_trials)*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
+    maxshift = int(np.ceil(tDM_max/tsamp))
+    idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
+    corr_shifts_all_append = np.array(np.clip(((-tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+    tdelays_frac_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
+
+    #--case 2: not appending previous frame
+    maxshift = 0#int(np.ceil(tDM_max/sl.tsamp))
+    idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
+    corr_shifts_all_no_append = np.array(np.clip(((-tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+    tdelays_frac_no_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
+    return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append
+
+
 minDM = 171
 maxDM = 4000
 DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
+nDMtrials = len(DM_trials)
+
+corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,gridsize,nsamps)
+"""
+
+tdelays = -(((DM_trials[:,np.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
+
+tdelaysall = np.zeros((nDM,nchans*2),dtype=np.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
+tdelaysall[:,1::2] = (np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
+tdelaysall[:,0::2] = (np.array(np.floor(tdelays/tsamp),dtype=np.int8))
+tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)
+
+#rearrange shift idxs and expand axes
+
+#--case 1: appending previous frame
+tDM_max = (4.15)*np.max(DM_trials)*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
+maxshift = int(np.ceil(tDM_max/tsamp))
+idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
+corr_shifts_all_append = np.array(np.clip(((-tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+tdelays_frac_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
+
+#--case 2: not appending previous frame
+maxshift = 0#int(np.ceil(tDM_max/sl.tsamp))
+idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
+corr_shifts_all_no_append = np.array(np.clip(((-tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+tdelays_frac_no_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
+
+"""
+
+
+
 #DM_trials = np.concatenate([[0],DM_trials])
 #DM_trials = np.array([0,1000])#np.array([0,100])
-nDMtrials = len(DM_trials)
+#nDMtrials = len(DM_trials)
 
 #snr threshold
 SNRthresh = 6
@@ -169,187 +230,9 @@ csvfile.close()
 ANTENNALATS = np.array(ANTENNALATS)
 ANTENNALONS = np.array(ANTENNALONS)
 ANTENNAELEVS = np.array(ANTENNAELEVS)
+default_PSF = sim.make_PSF_cube()
 
 """Search functions"""
-datagridsize = 256
-def make_PSF_cube(gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False,output_file=output_file):
-    """
-    This function creates a frequency-dependent PSF based on Nikita's source simulation pipeline. It
-    uses pre-defined images and downsamples to the desired resolution. The PSF is duplicated along the time
-    axis.   
-    """
-    if output_file != "":
-        fout = open(output_file,"a")
-    else:
-        fout = sys.stdout
-    #get pngs for a point source from Nikita's images
-    dirname = cwd + "/simulations_and_classifications/src_examples/observation_2/images/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"
-    pngs = os.listdir(dirname)
-    sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
-    freqs = []
-    fs = []
-	    
-    print("Creating PSF with shape " + str(sourceimg.shape) + " using " + str(datagridsize) + "x" + str(datagridsize) + " images in " + dirname + "...",file=fout)
-    for png in pngs:
-        print(png,file=fout)
-        if ".png" in png:
-            #get frequency
-            freq = float(png[png.index("avg_") + 4: png.index("avg_") + 11])
-            freqs.append(freq)
-            fs.append(png)
-
-    
-    #need to check that datagridsize/gridsize compatible
-    if datagridsize > gridsize and datagridsize%gridsize != 0:
-        diff = datagridsize%gridsize
-        datagridsizecut = datagridsize - diff
-    elif datagridsize > gridsize:
-        diff = 0
-        datagridsizecut = datagridsize
-
-    
-    #print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
-    if datagridsize > gridsize:
-        print("Downsampling by factor " + str(datagridsizecut//gridsize) + "...",file=fout,end="")
-    freqs_sorted = np.sort(freqs)
-    fs_sorted = [x for x, _ in sorted(zip(fs, freqs))]
-    #downsample and copy over time and frequency axes
-    for i in range(nchans):
-        for j in range(nsamps):
-            
-            #print(np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i]))).shape)
-            fullim = np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i])))
-            print(fullim.shape,file=fout)
-            
-            if datagridsize == gridsize:
-                sourceimg[:,:,j,i] = fullim
-
-            elif datagridsize < gridsize:
-                diff = gridsize - datagridsize
-                fullim = np.pad(fullim, (diff//2,diff - (diff//2)),mode='constant')
-                sourceimg[:,:,j,i] = fullim
-            
-            elif datagridsize > gridsize:
-                if datagridsize%gridsize != 0:
-                    fullim = fullim[diff//2:(diff//2) + datagridsizecut,diff//2:(diff//2)+ datagridsizecut]            
-                
-                sourceimg[:,:,j,i] = fullim.reshape((gridsize,datagridsize//gridsize,gridsize,datagridsize//gridsize)).mean((1,3))
-
-    #roll if not perfectly centered
-    maxpix = tuple(np.array(np.unravel_index(np.argmax(sourceimg[:,:,0,0].flatten()),(gridsize,gridsize))))
-    centerpix = ((gridsize//2) - 1,(gridsize//2) - 1)
-    if maxpix != centerpix:
-    
-        rolledPSFimg = np.roll(np.roll(sourceimg,shift=centerpix[0]-maxpix[0],axis=0),shift=centerpix[1]-maxpix[1],axis=1)
-        rolledPSFimg[gridsize - (maxpix[0]-centerpix[0]):,:,:,:] = 0
-        rolledPSFimg[:,gridsize - (maxpix[1]-centerpix[1]):,:,:] = 0
-    else: rolledPSFimg = PSFimg
-    #cutout image
-    #PSFimg = rolledPSFimg[gridsize//2:gridsize//2 + gridsize,gridsize//2:gridsize//2 + gridsize]
-
-    print("Complete!",file=fout)
-    if output_file != "":
-        fout.close()
-    return rolledPSFimg
-
-default_PSF = make_PSF_cube()
-
-
-def make_image_cube(PSFimg=default_PSF,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,RFI=False,DM=0,output_file=""):
-    #get pngs
-    """
-    This function makes test images with finite width using Nikita's test pngs
-    """
-    
-    dirname = cwd + "/simulations_and_classifications/src_examples/observation_2/images/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"#testimgs_2024-03-18/"#{a}x{a}_images/"#src_examples/observation_1/images/".format(a=gridsize)
-    pngs = os.listdir(dirname)
-    sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
-    freqs = []
-    fs = []
-    
-    if output_file != "":
-        fout = open(output_file,"a")
-    else:
-        fout = sys.stdout
-
-    for png in pngs:
-        print(png,file=fout)
-        if ".png" in png:
-            #get frequency
-            freq = float(png[png.index("avg_") + 4: png.index("avg_") + 11])
-            freqs.append(freq)
-            fs.append(png)
-
-    #need to check that datagridsize/gridsize compatible
-    if datagridsize > gridsize and datagridsize%gridsize != 0:
-        diff = datagridsize%gridsize
-        datagridsizecut = datagridsize - diff
-    elif datagridsize > gridsize:
-        diff = 0
-        datagridsizecut = datagridsize
-
-
-    #print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
-    if datagridsize > gridsize:
-        print("Downsampling by factor " + str(datagridsizecut//gridsize) + "...",file=fout,end="")
-    freqs_sorted = np.sort(freqs)
-    fs_sorted = [x for x, _ in sorted(zip(fs, freqs))]
-    #downsample and copy over time and frequency axes
-    for i in range(nchans):
-        for j in range(nsamps):
-
-            #print(np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i]))).shape)
-            fullim = np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i])))
-            print(fullim.shape,file=fout)
-
-            if datagridsize == gridsize:
-                sourceimg[:,:,j,i] = fullim
-
-            elif datagridsize < gridsize:
-                diff = gridsize - datagridsize
-                fullim = np.pad(fullim, (diff//2,diff - (diff//2)),mode='constant')
-                sourceimg[:,:,j,i] = fullim
-
-            elif datagridsize > gridsize:
-                if datagridsize%gridsize != 0:
-                    fullim = fullim[diff//2:(diff//2) + datagridsizecut,diff//2:(diff//2)+ datagridsizecut]
-
-                sourceimg[:,:,j,i] = fullim.reshape((gridsize,datagridsize//gridsize,gridsize,datagridsize//gridsize)).mean((1,3))
-
-
-
-
-
-    #now add noise based on the SNR
-    #PSFimg = make_PSF_cube(loc=loc,gridsize=gridsize,nchans=nchans,nsamps=nsamps)
-    #sourceimg = sourceimg[gridsize//2:gridsize//2 + gridsize,gridsize//2:gridsize//2 + gridsize]
-    noises = []
-    for i in range(nchans):
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]/(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]))#/np.sum(PSFimg[:,:,:,i]))
-        
-        
-        print(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]),np.sum(PSFimg[:,:,:,i]),file=fout)
-        
-    
-        #img[16,16,500:500+wid,:] = snr/wid
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr#/np.sum(PSFimg[:,:,0,i])
-        
-        sourceimg[:,:,:int(loc*nsamps),:] = 0
-        sourceimg[:,:,int(loc*nsamps) + width:,:] = 0        
-
-    #if DM is given, disperse before adding noise
-    if DM != 0:    
-        tmp,sourceimg = dedisperse(sourceimg,DM=-DM)
-    for i in range(nchans):
-        sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
-        noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
-
-    if output_file != "":
-        fout.close()
-    return sourceimg
-
-
-
 
 from scipy.signal import convolve2d
 from scipy.signal import correlate2d
@@ -1561,7 +1444,7 @@ def run_PyTorchDedisp_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,t
         #create PSF if the shape doesn't match
         if PSF.shape != image_tesseract.shape:
             print(printprefix + "Updating PSF...",file=fout)
-            PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+            PSF = sim.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
         #2D matched filter for each timestep and channel
         print(printprefix +"Spatial matched filtering with DSA PSF...",file=fout)
         if usefft:
@@ -1718,7 +1601,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #create PSF if the shape doesn't match
         if PSF.shape != image_tesseract.shape:
             print(printprefix + "Updating PSF...",file=fout)
-            PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+            PSF = sim.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
         #2D matched filter for each timestep and channel
         print(printprefix +"Spatial matched filtering with DSA PSF...",file=fout)
         if usefft:
@@ -1747,12 +1630,17 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             truensamps = image_tesseract_filtered.shape[2]
             image_tesseract_filtered = np.concatenate([get_last_frame(),image_tesseract_filtered],axis=2)
             nsamps = image_tesseract_filtered.shape[2]
+            corr_shifts_all = corr_shifts_all_append
+            tdelays_frac = tdelays_frac_append
+            
             print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered.shape),file=fout)
         
             #save frame
             save_last_frame(image_tesseract_filtered)
             print("Writing to last_frame.npy",file=fout)
         else:
+            corr_shifts_all = corr_shifts_all_no_append
+            tdelays_frac = tdelays_frac_no_append
             truensamps = nsamps = image_tesseract_filtered.shape[2]
 
         #subgrid
@@ -1760,7 +1648,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         subgridsize_DEC = gridsize_DEC//DMbatches
         loc = truensamps//2
         #boxcar prep
-        boxcar = torch.zeros((subgridsize_DEC,subgridsize_RA,truensamps,ndms)).unsqueeze(0).expand(nwidths,-1,-1,-1,-1)
+        boxcar = torch.zeros((nwidths,subgridsize_DEC,subgridsize_RA,truensamps,ndms))
         for i in range(len(widthtrials)):
             wid = widthtrials[i]
             boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
@@ -1769,15 +1657,18 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         total_noise = torch.zeros((nwidths,ndms))
         prev_noise,prev_noise_N = noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
 
+        print("Time for Prep" + str(time.time()-t1),file=fout)
+        t1 = time.time()
+
         executor = ThreadPoolExecutor(DMbatches*DMbatches)#maxProcesses)
         task_list = []
         image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,len(widthtrials),len(DM_trials)))
         for i in range(DMbatches):
             for j in range(DMbatches):
                 if j%2 == 0:
-                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis,np.array(boxcar,dtype=np.float16),np.array(prev_noise,dtype=np.float16),prev_noise_N,noiseth,i,j))
+                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),jax.device_put(tdelays_frac[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
                 else:
-                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_1,np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis,np.array(boxcar,dtype=np.float16),np.array(prev_noise,dtype=np.float16),prev_noise_N,noiseth,i,j))
+                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(tdelays_frac[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
         
         #get results
         for t in task_list:
@@ -1866,6 +1757,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                     for k in range(nDMtrials):
                         #define sub-range of DM trials
                         DM_trials_i = DM_trials[k:k+1]
+                        
 
                         #make new thread to search sub-image
                         task_list.append(executor.submit(run_search_new,

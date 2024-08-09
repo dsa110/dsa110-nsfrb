@@ -1,5 +1,7 @@
 import numpy as np
-from nsfrb import searching as sl
+#from nsfrb import searching as sl
+#from nsfrb.searching import make_PSF_cube,default_PSF,datagridsize
+from nsfrb import simulating as sim
 import sys
 from matplotlib import pyplot as plt
 import random
@@ -34,105 +36,6 @@ error_file = cwd + "-logfiles/error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
 
 
-
-
-
-def make_image_cube(PSFimg=sl.default_PSF,snr=1000,width=5,loc=0.5,gridsize=sl.gridsize,nchans=sl.nchans,nsamps=sl.nsamps,RFI=False,DM=0,output_file="",datagridsize=sl.datagridsize):
-    #get pngs
-    """
-    This function makes test images with finite width using Nikita's test pngs
-    """
-
-
-
-    dirname = cwd + "/simulations_and_classifications/src_examples/observation_2/images/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/simulations_and_classifications/src_examples/observation_2/images/"#testimgs_2024-03-18/"#{a}x{a}_images/"#src_examples/observation_1/images/".format(a=gridsize)
-    pngs = os.listdir(dirname)
-    sourceimg = np.zeros((gridsize,gridsize,nsamps,nchans))
-    freqs = []
-    fs = []
-
-    if output_file != "":
-        fout = open(output_file,"a")
-    else:
-        fout = sys.stdout
-
-    #need to rescale by 2
-    snr = snr/2
-
-    for png in pngs:
-        print(png,file=fout)
-        if ".png" in png:
-            #get frequency
-            freq = float(png[png.index("avg_") + 4: png.index("avg_") + 11])
-            freqs.append(freq)
-            fs.append(png)
-
-    #need to check that datagridsize/gridsize compatible
-    if datagridsize > gridsize and datagridsize%gridsize != 0:
-        diff = datagridsize%gridsize
-        datagridsizecut = datagridsize - diff
-    elif datagridsize > gridsize:
-        diff = 0
-        datagridsizecut = datagridsize
-
-
-    #print(str(datagridsizecut) + " " + str(datagridsize) + " " + str(gridsize),file=fout) 
-    if datagridsize > gridsize:
-        print("Downsampling by factor " + str(datagridsizecut//gridsize) + "...",file=fout,end="")
-    freqs_sorted = np.sort(freqs)
-    fs_sorted = [x for x, _ in sorted(zip(fs, freqs))]
-    #downsample and copy over time and frequency axes
-    for i in range(nchans):
-        for j in range(nsamps):
-
-            #print(np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i]))).shape)
-            fullim = np.asarray(ImageOps.grayscale(Image.open(dirname + fs_sorted[i])))
-            print(fullim.shape,file=fout)
-
-            if datagridsize == gridsize:
-                sourceimg[:,:,j,i] = fullim
-
-            elif datagridsize < gridsize:
-                diff = gridsize - datagridsize
-                fullim = np.pad(fullim, (diff//2,diff - (diff//2)),mode='constant')
-                sourceimg[:,:,j,i] = fullim
-
-            elif datagridsize > gridsize:
-                if datagridsize%gridsize != 0:
-                    fullim = fullim[diff//2:(diff//2) + datagridsizecut,diff//2:(diff//2)+ datagridsizecut]
-
-                sourceimg[:,:,j,i] = fullim.reshape((gridsize,datagridsize//gridsize,gridsize,datagridsize//gridsize)).mean((1,3))
-
-
-    #now add noise based on the SNR
-    #PSFimg = make_PSF_cube(loc=loc,gridsize=gridsize,nchans=nchans,nsamps=nsamps)
-    #sourceimg = sourceimg[gridsize//2:gridsize//2 + gridsize,gridsize//2:gridsize//2 + gridsize]
-    noises = []
-    for i in range(nchans):
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]/(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]))#/np.sum(PSFimg[:,:,:,i]))
-
-
-        print(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]),np.sum(PSFimg[:,:,:,i]),file=fout)
-
-
-        #img[16,16,500:500+wid,:] = snr/wid
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr#/np.sum(PSFimg[:,:,0,i])
-
-        sourceimg[:,:,:int(loc*nsamps),:] = 0
-        sourceimg[:,:,int(loc*nsamps) + width:,:] = 0
-
-    #if DM is given, disperse before adding noise
-    if DM != 0:
-        tmp,sourceimg = dedisperse_allDM(sourceimg,DM=-DM,keepfreqaxis=True)[:,:,:,:,0]
-    for i in range(nchans):
-        sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
-        noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
-
-    if output_file != "":
-        fout.close()
-    return sourceimg
-
-
 def main():
     #redirect stderr
     sys.stderr = open(error_file,"w")
@@ -152,14 +55,14 @@ def main():
     args = parser.parse_args()
 
     #make image
-    PSF = sl.make_PSF_cube(gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,output_file=log_file)
+    PSF = sim.make_PSF_cube(gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,output_file=log_file)
 
     if args.nbursts == 1:
         #get current time
         time_start_isot = Time.now().isot
         print("Injecting burst " + str(time_start_isot) + " with DM = " + str(args.DM) + ", width = " + str(args.width) + ", S/N = " + str(args.SNR))
         
-        image_tesseract = make_image_cube(PSFimg=PSF,snr=args.SNR,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
+        image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=args.SNR,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
 
         #send
         for i in range(nchans):#NUM_CHANNELS//AVERAGING_FACTOR):
@@ -182,7 +85,7 @@ def main():
 
             print("Injecting burst " + str(time_start_isot) + " with DM = " + str(DM) + ", width = " + str(width) + ", S/N = " + str(SNR))
 
-            image_tesseract = make_image_cube(PSFimg=PSF,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file)
+            image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file)
 
 
             #send

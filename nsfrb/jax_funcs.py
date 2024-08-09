@@ -11,7 +11,7 @@ This file defines jit compiled functions to accelerate GPU compilation and compu
 combined function
 """
 @jax.jit
-def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,boxcar,noise,past_noise_N,noiseth,i,j):#,fout):
+def dedisp_snr_fft_jit_0(image_tesseract_point,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth,i,j):#,fout):
     """
     This function replaces pytorch with JAX so that JIT computation can be invoked
     """
@@ -19,40 +19,42 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
     #make JAX arrays 
     #print(image_tesseract_point.shape) 
     #image_tesseract_point = image_tesseract_point#.numpy()
+    """
     DM_trials = jax.device_put(jnp.array(DM_trials_in),jax.devices()[0])
     freq_axis = jax.device_put(jnp.array(freq_axis_in),jax.devices()[0])
+    """
 
     #Delays
     gridsize = image_tesseract_point.shape[0]
     #print("SIZES:" + str(gridsize),file=fout)
-    nchans = len(freq_axis)
+    #nchans = len(freq_axis)
     nsamps = image_tesseract_point.shape[-2]
     truensamps = boxcar.shape[3]
-
-    tdelays = -(((DM_trials[:,jnp.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
+    nDM = tdelays_frac.shape[3]
+    """
+    #tdelays = -(((DM_trials[:,jnp.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
     
-    tdelaysall = jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16)
+    tdelaysall = jnp.zeros((nDM,nchans*2),dtype=jnp.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
     tdelaysall = tdelaysall.at[:,1::2].set(jnp.array(jnp.ceil(tdelays/tsamp),dtype=jnp.int16))
     tdelaysall = tdelaysall.at[:,0::2].set(jnp.array(jnp.floor(tdelays/tsamp),dtype=jnp.int16))
     tdelays_frac = jnp.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)
 
     #rearrange shift idxs and expand axes
-    idxs_all = (np.arange(nsamps)[:,jnp.newaxis,jnp.newaxis]).repeat(len(DM_trials),axis=1).repeat(2*nchans,axis=2)
+    idxs_all = (np.arange(nsamps)[:,jnp.newaxis,jnp.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
     corr_shifts_all = jnp.clip(((-tdelaysall[jnp.newaxis,:,:].repeat(nsamps,axis=0) + idxs_all))%nsamps,a_min=0,a_max=nsamps-1)[jnp.newaxis,jnp.newaxis,:truensamps,:,:].repeat(image_tesseract_point.shape[0],axis=0).repeat(image_tesseract_point.shape[1],axis=1)
     tdelays_frac = tdelays_frac[jnp.newaxis,jnp.newaxis,jnp.newaxis,:,:].repeat(image_tesseract_point.shape[0],axis=0).repeat(image_tesseract_point.shape[1],axis=1).repeat(truensamps,axis=2)
-    image_tesseract_point_DM = image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(len(DM_trials),axis=3).repeat(2,axis=4)
+    """
+    #image_tesseract_point_DM = image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4)
     
     #apply delays
-    image_tesseract_filtered_dm = ((jnp.take_along_axis(jnp.array(image_tesseract_point_DM),indices=jnp.array(corr_shifts_all),axis=2))*tdelays_frac).sum(4) 
+    image_tesseract_filtered_dm = ((jnp.take_along_axis(image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4),indices=corr_shifts_all,axis=2))*tdelays_frac).sum(4) 
 
-    del DM_trials
-    del freq_axis
-    del tdelays
-    del tdelaysall
+    #del tdelays
+    #del tdelaysall
     del tdelays_frac
-    del idxs_all
+    #del idxs_all
     del corr_shifts_all
-    del image_tesseract_point_DM
+    #del image_tesseract_point_DM
     """
     tdelays_idx_hi = jnp.array(jnp.ceil(tdelays/tsamp),dtype=jnp.int16)
     tdelays_idx_low = jnp.array(jnp.floor(tdelays/tsamp),dtype=jnp.int16)
@@ -63,7 +65,7 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
     #print("Trial DM: " + str(DM_trials.shape) + " pc/cc, DM delays (ms): " + str(tdelays) + "...",file=fout)
 
     #rearrange shift idxs
-    idxs_all = (np.arange(nsamps)[:,jnp.newaxis,jnp.newaxis]).repeat(nchans,axis=1).repeat(len(DM_trials),axis=2)
+    idxs_all = (np.arange(nsamps)[:,jnp.newaxis,jnp.newaxis]).repeatnchans,axis=1).repeat(len(DM_trials),axis=2)
     corr_shifts_all_hi = np.clip(((-tdelays_idx_hi[jnp.newaxis,:,:].repeat(nsamps,axis=0) + idxs_all))%nsamps,a_min=0,a_max=nsamps-1)[:truensamps]#(idxs_all - shifts_all_hi)%nsamps
     corr_shifts_all_low = np.clip(((-tdelays_idx_low[jnp.newaxis,:,:].repeat(nsamps,axis=0) + idxs_all))%nsamps,a_min=0,a_max=nsamps-1)[:truensamps]#(idxs_all - shifts_all_low)%nsamps
     #print("TDEL_HI:" + str(corr_shifts_all_hi),file=fout)
@@ -108,11 +110,16 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
 
     #####NOW BOXCAR FILTER
     #take fourier transform of boxcar and image
+    """
     image_tesseract_binned = jnp.nan_to_num(jnp.real(jnp.fft.ifftshift(
                                             jnp.fft.ifft(
                                                 jnp.fft.fft(image_tesseract_filtered_dm,n=image_tesseract_filtered_dm.shape[2],axis=2,norm='backward')*jnp.fft.fft(jax.device_put(jnp.array(boxcar),jax.devices()[0]),n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),
                                                                                                                                             n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),axes=3)).transpose((0,1,2,4,3)) ,nan=0,posinf=0,neginf=0)##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
-
+    """
+    image_tesseract_binned = jnp.nan_to_num(jnp.real(jnp.fft.ifftshift(
+                                            jnp.fft.ifft(
+                                                jnp.fft.fft(image_tesseract_filtered_dm,n=image_tesseract_filtered_dm.shape[2],axis=2,norm='backward')*jnp.fft.fft(boxcar,n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),
+                                                                                                                                            n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),axes=3)).transpose((0,1,2,4,3)) ,nan=0,posinf=0,neginf=0)##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
 
     del image_tesseract_filtered_dm
     del boxcar
@@ -125,6 +132,7 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
 
     #compute noise and update
     #noise = jnp.array(noise)
+    """
     noise = jax.device_put(jnp.array(noise),jax.devices()[0]).at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
                                             jnp.nanmedian(
                                                 jnp.nanstd(
@@ -133,7 +141,15 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
                                                 ),axis=1
                                             ),axis=1
                                         ))))/(past_noise_N+1))
-
+    """
+    noise = noise.at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
+                                            jnp.nanmedian(
+                                                jnp.nanstd(
+                                                    image_tesseract_binned*mask,axis=4
+                                                    )*jnp.sqrt(nsamps/(mask.sum(4))
+                                                ),axis=1
+                                            ),axis=1
+                                        ))))/(past_noise_N+1))
     image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise,(1,2)))))[:,:,:,:,0].transpose(1,2,0,3)#0,2).transpose(0,1))
 
     #imgout[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j)*subgridsize_RA:(j+1)*subgridsize_RA,:,:] = imgout.at[i*subgridsize_DEC:(i+1)*subgridsize_DEC,(j)*subgridsize_RA:(j+1)*subgridsize_RA,:,:].set(jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]))
@@ -167,7 +183,7 @@ def dedisp_snr_fft_jit_1(image_tesseract_point,DM_trials_in,tsamp,freq_axis_in,b
 
     tdelays = -(((DM_trials[:,jnp.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
 
-    tdelaysall = jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16)
+    tdelaysall = jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[1])
     tdelaysall = tdelaysall.at[:,1::2].set(jnp.array(jnp.ceil(tdelays/tsamp),dtype=jnp.int16))
     tdelaysall = tdelaysall.at[:,0::2].set(jnp.array(jnp.floor(tdelays/tsamp),dtype=jnp.int16))
     tdelays_frac = jnp.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)

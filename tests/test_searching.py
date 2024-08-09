@@ -1,4 +1,5 @@
 import numpy as np
+import jax
 import torch
 import socket
 import time
@@ -310,101 +311,40 @@ def test_boxcar_filter():
     imgout = sl.snr_vs_RA_DEC_allDMW(torch.from_numpy(img),DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,mode='4d',noiseth=0.9,samenoise=True,plot=False,device=device,usefft=True,batches=batches,usejax=True,maxProcesses=5)
     return
 
-"""
-#multithreading and DM threading
-def test_mulithreading_with_DM_threading():
+
+from nsfrb import jax_funcs
+from concurrent.futures import ThreadPoolExecutor
+def test_jit_all():
+
     SNRthresh = 3000
-    gridsize = 32
+    gridsize = 300
     nsamps = 25
     nchans =  16
     ofile = sl.output_file
     verbose = False
+    DMbatches = 3
+    maxshift = 24
+    tDM_max = (4.15)*np.max(sl.DM_trials)*((1/sl.fmin/1e-3)**2 - (1/sl.fmax/1e-3)**2) #ms
+    maxshift = int(np.ceil(tDM_max/sl.tsamp))
 
-    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
-    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
-
-    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True)
-    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True)
-    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True)
-
+    subgridsize_RA = subgridsize_DEC = gridsize//DMbatches
+    executor = ThreadPoolExecutor(DMbatches*DMbatches)
+    tasks = []
+    for i in range(DMbatches):
+        for j in range(DMbatches):
+            
+            tasks.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(np.random.normal(size=(gridsize//DMbatches,gridsize//DMbatches,maxshift + nsamps,nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(sl.corr_shifts_all_append[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),jax.device_put(sl.tdelays_frac_append[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),gridsize//DMbatches,gridsize//DMbatches,nsamps,len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1,i=i,j=j))
+            tasks.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(np.random.normal(size=(gridsize//DMbatches,gridsize//DMbatches,maxshift + nsamps,nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(sl.corr_shifts_all_append[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(sl.tdelays_frac_append[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),gridsize//DMbatches,gridsize//DMbatches,nsamps,len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j))
+            """
+            tasks.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,np.array(np.random.normal(size=(gridsize//DMbatches,gridsize//DMbatches,maxshift + nsamps,nchans)),dtype=np.float32),sl.DM_trials,sl.tsamp,sl.freq_axis,np.array(np.random.normal(size=(len(sl.widthtrials),gridsize//DMbatches,gridsize//DMbatches,nsamps,len(sl.DM_trials))),dtype=np.float16),np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),past_noise_N=1,noiseth=0.1,i=i,j=j))
+            tasks.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_1,np.array(np.random.normal(size=(gridsize//DMbatches,gridsize//DMbatches,maxshift + nsamps,nchans)),dtype=np.float32),sl.DM_trials,sl.tsamp,sl.freq_axis,np.array(np.random.normal(size=(len(sl.widthtrials),gridsize//DMbatches,gridsize//DMbatches,nsamps,len(sl.DM_trials))),dtype=np.float16),np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),past_noise_N=1,noiseth=0.1,i=i,j=j))
+            """
+    for t in tasks:
+        res = t.result()
+    executor.shutdown()
     return
 
-#FFT, multithreading, DM threading
-def test_FFT_and_multithreading_with_DM_threading():
-    SNRthresh = 3000
-    gridsize = 32
-    nsamps = 25
-    nchans =  16
-    ofile = sl.output_file
-    verbose = False
 
-    PSFimg = sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,output_file=ofile)
-    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=gridsize,nsamps=nsamps,DM=0,output_file=ofile)
-
-    base_test(img,PSFimg,SNRthresh,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True,usefft=True)
-    lowSNR_test(img,PSFimg,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True,usefft=True)
-    highSNR_test(img,PSFimg,10000,gridsize,nsamps,nchans,verbose,multithreading=True,threadDM=True,usefft=True)
-
-    return
-"""
-
-"""
-def main():
-    #argument parsing
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
-    parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8843',default=8843)
-    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
-    parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
-    parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
-    parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
-    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
-    parser.add_argument('--multithreading',action='store_true',help='Enable multithreading in search')
-    parser.add_argument('--nrows',type=int,help='Number of rows to break image into if multithreading, default = 4',default=4)
-    parser.add_argument('--ncols',type=int,help='Number of columns to break image into if multithreading, default = 2',default=2)
-    parser.add_argument('--threadDM',action='store_true',help='Break DM trials among multiple threads')
-    parser.add_argument('--run_unit_tests',action='store_true',help='Run all unit tests with set parameters')
-    args = parser.parse_args()
-
-
-
-    #create a test image and PSF
-    if args.verbose: ofile = ""
-    else: ofile = sl.output_file
-    print("Creating test images and PSF...",end="")
-    PSFimg = sl.make_PSF_cube(gridsize=args.gridsize,nsamps=args.nsamps,output_file=ofile)
-    img = sl.make_image_cube(PSFimg=PSFimg,snr=1000,gridsize=args.gridsize,nsamps=args.nsamps,DM=0,output_file=ofile)
-    print("Done!")
-
-    #TESTING
-    if args.run_unit_tests:
-        #regular implementation
-        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose)
-        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose)
-        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose)
-
-        #with FFT
-        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True)
-        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True)
-        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True)
-
-        #with multithreading
-        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True)
-        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True)
-        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True)
-        
-        #with multithreading and DM threading
-        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True,threadDM=True)
-        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True,threadDM=True)
-        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,multithreading=True,threadDM=True)
-
-        #with FFT, multithreading, and DM threading
-        test_1(img,PSFimg,args.SNRthresh,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
-        test_2(img,PSFimg,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
-        test_3(img,PSFimg,10000,args.gridsize,args.nsamps,args.nchans,args.verbose,usefft=True,multithreading=True,threadDM=True)
-    return
-"""
 if __name__=="__main__":
     pytest.main()
 
