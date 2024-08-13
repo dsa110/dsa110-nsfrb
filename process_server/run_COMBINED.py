@@ -535,16 +535,6 @@ def main():
                                                jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1)
 
 
-    #initialize last_frame 
-    if args.initframes:
-        printlog("Initializing previous frames...",output_file=processfile)
-        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps,args.nchans)
-
-    #initialize noise stats
-    if args.initnoise:
-        printlog("Initializing noise statistics...",output_file=processfile)
-        init_noise()
-        sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
 
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
     #total expected number of bytes for each sub-band image
