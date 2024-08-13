@@ -94,6 +94,11 @@ Search parameters
 #RA_point = 0 #rad
 #DEC_point = 0 #rad
 
+
+#initialize jax device so we alternate between them if only 1 batch
+jaxdev = 0
+
+
 #create axes
 RA_axis = np.linspace(RA_point-pixsize*gridsize//2,RA_point+pixsize*gridsize//2,gridsize)
 DEC_axis = np.linspace(DEC_point-pixsize*gridsize//2,DEC_point+pixsize*gridsize//2,gridsize)
@@ -166,16 +171,16 @@ corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_fra
 #make boxcar filters in advance
 widthtrials = np.array(2**np.arange(5),dtype=int)
 nwidths = len(widthtrials)
-def gen_boxcar_filter(widthtrials,gridsize,truensamps,nDMtrials):
+def gen_boxcar_filter(widthtrials,truensamps,gridsize=1,nDMtrials=1): #note, you shouldn't need to set gridsize OR DM trials
     nwidths = len(widthtrials)
-    boxcar = torch.zeros((nwidths,gridsize,gridsize,truensamps,nDMtrials))
+    boxcar = np.zeros((nwidths,gridsize,gridsize,truensamps,nDMtrials))
     loc = int(truensamps//2)
     for i in range(nwidths):
         wid = widthtrials[i]
         boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
 
     return boxcar
-full_boxcar_filter = gen_boxcar_filter(widthtrials,gridsize,nsamps,nDMtrials)
+full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
 
 #get the current noise map from file
 current_noise = noise_update_all(None,gridsize,gridsize,DM_trials,widthtrials,readonly=True) #noise.get_noise_dict(gridsize,gridsize)
@@ -1593,7 +1598,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             print(printprefix +"Using 2D FFT method...",file=fout)
         
 
-        if usefft and usingGPU and usejax:
+        if usefft and usingGPU and usejax and DMbatches > 1:
             #make empty array
             image_tesseract_filtered = jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(image_tesseract,dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(PSF,dtype=np.float32),jax.devices()[0]))
             """
@@ -1615,19 +1620,23 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                 image_tesseract_filtered[:,:,:,i*subband_size:(i+1)*subband_size] =np.array(outtup[0])
             executor.shutdown()
             """
-        
+            print(printprefix +"Done!",file=fout)
+            print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+            print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
+        elif usefft and usingGPU and usejax and DMbatches == 1:
+            print("Using combined jit with 1 batch")
+            image_tesseract_filtered = image_tesseract
         elif usingGPU:
             image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(PSF),kernel_size=kernel_size,usefft=usefft,device=device,output_file=output_file).numpy()
-            
+            print(printprefix +"Done!",file=fout)
+            print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+            print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
         else:
             image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,kernel_size=kernel_size,usefft=usefft,device=device)
-        print(printprefix +"Done!",file=fout)
-        print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
-        print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
     else: 
         image_tesseract_filtered = image_tesseract
-    print("POST-FILTER SHAPE: " + str(image_tesseract_filtered.shape) + ","  + str(PSF.shape),file=fout)
-    print(gridsize,file=fout)
+    #print("POST-FILTER SHAPE: " + str(image_tesseract_filtered.shape) + ","  + str(PSF.shape),file=fout)
+    #print(gridsize,file=fout)
     
 
     #REVISED IMPLEMENTATION: DO DEDISP AND BOXCAR TOGETHER SO WE DON'T HAVE TO KEEP MOVING TO/FROM GPU
@@ -1659,7 +1668,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #subgrid
         subgridsize_RA = gridsize_RA//DMbatches
         subgridsize_DEC = gridsize_DEC//DMbatches
-        boxcar = full_boxcar_filter[:,:subgridsize_DEC,:subgridsize_RA,:,:]
+        #boxcar = full_boxcar_filter
         
         #noise prep
         total_noise = torch.zeros((nwidths,ndms))
@@ -1669,23 +1678,41 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         print("Time for Prep" + str(time.time()-t1),file=fout)
         t1 = time.time()
 
-        executor = ThreadPoolExecutor(DMbatches*DMbatches)#maxProcesses)
-        task_list = []
-        image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,len(widthtrials),len(DM_trials)))
-        for i in range(DMbatches):
-            for j in range(DMbatches):
-                if j%2 == 0:
-                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),jax.device_put(tdelays_frac,jax.devices()[0]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
-                else:
-                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),jax.device_put(tdelays_frac,jax.devices()[1]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
+        if DMbatches > 1:
+            executor = ThreadPoolExecutor(DMbatches*DMbatches)#maxProcesses)
+            task_list = []
+            image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,len(widthtrials),len(DM_trials)))
+            for i in range(DMbatches):
+                for j in range(DMbatches):
+                    if j%2 == 0:
+                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),jax.device_put(tdelays_frac,jax.devices()[0]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
+                    else:
+                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),jax.device_put(tdelays_frac,jax.devices()[1]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
+                    
+
+
+            #get results
+            for t in task_list:
+                outtup = t.result()
+                i,j = outtup[2],outtup[3]
+                image_tesseract_binned[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:] =  np.array(outtup[0])
+                total_noise += np.array(outtup[1])/(DMbatches**2)
+            executor.shutdown()
+        else:
+            #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
+            global jaxdev
+            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered,dtype=np.float32),jax.devices()[jaxdev]),
+                                                                 jax.device_put(np.array(PSF,dtype=np.float32),jax.devices()[jaxdev]),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[jaxdev]),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[jaxdev]),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[jaxdev]),
+                                                                 jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[jaxdev]),
+                                                                 prev_noise_N,noiseth)
+            image_tesseract_binned,total_noise = np.array(outtup[0]),np.array(outtup[1])
+            
+            jaxdev += 1 
+            jaxdev %= 2 
         
-        #get results
-        for t in task_list:
-            outtup = t.result()
-            i,j = outtup[2],outtup[3]
-            image_tesseract_binned[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:] =  np.array(outtup[0])
-            total_noise += np.array(outtup[1])/(DMbatches**2)
-        executor.shutdown()
         #noise_update_all(total_noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,writeonly=True) 
         print("Time for DM and SNR:" + str(time.time()-t1),file=fout)
 

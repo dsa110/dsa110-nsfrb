@@ -6,6 +6,70 @@ import numpy as np
 This file defines jit compiled functions to accelerate GPU compilation and computation.
 """
 
+
+"""
+matched filter + DM + SNR combined
+"""
+@jax.jit
+def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth):
+    """
+    This function replaces pytorch with JAX so that JIT computation can be invoked
+    """
+
+    #matched filter
+    image_tesseract_point = jnp.concatenate([image_tesseract[:,:,:PSFimg.shape[2],:],jnp.real(jnp.fft.ifftshift(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract[:,:,-PSFimg.shape[2]:,:],axes=(0,1),s=image_tesseract.shape[:2])*jnp.fft.fft2(PSFimg,axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1)))],axis=2)
+
+    
+    #image_tesseract_point.at[:,:,-PSFimg.shape[2]:,:].set(jnp.real(jnp.fft.ifftshift(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract_point[:,:,-PSFimg.shape[2]:,:],axes=(0,1),s=image_tesseract_point.shape[:2])*jnp.fft.fft2(PSFimg,axes=(0,1),s=image_tesseract_point.shape[:2]),axes=(0,1),s=image_tesseract_point.shape[:2]),axes=(0,1))))
+    
+    #del image_tesseract
+    del PSFimg
+
+    #dedispersion
+    gridsize = image_tesseract_point.shape[0]
+    nsamps = image_tesseract_point.shape[-2]
+    truensamps = boxcar.shape[3]
+    nDM = tdelays_frac.shape[3]
+    
+    image_tesseract_filtered_dm = ((jnp.take_along_axis(image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4),indices=corr_shifts_all,axis=2))*tdelays_frac).sum(4)
+
+    del tdelays_frac
+    del corr_shifts_all
+
+    #boxcar filter
+    image_tesseract_binned = jnp.nan_to_num(jnp.real(jnp.fft.ifftshift(
+                                            jnp.fft.ifft(
+                                                jnp.fft.fft(image_tesseract_filtered_dm,
+                                                            n=image_tesseract_filtered_dm.shape[2],
+                                                            axis=2,norm='backward')*jnp.fft.fft(boxcar,
+                                                            n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),
+                                                        n=image_tesseract_filtered_dm.shape[2],
+                                                        axis=3,norm='backward'),axes=3)).transpose((0,1,2,4,3)),
+                                            nan=0,posinf=0,neginf=0)##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
+
+    del image_tesseract_filtered_dm
+    del boxcar
+
+    #create masks
+    mask = ((image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
+
+    #compute noise and update
+    noise = noise.at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
+                                            jnp.nanmedian(
+                                                jnp.nanstd(
+                                                    image_tesseract_binned*mask,axis=4
+                                                    )*jnp.sqrt(nsamps/(mask.sum(4))
+                                                ),axis=1
+                                            ),axis=1
+                                        ))))/(past_noise_N+1))
+    
+    #compute SNR
+    image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise,(1,2)))))[:,:,:,:,0].transpose(1,2,0,3)
+
+
+    del mask
+    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0])
+
 """
 matched filter
 """
