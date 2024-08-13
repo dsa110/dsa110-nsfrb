@@ -6,6 +6,16 @@ import numpy as np
 This file defines jit compiled functions to accelerate GPU compilation and computation.
 """
 
+"""
+matched filter
+"""
+@jax.jit
+def matched_filter_fft_jit(image_tesseract,PSFimg):
+    """
+    This function replaces pytorch with JAX so that JIT computation can be invoked
+    """
+
+    return jax.device_put(jnp.real(jnp.fft.ifftshift(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract,axes=(0,1),s=image_tesseract.shape[:2])*jnp.fft.fft2(PSFimg,axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1))),jax.devices("cpu")[0])
 
 """
 combined function
@@ -128,7 +138,7 @@ def dedisp_snr_fft_jit_0(image_tesseract_point,corr_shifts_all,tdelays_frac,boxc
     mask = ((image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
     #image_tesseract_binned.at[:,:,:,:,:].set(jnp.nan_to_num(image_tesseract_binned,nan=0,posinf=0,neginf=0))
     #mask.at[:,:,:,:,:].set(mask*(image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True))) #less than noise threshold
-    nw,subgridsize_DEC,subgridsize_RA,ndms,nsamps = image_tesseract_binned.shape#[4]
+    #nw,subgridsize_DEC,subgridsize_RA,ndms,nsamps = image_tesseract_binned.shape#[4]
 
     #compute noise and update
     #noise = jnp.array(noise)

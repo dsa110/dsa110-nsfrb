@@ -126,7 +126,7 @@ def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
     #print('DM trials:',ndms)
     return dms
 
-def gen_dm_shifts(DM_trials,freq_axis,tsamp,gridsize,nsamps):
+def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1): #note, you shouldn't need to set gridsize
     nDM = len(DM_trials)
     nchans = len(freq_axis)
     fmin =np.nanmin(freq_axis)
@@ -161,7 +161,7 @@ maxDM = 4000
 DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 nDMtrials = len(DM_trials)
 
-corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,gridsize,nsamps)
+corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps)
 
 #make boxcar filters in advance
 widthtrials = np.array(2**np.arange(5),dtype=int)
@@ -186,6 +186,40 @@ current_noise = noise_update_all(None,gridsize,gridsize,DM_trials,widthtrials,re
 
 #snr threshold
 SNRthresh = 6
+
+#last image frame
+tDM_max = (4.15)*np.max(DM_trials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
+maxshift = int(np.ceil(tDM_max/tsamp))
+def init_last_frame(gridsize_DEC,gridsize_RA,nsamps,nchans,frame_dir=frame_dir):
+    f = open(frame_dir + "last_frame.npy","wb")
+    np.save(f,np.zeros((gridsize_DEC,gridsize_RA,nsamps,nchans)))
+    f.close()
+
+def save_last_frame(image_tesseract,full=False,maxDM=np.max(DM_trials),tsamp=tsamp,frame_dir=frame_dir):
+    """
+    This function writes the given frame to the npy file to store for dedispersion
+    on the next timestep
+    """
+
+    #if full is set, save the full image; otherwise, only save the samples needed for
+    #dedisperion to the maximum value
+    if full:
+        f = open(frame_dir + "last_frame.npy","wb")
+        np.save(f,image_tesseract)
+        f.close()
+    else:
+        tDM_max = (4.15)*maxDM*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
+        maxshift = int(np.ceil(tDM_max/tsamp))
+        f = open(frame_dir + "last_frame.npy","wb")
+        np.save(f,image_tesseract[:,:,-maxshift:,:])
+        f.close()
+def get_last_frame(frame_dir=frame_dir,maxDM=np.max(DM_trials)):
+    f = open(frame_dir + "last_frame.npy","rb")
+    image_tesseract = np.load(f)
+    f.close()
+    return image_tesseract
+
+last_frame = get_last_frame()
 
 
 #antenna positions
@@ -830,35 +864,6 @@ def dedisp_pad(x,tdelays_idx,device,endflag):
     return np.pad(x,(0,0),dedisp_pad_with,padvals=tdelays_idx,device=device,currpad_dict=currpad_dict,ax=2,dd_value=0,endflag=endflag)
 
 
-def init_last_frame(gridsize_DEC,gridsize_RA,nsamps,nchans,frame_dir=frame_dir):
-    f = open(frame_dir + "last_frame.npy","wb")
-    np.save(f,np.zeros((gridsize_DEC,gridsize_RA,nsamps,nchans)))
-    f.close()
-
-def save_last_frame(image_tesseract,full=False,maxDM=np.max(DM_trials),tsamp=tsamp,frame_dir=frame_dir):
-    """
-    This function writes the given frame to the npy file to store for dedispersion
-    on the next timestep
-    """
-
-    #if full is set, save the full image; otherwise, only save the samples needed for
-    #dedisperion to the maximum value
-    if full:
-        f = open(frame_dir + "last_frame.npy","wb")
-        np.save(f,image_tesseract)
-        f.close()
-    else:
-        tDM_max = (4.15)*maxDM*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
-        maxshift = int(np.ceil(tDM_max/tsamp))
-        f = open(frame_dir + "last_frame.npy","wb")
-        np.save(f,image_tesseract[:,:,-maxshift:,:])
-        f.close()
-
-def get_last_frame(frame_dir=frame_dir,maxDM=np.max(DM_trials)):
-    f = open(frame_dir + "last_frame.npy","rb")
-    image_tesseract = np.load(f)
-    f.close()
-    return image_tesseract
 
 # Brute force dedispersion
 def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_last_frame=True):
@@ -1579,15 +1584,39 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         t1 = time.time()
         assert(gridsize_RA == gridsize_DEC)
         #create PSF if the shape doesn't match
-        if PSF.shape != image_tesseract.shape:
-            print(printprefix + "Updating PSF...",file=fout)
-            PSF = sim.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+        #if PSF.shape != image_tesseract.shape:
+        #    print(printprefix + "Updating PSF...",file=fout)
+        #    PSF = sim.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
         #2D matched filter for each timestep and channel
         print(printprefix +"Spatial matched filtering with DSA PSF...",file=fout)
         if usefft:
             print(printprefix +"Using 2D FFT method...",file=fout)
         
-        if usingGPU:
+
+        if usefft and usingGPU and usejax:
+            #make empty array
+            image_tesseract_filtered = jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(image_tesseract,dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(PSF,dtype=np.float32),jax.devices()[0]))
+            """
+            np.zeros(image_tesseract.shape,dtype=image_tesseract.dtype)
+    
+            executor = ThreadPoolExecutor(DMbatches*DMbatches)
+            task_list = []
+            subband_size = int(nchans//(DMbatches))#*DMbatches))
+            for i in range(DMbatches):#*DMbatches):
+                
+                if i%2 == 0:
+                    task_list.append(executor.submit(jax_funcs.matched_filter_fft_jit,jax.device_put(np.array(image_tesseract[:,:,:,i*subband_size:(i+1)*subband_size],dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(PSF[:,:,:,i*subband_size:(i+1)*subband_size],dtype=np.float32),jax.devices()[0]),i))
+                else:
+                    task_list.append(executor.submit(jax_funcs.matched_filter_fft_jit,jax.device_put(np.array(image_tesseract[:,:,:,i*subband_size:(i+1)*subband_size],dtype=np.float32),jax.devices()[1]),jax.device_put(np.array(PSF[:,:,:,i*subband_size:(i+1)*subband_size],dtype=np.float32),jax.devices()[1]),i))
+            #get results
+            for t in task_list:
+                outtup = t.result()
+                i = outtup[1]
+                image_tesseract_filtered[:,:,:,i*subband_size:(i+1)*subband_size] =np.array(outtup[0])
+            executor.shutdown()
+            """
+        
+        elif usingGPU:
             image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(PSF),kernel_size=kernel_size,usefft=usefft,device=device,output_file=output_file).numpy()
             
         else:
@@ -1608,8 +1637,10 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         nwidths,ndms = len(widthtrials),len(DM_trials)
         #get data from previous timeframe
         if append_frame:
+            global last_frame
+
             truensamps = image_tesseract_filtered.shape[2]
-            image_tesseract_filtered = np.concatenate([get_last_frame(),image_tesseract_filtered],axis=2)
+            image_tesseract_filtered = np.concatenate([last_frame,image_tesseract_filtered],axis=2)
             nsamps = image_tesseract_filtered.shape[2]
             corr_shifts_all = corr_shifts_all_append
             tdelays_frac = tdelays_frac_append
@@ -1617,8 +1648,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered.shape),file=fout)
         
             #save frame
-            save_last_frame(image_tesseract_filtered)
-            print("Writing to last_frame.npy",file=fout)
+            last_frame = image_tesseract_filtered[:,:,-maxshift:,:]
+            #save_last_frame(image_tesseract_filtered)
+            #print("Writing to last_frame.npy",file=fout)
         else:
             corr_shifts_all = corr_shifts_all_no_append
             tdelays_frac = tdelays_frac_no_append
@@ -1643,9 +1675,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         for i in range(DMbatches):
             for j in range(DMbatches):
                 if j%2 == 0:
-                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),jax.device_put(tdelays_frac[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
+                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),jax.device_put(tdelays_frac,jax.devices()[0]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
                 else:
-                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(tdelays_frac[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
+                    task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),jax.device_put(tdelays_frac,jax.devices()[1]),jax.device_put(np.array(boxcar,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
         
         #get results
         for t in task_list:

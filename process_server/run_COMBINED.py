@@ -263,6 +263,11 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     if total_noise is not None:
         sl.current_noise = (noise_update_all(total_noise,gridsize,gridsize,sl.DM_trials,sl.widthtrials),sl.current_noise[1] + 1)
 
+    #update last frame
+    if append_frame:
+        sl.save_last_frame(sl.last_frame,full=True)
+        printlog("Writing to last_frame.npy",output_file=processfile)
+
     if savesearch:
         f = open(cand_dir + fullimg.img_id_isot + ".npy","wb")
         np.save(f,fullimg.image_tesseract_searched)
@@ -461,11 +466,13 @@ def main():
 
         sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,config.gridsize,config.nsamps,sl.nDMtrials)
 
-        sl.corr_shifts_all_append,sl.tdelays_frac_append,sl.corr_shifts_all_no_append,sl.tdelays_frac_no_append = sl.gen_dm_shifts(sl.DM_trials,sl.freq_axis,config.tsamp,config.gridsize,config.nsamps) 
+        sl.corr_shifts_all_append,sl.tdelays_frac_append,sl.corr_shifts_all_no_append,sl.tdelays_frac_no_append = sl.gen_dm_shifts(sl.DM_trials,sl.freq_axis,config.tsamp,config.nsamps) 
 
-        sl.default_PSF = make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+        sl.default_PSF = make_PSF_cube(gridsize=args.kernelsize,nsamps=args.nsamps,nchans=args.nchans)
 
         sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
+        sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
+        sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
 
     #initialize jax functions
     if args.usejax:
@@ -488,19 +495,22 @@ def main():
             tdelays_frac = sl.tdelays_frac_no_append
 
         subgridsize_DEC = subgridsize_RA = args.gridsize//args.DMbatches
+        #subband_size = args.nchans//(args.DMbatches)#*args.DMbatches)
         for i in range(args.DMbatches):
             for j in range(args.DMbatches):
+                jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]))
+
                 """
                 jax_funcs.dedisp_snr_fft_jit_0(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),sl.DM_trials,sl.tsamp,sl.freq_axis,np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float16),np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),past_noise_N=1,noiseth=0.1,i=i,j=j)
                 jax_funcs.dedisp_snr_fft_jit_1(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),sl.DM_trials,sl.tsamp,sl.freq_axis,np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float16),np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),past_noise_N=1,noiseth=0.1,i=i,j=j)
                 """
 
                 jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
-                                               jax.device_put(corr_shifts_all[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),
-                                               jax.device_put(tdelays_frac[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[0]),
+                                               jax.device_put(corr_shifts_all,jax.devices()[0]),
+                                               jax.device_put(tdelays_frac,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1,i=i,j=j)
-                jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(tdelays_frac[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:,:],jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
+                jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),jax.device_put(tdelays_frac,jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
         """
                 jax_funcs.dedisp_snr_fft_jit_0,np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),DM_trials,tsamp,freq_axis_in,np.array(boxcar,dtype=np.float32),np.array(prev_noise,dtype=np.float32),prev_noise_N,noiseth,i,j
 
