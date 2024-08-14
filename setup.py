@@ -21,18 +21,26 @@ logfiles = ["error_log.txt",
             "run_log.txt",
             "search_log.txt",
             "process_log.txt",
+            "candcutter_log.txt",
             "inject_log.txt"]
 for i in range(len(logfiles)):
     l = logfiles[i]
     os.system("touch ../dsa110-nsfrb-logfiles/" + l)
     os.system("> ../dsa110-nsfrb-logfiles/" + l)
 
+#create file to store trials for candcutter
+os.system("touch ../dsa110-nsfrb-candidates/DMtrials.npy")
+os.system("touch ../dsa110-nsfrb-candidates/widthtrials.npy")
+os.system("touch ../dsa110-nsfrb-candidates/SNRthresh.npy")
+
 #create directory for noise stats if not created already
 os.system("mkdir ../dsa110-nsfrb-noise/")
 
 #create candidates directory 
 os.system("mkdir ../dsa110-nsfrb-candidates/")
-
+os.system("mkdir ../dsa110-nsfrb-candidates/raw_cands/")
+os.system("mkdir ../dsa110-nsfrb-candidates/final_cands/")
+os.system("mkdir ../dsa110-nsfrb-candidates/backup_raw_cands/")
 
 #create directory to store most recent time frame
 os.system("mkdir ../dsa110-nsfrb-frames/")

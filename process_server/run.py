@@ -256,8 +256,6 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     else:
         fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax)
-    printlog(fullimg.image_tesseract_searched,output_file=processfile)
-    printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
     
     #update noise stats
     if total_noise is not None:
@@ -268,18 +266,32 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         sl.save_last_frame(sl.last_frame,full=True)
         printlog("Writing to last_frame.npy",output_file=processfile)
 
-    if savesearch:
-        f = open(cand_dir + fullimg.img_id_isot + ".npy","wb")
-        np.save(f,fullimg.image_tesseract_searched)
+    if savesearch or len(fullimg.candidxs)>0:
+        #write raw candidates to csv
+        csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+        for i in range(len(fullimg.candidxs)):
+            wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i],dtype=int)]))
+        csvfile.close()
+
+        #save image
+        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
+        np.save(f,fullimg.image_tesseract_binned)
         f.close()
+
+    printlog(fullimg.image_tesseract_searched,output_file=processfile)
+    printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
     #only save if we find candidates
     if len(fullimg.candidxs)==0:
         printlog("No candidates found",output_file=processfile)
         return fullimg.image_tesseract_searched#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
+    else:
+        printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
+        return fullimg.image_tesseract_searched
 
-
-
+"""
     #clustering with hdbscan
     if cluster:
         printlog("clustering with HDBSCAN...",output_file=processfile)
@@ -306,10 +318,10 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     printlog("obtaining image cutouts...",output_file=processfile,end='')
     fullimg.subimgs = np.zeros((len(fullimg.unique_cands),subimgpix,subimgpix,fullimg.image_tesseract_binned.shape[3]),dtype=np.float16)
-    """
+    
     for i in range(len(fullimg.unique_cands)):
         fullimg.subimgs[i,:,:,:] = sl.get_subimage(fullimg.image_tesseract_binned,fullimg.unique_cands[i][0],fullimg.unique_cands[i][1],save=False,subimgpix=subimgpix)[:,:,int(fullimg.unique_cands[i][2]),:]
-    """
+    
     data_array = np.nan_to_num(fullimg.subimgs,nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
 
 
@@ -386,6 +398,8 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     
 
     return fullimg.image_tesseract_searched#, SNRthresh#fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
+
+"""
 
 def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis):
     """
@@ -474,6 +488,10 @@ def main():
         sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
         sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
 
+    #write DM and width trials to file for cand cutter
+    np.save(cand_dir + "DMtrials.npy",np.array(sl.DM_trials))
+    np.save(cand_dir + "widthtrials.npy",np.array(sl.widthtrials))
+    np.save(cand_dir + "SNRthresh.npy",sl.SNRthresh)
 
     #initialize last_frame 
     if args.initframes:

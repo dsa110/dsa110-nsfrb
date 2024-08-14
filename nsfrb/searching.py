@@ -2030,7 +2030,7 @@ def normalize_image(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_s
             fout.close()
         return image_tesseract/noisemap
 
-
+"""
 #code to cutout subimages
 def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=130,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=output_file,output_dir=cand_dir):
     if output_file != "":
@@ -2215,21 +2215,5 @@ def hdbscan_cluster(cands,min_cluster_size=50,gridsize=gridsize,nDMtrials=nDMtri
         else:
             plt.close()
 
-        """
-        plt.figure(figsize=(24,24))
-        ax = plt.subplot(projection="3d")
-        for k in classnames:
-            if k != -1:
-                c=ax.scatter(raidxs[classes==k],decidxs[classes==k],dmidxs[classes==k],s=100*(2**widthidxs[classes==k]),marker='o',alpha=0.1)
-                ax.scatter(centroid_ras[k],centroid_decs[k],centroid_dms[k],s=100*(2**centroid_widths[k]),marker='v',color=c.get_facecolor(),alpha=1)
-        if noisepoints > 0:
-            c=ax.scatter(raidxs[classes==-1],decidxs[classes==-1],dmidxs[classes==-1],s=100*(2**widthidxs[classes==-1]),marker='o',alpha=0.1,color='grey')
-
-        plt.savefig(output_dir + "hdbscan_cluster_plot.png")
-        if show:	
-            plt.show()
-        else:
-            plt.close()
-
-        """
     return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
+"""
