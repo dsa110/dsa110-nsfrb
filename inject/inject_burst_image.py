@@ -1,4 +1,5 @@
 import numpy as np
+import csv
 #from nsfrb import searching as sl
 #from nsfrb.searching import make_PSF_cube,default_PSF,datagridsize
 from nsfrb import simulating as sim
@@ -34,7 +35,7 @@ sys.path.append(cwd + "/")
 from nsfrb.config import *
 error_file = cwd + "-logfiles/error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
-
+inject_file = cwd + "-injections/injections.csv"
 
 def main():
     #redirect stderr
@@ -62,7 +63,7 @@ def main():
         time_start_isot = Time.now().isot
         print("Injecting burst " + str(time_start_isot) + " with DM = " + str(args.DM) + ", width = " + str(args.width) + ", S/N = " + str(args.SNR))
         
-        image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=args.SNR,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
+        image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=args.SNR*100,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
 
         #send
         for i in range(nchans):#NUM_CHANNELS//AVERAGING_FACTOR):
@@ -70,6 +71,12 @@ def main():
             msg=TXclient.send_data(time_start_isot, image_tesseract[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
             if args.verbose: print(msg)
             time.sleep(1)
+
+        #report in injections file
+        with open(inject_file,"a") as csvfile:
+            wr = csv.writer(csvfile,delimiter=',')
+            wr.writerow([time_start_isot,args.DM,args.width,args.SNR])
+        csvfile.close()
 
     else:
         SNRs = norm.rvs(loc=args.SNR,scale=1,size=args.nbursts)
@@ -85,8 +92,13 @@ def main():
 
             print("Injecting burst " + str(time_start_isot) + " with DM = " + str(DM) + ", width = " + str(width) + ", S/N = " + str(SNR))
 
-            image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file)
+            image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=SNR*100,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file)
 
+            #report in injections file
+            with open(inject_file,"a") as csvfile:
+                wr = csv.writer(csvfile,delimiter=',')
+                wr.writerow([time_start_isot,DM,width,SNR])
+            csvfile.close()
 
             #send
             for i in range(nchans):#NUM_CHANNELS//AVERAGING_FACTOR):
@@ -94,6 +106,8 @@ def main():
                 msg=TXclient.send_data(time_start_isot, image_tesseract[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
                 if args.verbose: print(msg)
                 time.sleep(1)
+
+            
 
 if __name__ == '__main__':
     main()

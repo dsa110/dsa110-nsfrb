@@ -42,6 +42,14 @@ os.system("mkdir ../dsa110-nsfrb-candidates/raw_cands/")
 os.system("mkdir ../dsa110-nsfrb-candidates/final_cands/")
 os.system("mkdir ../dsa110-nsfrb-candidates/backup_raw_cands/")
 
+#create injections directory
+os.system("mkdir ../dsa110-nsfrb-injections/")
+import csv
+with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
+    wr = csv.writer(csvfile,delimiter=',')
+    wr.writerow(['ISOT','DM','WIDTH','SNR'])
+csvfile.close()    
+
 #create directory to store most recent time frame
 os.system("mkdir ../dsa110-nsfrb-frames/")
 

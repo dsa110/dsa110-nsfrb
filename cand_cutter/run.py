@@ -86,6 +86,7 @@ Arguments: data file
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
 from nsfrb.imaging import uv_to_pix
+from nsfrb import plotting as pl
 
 
 def main():
@@ -102,6 +103,7 @@ def main():
     parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     
     args = parser.parse_args()
    
@@ -131,17 +133,16 @@ def main():
             finalidxs = np.arange(len(finalcands),dtype=int)
 
             #if getting cutouts, read image
-            if args.cutout:
-                try:
-                    image = np.load(raw_cand_dir + cand_isot + ".npy")
-                except Exception as e:
-                    printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
-                    break
+            try:
+                image = np.load(raw_cand_dir + cand_isot + ".npy")
+            except Exception as e:
+                printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
+                break
             
             #get DM trials from file
             DMtrials = np.load(cand_dir + "DMtrials.npy")
             widthtrials = np.load(cand_dir + "widthtrials.npy")
-            SNRthresh = np.load(cand_dir +"SNRthresh.npy")
+            SNRthresh = float(np.load(cand_dir +"SNRthresh.npy"))
             corr_shifts = np.load(cand_dir+"DMcorr_shifts.npy")
             tdelays_frac = np.load(cand_dir+"DMdelays_frac.npy")
 
@@ -218,7 +219,26 @@ def main():
                     lastname = allcandnames[j]
                     np.save(final_cand_dir + prefix + lastname + ".npy",subimg)
 
-        
+            #send candidates to slack
+            if len(finalidxs) > 0:
+                #make diagnostic plot
+                printlog("making diagnostic plot...",output_file=cutterfile,end='')
+                canddict = dict()
+                canddict['ra_idxs'] = [finalcands[j][0] for j in finalidxs]
+                canddict['dec_idxs'] = [finalcands[j][1] for j in finalidxs]
+                canddict['wid_idxs'] = [finalcands[j][2] for j in finalidxs]
+                canddict['dm_idxs'] = [finalcands[j][3] for j in finalidxs]
+                canddict['snrs'] = [finalcands[j][-1] for j in finalidxs]
+                RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
+                candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
+                                            DM_trials=DMtrials,widthtrials=widthtrials,
+                                            output_dir=final_cand_dir,show=False,s100=SNRthresh)
+                printlog("done!",output_file=cutterfile)
+
+                if args.toslack:
+                    printlog("sending plot to slack...",output_file=cutterfile,end='')
+                    send_candidate_slack(candplot,filedir=final_cand_dir)
+                    printlog("done!",output_file=cutterfile)
 
 
             #once finished, move raw data to backup directory (at some point, make this an scp to dsastorage)
