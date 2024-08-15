@@ -1,0 +1,5 @@
+#!/bin/bash
+
+#run this script to start background candidate post-processor
+#> $PWD-logfiles/candcutter_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt 
+python run.py "$@"

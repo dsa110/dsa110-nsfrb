@@ -31,7 +31,7 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
     truensamps = boxcar.shape[3]
     nDM = tdelays_frac.shape[3]
     
-    image_tesseract_filtered_dm = ((jnp.take_along_axis(image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4),indices=corr_shifts_all,axis=2))*tdelays_frac).sum(4)
+    image_tesseract_filtered_dm = (((jnp.take_along_axis(image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4),indices=corr_shifts_all,axis=2))*tdelays_frac).sum(4))[:,:,-truensamps:,:]
 
     del tdelays_frac
     del corr_shifts_all

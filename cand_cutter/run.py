@@ -142,6 +142,8 @@ def main():
             DMtrials = np.load(cand_dir + "DMtrials.npy")
             widthtrials = np.load(cand_dir + "widthtrials.npy")
             SNRthresh = np.load(cand_dir +"SNRthresh.npy")
+            corr_shifts = np.load(cand_dir+"DMcorr_shifts.npy")
+            tdelays_frac = np.load(cand_dir+"DMdelays_frac.npy")
 
             #start clustering
             if args.cluster:
@@ -168,9 +170,9 @@ def main():
                 data_array = np.zeros((len(finalcands),args.subimgpix,args.subimgpix,image.shape[3]),dtype=image.dtype)
                 for j in range(len(finalcands)):
                     printlog(finalcands[j],output_file=cutterfile)
-                    subimg = cc.get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args.subimgpix)
-                    data_array[j,:,:,:] = np.nanmean(cc.get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args.subimgpix),axis=2)#cc.quick_snr_fft(subimg,widthtrials[int(finalcands[j][2])])
-
+                    subimg = cc.quick_snr_fft(cc.get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args.subimgpix,corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]),:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]),:]),widthtrials[int(finalcands[j][2])])
+                    data_array[j,:,:,:] = subimg[:,:,np.argmin(subimg.sum((0,1,3))),:]
+                
                 #reformat for classifier
                 transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
                 new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
@@ -182,7 +184,7 @@ def main():
                 printlog(probabilities,output_file=cutterfile)
                 
                 #only save bursts likely to be real
-                finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
+                #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
 
 
 

@@ -1,8 +1,10 @@
 import hdbscan
+import copy
 import numpy as np
 import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
+from nsfrb.config import tsamp,fmin,fmax,nchans
 
 f = open("../metadata.txt","r")
 cwd = f.read()[:-1]
@@ -125,7 +127,8 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
 
 
 #code to cutout subimages
-def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=cutterfile,output_dir=cand_dir):
+freq_axis = np.linspace(fmin,fmax,nchans)
+def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=cutterfile,output_dir=cand_dir,corr_shift=None,tdelay_frac=None,dm=None,tsamp=tsamp,freq_axis=freq_axis):
     if output_file != "":
         fout = open(output_file,"a")
     else:
@@ -139,9 +142,33 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
         return None
 
 
+    #dedisperse if given a dm
+    if (corr_shift is not None) and (tdelay_frac is not None): 
+        image_tesseract_dm = quick_dedisp(image_tesseract,corr_shift,tdelay_frac)
+    elif dm is not None:
+        fname = fname + "_dedisp" + str(dm) + ".npy"
+        image_tesseract_dm = copy.deepcopy(image_tesseract)
+        for i in range(gridsize):
+            for j in range(gridsize):
+                tdelays = dm*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
+                tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
+                tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
+                tdelays_frac = tdelays/tsamp - tdelays_idx_low
+
+                for k in range(nchans):
+                    #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
+                    arrlow =  np.pad(image_tesseract[i,j,:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+                    arrhi =  np.pad(image_tesseract[i,j,:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+
+                    image_tesseract_dm[i,j,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+
+    else:
+        fname = fname + ".npy"
+        image_tesseract_dm = copy.deepcopy(image_tesseract)
+
 
     #pad w/ nans
-    image_tesseract = np.pad(image_tesseract,((gridsize,gridsize),
+    image_tesseract_dm = np.pad(image_tesseract_dm,((gridsize,gridsize),
                                                    (gridsize,gridsize),
                                                    (0,0),
                                                    (0,0)),
@@ -157,7 +184,7 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
     print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)
 
-    image_cutout = image_tesseract[minraidx:maxraidx,mindecidx:maxdecidx,:,:]
+    image_cutout = image_tesseract_dm[minraidx:maxraidx,mindecidx:maxdecidx,:,:]
 
     if save:
         np.save(fname,image_cutout)
@@ -171,7 +198,9 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
     return image_cutout
 
 
-
+#this is a quick implementation of dedispersion meant only for cutout and classification
+def quick_dedisp(image_pixel,corr_shift,tdelay_frac):
+    return (((np.take_along_axis(image_pixel.repeat(2,axis=3),indices=corr_shift,axis=2))*tdelay_frac).reshape((image_pixel.shape[0],image_pixel.shape[1],image_pixel.shape[2],image_pixel.shape[3],2))).mean(4)
 
 #this is a copy of the jax binning function which runs on a single pixel on the CPU. it does not normalize by off-pulse noise and is
 #only meant for classification purposes

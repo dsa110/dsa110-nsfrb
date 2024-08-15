@@ -492,6 +492,8 @@ def main():
     np.save(cand_dir + "DMtrials.npy",np.array(sl.DM_trials))
     np.save(cand_dir + "widthtrials.npy",np.array(sl.widthtrials))
     np.save(cand_dir + "SNRthresh.npy",sl.SNRthresh)
+    np.save(cand_dir + "DMcorr_shifts.npy",sl.corr_shifts_all_no_append)
+    np.save(cand_dir + "DMdelays_frac.npy",sl.tdelays_frac_no_append)
 
     #initialize last_frame 
     if args.initframes:
