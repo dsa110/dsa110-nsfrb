@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import jax
 import socket
 import time
@@ -73,13 +74,21 @@ processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
 cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 error_file = cwd + "-logfiles/error_log.txt"
+
 """
-Arguments: data file
+NSFRB modules
 """
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack 
 from nsfrb.imaging import uv_to_pix
 
+"""
+Dask manager
+"""
+from dask.distributed import Client,Queue
+if 'DASKPORT' in os.environ.keys():
+    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
+    QQUEUE = Queue("cand_cutter_queue")
 """
 HTTP variables
 """
@@ -279,11 +288,13 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
         np.save(f,fullimg.image_tesseract_binned)
         f.close()
-
+        
+        #if the dask scheduler is set up, put the cand file name in the queue
+        if 'DASKPORT' in os.environ.keys():
+            QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
-    #only save if we find candidates
     if len(fullimg.candidxs)==0:
         printlog("No candidates found",output_file=processfile)
         return fullimg.image_tesseract_searched#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
@@ -457,6 +468,9 @@ def main():
     parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
     args = parser.parse_args()    
+    
+    if "DASKPORT" in os.environ.keys():
+        printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
 
     #update default values and lookup tables
     sl.SNRthresh = args.SNRthresh
@@ -587,7 +601,9 @@ def main():
     
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
-    executor = ThreadPoolExecutor(args.maxProcesses)#ProcessPoolExecutor(args.maxProcesses)
+    executor = ThreadPoolExecutor(args.maxProcesses)
+    #executor = Client(processes=False)#"10.41.0.254:8844")
+
     task_list = []
 
     while True: # want to keep accepting connections
