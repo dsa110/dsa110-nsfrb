@@ -85,11 +85,11 @@ from nsfrb.imaging import uv_to_pix
 """
 Dask manager
 """
-from nsfrb.candcutting import candcutter_task
 from dask.distributed import Client,Queue,fire_and_forget
-if 'DASKPORT' in os.environ.keys():
-    QCLIENT = Client("tcp://10.42.0.228:"+os.environ['DASKPORT'])
-    QQUEUE = Queue("cand_cutter_queue")
+"""if 'DASKPORT' in os.environ.keys():
+    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
+    QWORKERS = ['proc_server_WRKR']#-0','cand_cutter_WRKR-1']
+    QQUEUE = Queue("cand_cutter_queue")"""
 """
 HTTP variables
 """
@@ -244,7 +244,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
 
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
-
+"""
 def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
@@ -293,18 +293,6 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         #if the dask scheduler is set up, put the cand file name in the queue
         if 'DASKPORT' in os.environ.keys():
             #try scheduling a task instead
-            """candcutter_args = {'cutout':True,
-                               'subimgpix':subimgpix,
-                               'cluster':cluster,
-                               'plotclusters':False,
-                               'mincluster':5,
-                               'verbose':verbose,
-                               'classify':True,
-                               'model_weights':model_weights,
-                               'toslack':toslack}
-            candcutterfuture = QCLIENT.submit(candcutter_task,"candidates_" + fullimg.img_id_isot + ".csv",candcutter_args)
-            fire_and_forget(candcutterfuture)
-            """
             QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
@@ -315,6 +303,8 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     else:
         printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
         return fullimg.image_tesseract_searched
+"""
+
 
 """
     #clustering with hdbscan
@@ -437,11 +427,11 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis):
     printlog("************************",output_file=processfile)
     return
 
-def main():
+def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
     
-    
+    """ 
     #argument parsing
     parser = argparse.ArgumentParser()
     parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
@@ -482,7 +472,8 @@ def main():
     parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
     args = parser.parse_args()    
-    
+    """
+
     if "DASKPORT" in os.environ.keys():
         printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
 
@@ -615,6 +606,9 @@ def main():
     
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
+    """if "DASKPORT" in os.environ.keys():
+        executor = QCLIENT
+    else:"""
     executor = ThreadPoolExecutor(args.maxProcesses)
     #executor = Client(processes=False)#"10.41.0.254:8844")
 
@@ -769,7 +763,16 @@ def main():
             printlog("Submitting new task for image " + str(idx),output_file=processfile)
             RA_axis_idx = copy.deepcopy(fullimg_array[idx].RA_axis)
             DEC_axis_idx= copy.deepcopy(fullimg_array[idx].DEC_axis)
-            task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+            
+            """
+            if "DASKPORT" in os.environ.keys():
+                task_list.append(executor.submit(sl.search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,workers=QWORKERS))
+                fire_and_forget(task_list[-1])
+            else:   
+            """
+            task_list.append(executor.submit(sl.search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax))
             
@@ -788,4 +791,46 @@ def main():
 
 
 if __name__=="__main__":
-    main()
+    #argument parsing
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
+    parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
+    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
+    parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
+    parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
+    parser.add_argument('--datasize',type=int,help='Expected size of each element in sub-band image in bytes,default=8',default=8,choices=list(dtypelookup.keys()))
+    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
+    parser.add_argument('-T','--testh23',action='store_true')
+    parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
+    parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 10',default=10)
+
+    #arguments for classifier from classifier.py
+    #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')
+    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
+    parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
+    parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
+    parser.add_argument('--spacefilter',action='store_true', help='Use PSF to spatial matched filter the input image')
+    parser.add_argument('--kernelsize',type=int,help='Kernel size for PSF spatial matched filter; default is same as image size',default=300)
+    parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
+    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
+    parser.add_argument('--multithreading',action='store_true',help='Enable multithreading in search')
+    parser.add_argument('--nrows',type=int,help='Number of rows to break image into if multithreading, default = 4',default=4)
+    parser.add_argument('--ncols',type=int,help='Number of columns to break image into if multithreading, default = 2',default=2)
+    parser.add_argument('--threadDM',action='store_true',help='Break DM trials among multiple threads')
+    parser.add_argument('--samenoise',action='store_true',help='Assume the noise in each pixel is the same')
+    parser.add_argument('--cuda',action='store_true',help='Uses PyTorch to accelerate computation with GPUs. The cuda flag overrides the multithreading option')
+    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
+    parser.add_argument('--PyTorchDedispersion',action='store_true',help='Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
+    parser.add_argument('--exportmaps',action='store_true',help='Output noise maps for each DM and width trial to the noise directory')
+    parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
+    parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
+    parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
+    parser.add_argument('--appendframe',action='store_true',help='Use the previous image to fill in dedispersion search')
+    parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
+    parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
+    parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
+    args = parser.parse_args()
+
+    
+    main(args)

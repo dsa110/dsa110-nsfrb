@@ -91,16 +91,17 @@ from nsfrb import plotting as pl
 """
 Dask scheduler
 """
-from dask.distributed import Client,Queue
+from dask.distributed import Client,Queue,fire_and_forget
 if 'DASKPORT' in os.environ.keys():
-    QCLIENT = Client("tcp://10.42.0.228:"+os.environ['DASKPORT'])
+    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
+    QWORKERS = ['cand_cutter_WRKR']#-0','cand_cutter_WRKR-1']
     QQUEUE = Queue("cand_cutter_queue")
 
 
-def main():
+def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
-
+    """
     #argument parsing
     parser = argparse.ArgumentParser()
     parser.add_argument('--cutout', action='store_true', help='Get image cutouts around each candidate')
@@ -116,8 +117,11 @@ def main():
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
     
     args = parser.parse_args()
-   
+    """
     printlog("Starting CandCutter...",output_file=cutterfile)
+    if 'DASKPORT' in os.environ.keys():
+        printlog("Restarting Dask client...",output_file=cutterfile)
+        QCLIENT.restart_workers(QWORKERS)
     #start main loop
     while True:
         #if dask scheduler is setup, look for candidates in the queue
@@ -125,7 +129,10 @@ def main():
             printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)
             fname = raw_cand_dir + str(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-            cc.candcutter_task(fname,vars(args))
+            fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
+            #future = QCLIENT.submit(main,args,workers=QWORKER)
+            #fire_and_forget(future)
+            #future.result()
         else:
             #look for candidate files in raw cands dir
             rawfiles = glob.glob(raw_cand_dir + "candidates_*.csv")
@@ -138,7 +145,10 @@ def main():
                 candcutter_task(fname,vars(args))
 
         printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
-        time.sleep(args.sleep)
+        if args.sleep > 0:
+            time.sleep(args.sleep)
+            printlog("Restarting Dask client...",output_file=cutterfile)
+            QCLIENT.restart_workers(QWORKERS)
     return 0
 """
             cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
@@ -269,8 +279,30 @@ def main():
             printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
 """ 
 if __name__=="__main__":
-    main()
-            
+    #argument parsing
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cutout', action='store_true', help='Get image cutouts around each candidate')
+    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
+    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
+    parser.add_argument('--plotclusters',action='store_true',help='Plot intermediate plots from HDBSCAN clustering')
+    parser.add_argument('--mincluster',type=int,help='Minimum number of candidates required to be made a separate HDBSCAN cluster,default=5',default=5)
+    parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
+    parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
+    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
+    parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
+    parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
+
+    args = parser.parse_args()
+    main(args)
+    """
+    #run this on the specified worker
+    if 'DASKPORT' in os.environ.keys():
+        future = QCLIENT.submit(main,args,workers=QWORKER)
+        future.result()
+    else:
+        main(args)
+    """     
 
 
 

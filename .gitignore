@@ -175,3 +175,7 @@ RELEASE-VERSION
 report*nsys*rep
 ./*/report*nsys*rep
 *nsys*
+
+#log files
+process_server/.*log*txt
+cand_cutter/.*log*txt

@@ -22,6 +22,7 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from nsfrb import simulating as sim
+from nsfrb.outputlogging import printlog
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 
@@ -68,10 +69,12 @@ from nsfrb import jax_funcs
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
 cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+processfile = cwd + "-logfiles/process_log.txt"
 frame_dir = cwd + "-frames/"
 f=open(output_file,"w")
 f.close()
 
+from dask.distributed import Client,Queue,fire_and_forget
 
 """
 Search parameters
@@ -1960,6 +1963,69 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         return candidxs,cands,image_tesseract_binned,image_tesseract_filtered[:,:,-truensamps:,:],canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
     else:
         return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
+
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
+    printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
+
+    #define search params
+    gridsize=fullimg.image_tesseract.shape[0]
+    RA_axis = fullimg.RA_axis#np.linspace(-gridsize//2,gridsize//2,gridsize)
+    DEC_axis= fullimg.DEC_axis#np.linspace(-gridsize//2,gridsize//2,gridsize)
+    nsamps = fullimg.image_tesseract.shape[2]
+    nchans = fullimg.image_tesseract.shape[3]
+    time_axis = np.arange(nsamps)*tsamp
+    canddict = dict()
+
+    #print("starting process " + str(img_id) + "...")
+    timing1 = time.time()
+    if PyTorchDedispersion: #uses Nikita's dedisp code
+        total_noise = None
+        printlog("Using PyTorchDedispersion",output_file=processfile)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=output_file,usefft=usefft,space_filter=space_filter)
+
+    else:
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax)
+
+    #update noise stats
+    if total_noise is not None:
+        global current_noise
+        current_noise = (noise_update_all(total_noise,gridsize,gridsize,DM_trials,widthtrials),current_noise[1] + 1)
+
+    #update last frame
+    if append_frame:
+        global last_frame
+        save_last_frame(last_frame,full=True)
+        printlog("Writing to last_frame.npy",output_file=processfile)
+
+    if savesearch or len(fullimg.candidxs)>0:
+        #write raw candidates to csv
+        csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+        for i in range(len(fullimg.candidxs)):
+            wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i],dtype=int)]))
+        csvfile.close()
+
+        #save image
+        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
+        np.save(f,fullimg.image_tesseract_binned)
+        f.close()
+
+        #if the dask scheduler is set up, put the cand file name in the queue
+        if 'DASKPORT' in os.environ.keys():
+            #try scheduling a task instead
+            QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])#get_client()
+            QQUEUE = Queue("cand_cutter_queue")
+            QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
+    printlog(fullimg.image_tesseract_searched,output_file=processfile)
+    printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
+
+    if len(fullimg.candidxs)==0:
+        printlog("No candidates found",output_file=processfile)
+        return fullimg.image_tesseract_searched#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
+    else:
+        printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
+        return fullimg.image_tesseract_searched
 
 
 

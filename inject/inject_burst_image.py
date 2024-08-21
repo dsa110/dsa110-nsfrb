@@ -72,7 +72,7 @@ def main():
         #send
         for i in range(nchans):#NUM_CHANNELS//AVERAGING_FACTOR):
             #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-            msg=TXclient.send_data(time_start_isot, image_tesseract[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
+            msg=TXclient.send_data(time_start_isot, image_tesseract[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=60,port=args.port)
             if args.verbose: print(msg)
             time.sleep(1)
 

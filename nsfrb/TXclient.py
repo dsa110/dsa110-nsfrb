@@ -144,6 +144,8 @@ def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbo
         
             #check response to see if successful
             pflags = int(r.data.decode('utf-8')[-2])
+            if verbose:
+                print("number of bytes sent:",r.tell())
             if (pflags & pflagdict['parse_error']): #once moved to git, get the flag value from nsfrb.pipeline.pflagdict
                 if verbose:
                     print("Parse Error, Re-sending...")
