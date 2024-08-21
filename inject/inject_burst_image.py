@@ -27,15 +27,17 @@ from nsfrb import TXclient
 import argparse
 from concurrent.futures import ProcessPoolExecutor
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
-
+from nsfrb.outputlogging import printlog
 from nsfrb.config import *
 error_file = cwd + "-logfiles/error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
 inject_file = cwd + "-injections/injections.csv"
+cand_dir = cwd + "-candidates/"
 
 def main():
     #redirect stderr
@@ -53,6 +55,8 @@ def main():
     parser.add_argument('--DM',type=float,help='Dispersion measure of injected burst, default = 0',default=0)
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--nbursts',type=int,help='Number of injected bursts; default = 1; if > 1, the SNR, width, and DM are drawn from normal distributions centered on the provided values',default=1)
+    parser.add_argument('--delay',type=float,help='If multiple bursts injected, the time in seconds between each burst; default 30 seconds',default=30)
+    parser.add_argument('--randomize',action='store_true',default=False,help='randomize DM and widths over the search range')
     args = parser.parse_args()
 
     #make image
@@ -61,7 +65,7 @@ def main():
     if args.nbursts == 1:
         #get current time
         time_start_isot = Time.now().isot
-        print("Injecting burst " + str(time_start_isot) + " with DM = " + str(args.DM) + ", width = " + str(args.width) + ", S/N = " + str(args.SNR))
+        printlog("Injecting burst " + str(time_start_isot) + " with DM = " + str(args.DM) + ", width = " + str(args.width) + ", S/N = " + str(args.SNR),output_file=log_file)
         
         image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=args.SNR*100,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
 
@@ -80,8 +84,15 @@ def main():
 
     else:
         SNRs = norm.rvs(loc=args.SNR,scale=1,size=args.nbursts)
-        widths = np.array(np.clip(norm.rvs(loc=args.width,scale=1,size=args.nbursts),0,args.nsamps),dtype=int)
-        DMs = norm.rvs(loc=args.DM,scale=args.DM/10,size=args.nbursts)
+
+        if args.randomize:
+            DMtrials = np.load(cand_dir + "DMtrials.npy")
+            widthtrials = np.load(cand_dir + "widthtrials.npy")
+            DMs = np.random.choice(DMtrials,args.nsamps,replace=True)
+            widths = np.array(np.random.choice(widthtrials,args.nsamps,replace=True),dtype=int)
+        else:
+            widths = np.array(np.clip(norm.rvs(loc=args.width,scale=1,size=args.nbursts),0,args.nsamps),dtype=int)
+            DMs = norm.rvs(loc=args.DM,scale=args.DM/10,size=args.nbursts)
         for j in range(args.nbursts):
             SNR = SNRs[j]
             width = widths[j]
@@ -90,7 +101,7 @@ def main():
             #get current time
             time_start_isot = Time.now().isot
 
-            print("Injecting burst " + str(time_start_isot) + " with DM = " + str(DM) + ", width = " + str(width) + ", S/N = " + str(SNR))
+            printlog("Injecting burst " + str(time_start_isot) + " with DM = " + str(DM) + ", width = " + str(width) + ", S/N = " + str(SNR),output_file=log_file)
 
             image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=SNR*100,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file)
 
@@ -107,7 +118,8 @@ def main():
                 if args.verbose: print(msg)
                 time.sleep(1)
 
-            
+            #wait before next
+            time.sleep(args.delay)
 
 if __name__ == '__main__':
     main()

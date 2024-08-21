@@ -20,10 +20,10 @@ from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
-
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 
 import sys
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
@@ -85,9 +85,10 @@ from nsfrb.imaging import uv_to_pix
 """
 Dask manager
 """
-from dask.distributed import Client,Queue
+from nsfrb.candcutting import candcutter_task
+from dask.distributed import Client,Queue,fire_and_forget
 if 'DASKPORT' in os.environ.keys():
-    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
+    QCLIENT = Client("tcp://10.42.0.228:"+os.environ['DASKPORT'])
     QQUEUE = Queue("cand_cutter_queue")
 """
 HTTP variables
@@ -291,6 +292,19 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         
         #if the dask scheduler is set up, put the cand file name in the queue
         if 'DASKPORT' in os.environ.keys():
+            #try scheduling a task instead
+            """candcutter_args = {'cutout':True,
+                               'subimgpix':subimgpix,
+                               'cluster':cluster,
+                               'plotclusters':False,
+                               'mincluster':5,
+                               'verbose':verbose,
+                               'classify':True,
+                               'model_weights':model_weights,
+                               'toslack':toslack}
+            candcutterfuture = QCLIENT.submit(candcutter_task,"candidates_" + fullimg.img_id_isot + ".csv",candcutter_args)
+            fire_and_forget(candcutterfuture)
+            """
             QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)

@@ -55,9 +55,10 @@ Directory for output data
 """
 #output_dir = "/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 #output_dir = "./NSFRB_search_output/"
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/") 
 from nsfrb.config import *
 from nsfrb.noise import noise_update,noise_dir,noise_update_all
@@ -1624,7 +1625,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
             print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
         elif usefft and usingGPU and usejax and DMbatches == 1:
-            print("Using combined jit with 1 batch")
+            print("Using combined jit with 1 batch",file=fout)
             image_tesseract_filtered = image_tesseract
         elif usingGPU:
             image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(PSF),kernel_size=kernel_size,usefft=usefft,device=device,output_file=output_file).numpy()

@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import random
 from antpos.utils import get_itrf
-from nsfrb.config import IMAGE_SIZE, c    
+from nsfrb.config import IMAGE_SIZE, c,fmin,fmax,tsamp    
 import sys
 from PIL import Image,ImageOps
 from nsfrb import config
@@ -242,10 +242,10 @@ def simulate_far_field_rfi(u, v, NUM_CHANNELS, num_baselines, pixel_resolution, 
 """
 Below are Myles's functions to quickly simulated injections and a model PSF based on Nikita's simualtions
 """
-
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 log_file = cwd + "-logfiles/inject_log.txt"
 
@@ -328,7 +328,6 @@ def make_PSF_cube(gridsize=config.gridsize,nchans=config.nchans,nsamps=config.ns
     if output_file != "":
         fout.close()
     return rolledPSFimg
-
 
 
 
@@ -418,11 +417,30 @@ def make_image_cube(PSFimg,snr=1000,width=5,loc=0.5,gridsize=config.gridsize,nch
 
     #if DM is given, disperse before adding noise
     if DM != 0:
-        tmp,sourceimg = dedisperse_allDM(sourceimg,DM=-DM,keepfreqaxis=True)[:,:,:,:,0]
-    for i in range(nchans):
-        sourceimg[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
-        noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
+        sourceimg_dm = np.zeros(sourceimg.shape)
+        freq_axis = np.linspace(fmin,fmax,nchans)
+        for i in range(gridsize):
+            for j in range(gridsize):
+                tdelays = DM*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
+                tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
+                tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
+                tdelays_frac = tdelays/tsamp - tdelays_idx_low
+
+                for k in range(nchans):
+                    #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
+                    arrlow =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+                    arrhi =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+
+                    sourceimg_dm[i,j,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+
+        
+        #tmp,sourceimg = dedisperse_allDM(sourceimg,DM=-DM,keepfreqaxis=True)[:,:,:,:,0]
+    else:
+        sourceimg_dm = sourceimg
+    #for i in range(nchans):
+    #    sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
+    #    noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
 
     if output_file != "":
         fout.close()
-    return sourceimg
+    return sourceimg_dm

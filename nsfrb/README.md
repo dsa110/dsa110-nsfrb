@@ -22,7 +22,16 @@ This folder defines sub-modules for the NSFRB pipeline, which consists of formin
 
 ## Usage
 
-- Each sub-module can be imported for use in a script with:
+- Define an environment variable for the `dsa110-nsfrb` installation by adding the following line to your `.bashrc` files:
+```
+export NSFRBDIR=path/to/dsa110-nsfrb/
+```
+- Navigate the cloned repo and install:
+```
+cd $NSFRBDIR
+pip install .
+```
+- Then, each sub-module can be imported for use in a script with:
 
 ```python
 from nsfrb import *module_name*

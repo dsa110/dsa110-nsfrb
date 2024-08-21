@@ -49,6 +49,13 @@ with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')
     wr.writerow(['ISOT','DM','WIDTH','SNR'])
 csvfile.close()    
+with open("../dsa110-nsfrb-injections/recoveries.csv","w") as csvfile:
+    wr = csv.writer(csvfile,delimiter=',')
+    wr.writerow(['ISOT','DM','WIDTH','SNR'])
+csvfile.close()
+
+
+
 
 #create directory to store most recent time frame
 os.system("mkdir ../dsa110-nsfrb-frames/")

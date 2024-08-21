@@ -2,9 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import csv
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+import os
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 
 binary_file = cwd + "-logfiles/binary_log.txt"
@@ -123,7 +125,7 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False):
     """
     Makes updated diagnostic plots for search system
     """
@@ -131,7 +133,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     decs,ras,wids,dms=np.array(canddict['dec_idxs'],dtype=int),np.array(canddict['ra_idxs'],dtype=int),np.array(canddict['wid_idxs'],dtype=int),np.array(canddict['dm_idxs'],dtype=int)#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
     snrs = np.array(canddict['snrs'])#imgsearched.flatten()[(imgsearched>2500).flatten()]
 
-
+    """
     #check if the candidate is an injection
     injection = False
     with open(inject_file,"r") as csvfile:
@@ -144,7 +146,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
                     break
             i += 1
     csvfile.close()
-
+    """
     fig=plt.figure(figsize=(40,12))
     if injection:
         fig.patch.set_facecolor('red')
@@ -178,7 +180,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         plt.show()
     else:
         plt.close()
-    return isot + "_NSFRBcandplot.png" #"diagnostic_RA_DEC.png"
+    return isot + "_NSFRBcandplot.png"
 
 def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_file=binary_file):
     """

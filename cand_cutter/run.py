@@ -20,12 +20,12 @@ from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 import glob
-import candcutting as cc
+from nsfrb import candcutting as cc
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
-
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 
 import sys
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
@@ -93,137 +93,8 @@ Dask scheduler
 """
 from dask.distributed import Client,Queue
 if 'DASKPORT' in os.environ.keys():
-    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
+    QCLIENT = Client("tcp://10.42.0.228:"+os.environ['DASKPORT'])
     QQUEUE = Queue("cand_cutter_queue")
-
-def candcutter_task(fname,args):
-    """
-    Main task to obtain cutouts
-    """
-    #for each candidate get the isot and find the corresponding image
-    cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
-    cand_mjd = Time(cand_isot,format='isot').mjd        
-    #read cand file
-    finalcands = []
-    raw_cand_names = []
-    with open(fname,"r") as csvfile:
-        re = csv.reader(csvfile,delimiter=',')
-        for r in re:
-            if 'candname' not in r:
-                finalcands.append(np.array(r[1:],dtype=float))
-                raw_cand_names.append(r[0])
-    csvfile.close()
-    finalidxs = np.arange(len(finalcands),dtype=int)
-
-    #if getting cutouts, read image
-    try:
-        image = np.load(raw_cand_dir + cand_isot + ".npy")
-    except Exception as e:
-        printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
-        return 
-
-    #get DM trials from file
-    DMtrials = np.load(cand_dir + "DMtrials.npy")
-    widthtrials = np.load(cand_dir + "widthtrials.npy")
-    SNRthresh = float(np.load(cand_dir +"SNRthresh.npy"))
-    corr_shifts = np.load(cand_dir+"DMcorr_shifts.npy")
-    tdelays_frac = np.load(cand_dir+"DMdelays_frac.npy")
-
-    #start clustering
-    if args['cluster']:
-        printlog("clustering with HDBSCAN...",output_file=cutterfile)
-
-        #prune candidates with infinite signal-to-noise for clustering
-        cands_noninf = []
-        for fcand in finalcands:
-            if not np.isinf(fcand[-1]): cands_noninf.append(fcand)
-
-
-        #clustering with hdbscan
-        classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = cc.hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],dmt=DMtrials,wt=widthtrials,plot=True,show=False,SNRthresh=SNRthresh)
-        printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
-        printlog(classes,output_file=cutterfile)
-        printlog(cluster_cands,output_file=cutterfile)
-
-        finalidxs = np.arange(len(cluster_cands),dtype=int)
-        finalcands = cluster_cands
-
-
-    if args['classify']:
-        #make a binned copy for each candidate
-        data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[3]),dtype=image.dtype)
-        for j in range(len(finalcands)):
-            printlog(finalcands[j],output_file=cutterfile)
-            subimg = cc.quick_snr_fft(cc.get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]),:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]),:]),widthtrials[int(finalcands[j][2])])
-            data_array[j,:,:,:] = subimg[:,:,np.argmin(subimg.sum((0,1,3))),:]
-
-        #reformat for classifier
-        transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
-        new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
-        merged_array = transposed_array.reshape(new_shape)
-
-        #run classifier
-        predictions, probabilities = classify_images(merged_array, args['model_weights'], verbose=args['verbose'])
-        printlog(predictions,output_file=cutterfile)
-        printlog(probabilities,output_file=cutterfile)
-
-        #only save bursts likely to be real
-        #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
-
-    #write final candidates to csv
-    prefix = "NSFRB"
-    lastname = None     #once we have etcd, change to 'names.get_lastname()'
-    allcandnames = []
-    csvfile = open(final_cand_dir + "final_candidates_" + cand_isot + ".csv","w")
-    wr = csv.writer(csvfile,delimiter=',')
-    if args['classify']:
-        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR","PROB"])
-    else:
-        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
-    sysstdout = sys.stdout
-    for j in finalidxs:#range(len(finalidxs)):
-        with open(cutterfile,"a") as sys.stdout:
-            lastname = names.increment_name(cand_mjd,lastname=lastname)
-        sys.stdout = sysstdout
-        if args['classify']:
-            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j],dtype=int),[probabilities[j]]]))
-        else:
-            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j],dtype=int)]))
-        allcandnames.append(lastname)
-    csvfile.close()
-
-    #get image cutouts and write to file
-    if args['cutout']:
-        for j in finalidxs:#range(len(finalidxs)):
-            subimg = cc.get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])#[:,:,int(finalcands[j][2]),:]
-            lastname = allcandnames[j]
-            np.save(final_cand_dir + prefix + lastname + ".npy",subimg)
-    #send candidates to slack
-    if len(finalidxs) > 0:
-        #make diagnostic plot
-        printlog("making diagnostic plot...",output_file=cutterfile,end='')
-        canddict = dict()
-        canddict['ra_idxs'] = [finalcands[j][0] for j in finalidxs]
-        canddict['dec_idxs'] = [finalcands[j][1] for j in finalidxs]
-        canddict['wid_idxs'] = [finalcands[j][2] for j in finalidxs]
-        canddict['dm_idxs'] = [finalcands[j][3] for j in finalidxs]
-        canddict['snrs'] = [finalcands[j][-1] for j in finalidxs]
-        RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
-        candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
-                                            DM_trials=DMtrials,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir,show=False,s100=SNRthresh)
-        printlog("done!",output_file=cutterfile)
-
-        if args['toslack']:
-            printlog("sending plot to slack...",output_file=cutterfile,end='')
-            send_candidate_slack(candplot,filedir=final_cand_dir)
-            printlog("done!",output_file=cutterfile)
-
-
-    #once finished, move raw data to backup directory (at some point, make this an scp to dsastorage)
-    os.system("mv " + raw_cand_dir + "*" + cand_isot + "* " + backup_cand_dir)
-    printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
-    return
 
 
 def main():
@@ -241,6 +112,8 @@ def main():
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
+    parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
+    parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
     
     args = parser.parse_args()
    
@@ -249,9 +122,10 @@ def main():
     while True:
         #if dask scheduler is setup, look for candidates in the queue
         if 'DASKPORT' in os.environ.keys():
+            printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)
             fname = raw_cand_dir + str(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-            candcutter_task(fname,vars(args))
+            cc.candcutter_task(fname,vars(args))
         else:
             #look for candidate files in raw cands dir
             rawfiles = glob.glob(raw_cand_dir + "candidates_*.csv")
@@ -262,6 +136,9 @@ def main():
                 fname = rawfiles[i]
                 printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
                 candcutter_task(fname,vars(args))
+
+        printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
+        time.sleep(args.sleep)
     return 0
 """
             cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]

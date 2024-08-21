@@ -26,6 +26,7 @@ to the persistent server for searching. For the realtime system, this should be 
 #http parameters
 port = 8080
 ipaddress = "10.41.0.254"#"10.42.0.232"#"10.41.0.94" #corr20
+#ipaddress = "10.41.0.228"
 host = ipaddress + ":" + str(port)
 #url = "http://" + host + "/" + fname
 keepalive_time = 15
