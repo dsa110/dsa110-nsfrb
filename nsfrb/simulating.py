@@ -437,8 +437,8 @@ def make_image_cube(PSFimg,snr=1000,width=5,loc=0.5,gridsize=config.gridsize,nch
         #tmp,sourceimg = dedisperse_allDM(sourceimg,DM=-DM,keepfreqaxis=True)[:,:,:,:,0]
     else:
         sourceimg_dm = sourceimg
-    #for i in range(nchans):
-    #    sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
+    for i in range(nchans):
+        sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
     #    noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
 
     if output_file != "":
