@@ -1,4 +1,23 @@
 import matplotlib.pyplot as plt
+fsize=45
+fsize2=35
+plt.rcParams.update({
+                    'font.size': fsize,
+                    'font.family': 'sans-serif',
+                    'axes.labelsize': fsize,
+                    'axes.titlesize': fsize,
+                    'xtick.labelsize': fsize,
+                    'ytick.labelsize': fsize,
+                    'xtick.direction': 'in',
+                    'ytick.direction': 'in',
+                    'xtick.top': True,
+                    'ytick.right': True,
+                    'lines.linewidth': 1,
+                    'lines.markersize': 5,
+                    'legend.fontsize': fsize2,
+                    'legend.borderaxespad': 0,
+                    'legend.frameon': False,
+                    'legend.loc': 'lower right'})
 import numpy as np
 import sys
 import csv

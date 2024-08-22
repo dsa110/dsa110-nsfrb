@@ -86,8 +86,6 @@ if 'DASKPORT' in os.environ.keys():
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
     except OSError as exc:
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-    else:
-        raise
 
 """
 Search parameters
