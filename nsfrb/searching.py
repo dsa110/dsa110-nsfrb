@@ -75,6 +75,19 @@ f=open(output_file,"w")
 f.close()
 
 from dask.distributed import Client,Queue,fire_and_forget
+#if the dask scheduler is set up, put the cand file name in the queue
+QSETUP = False
+if 'DASKPORT' in os.environ.keys():
+    try:
+        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1)#get_client()
+        QSETUP = True
+        QQUEUE = Queue("cand_cutter_queue")
+    except TimeoutError as exc:
+        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+    except OSError as exc:
+        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+    else:
+        raise
 
 """
 Search parameters
@@ -2012,11 +2025,22 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         f.close()
 
         #if the dask scheduler is set up, put the cand file name in the queue
-        if 'DASKPORT' in os.environ.keys():
-            #try scheduling a task instead
-            QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])#get_client()
-            QQUEUE = Queue("cand_cutter_queue")
+        if 'DASKPORT' in os.environ.keys() and QSETUP:
             QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
+            """
+            #try scheduling a task instead
+            try:
+                #QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1)#get_client()
+                #QQUEUE = Queue("cand_cutter_queue")
+                QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
+            except TimeoutError as exc:
+                printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+            except OSError as exc:
+                printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+            else:
+                raise
+            """ 
+
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 

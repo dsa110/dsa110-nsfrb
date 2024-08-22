@@ -34,7 +34,7 @@ cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 from nsfrb.outputlogging import printlog
 from nsfrb.config import *
-error_file = cwd + "-logfiles/error_log.txt"
+error_file = cwd + "-logfiles/inject_error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
 inject_file = cwd + "-injections/injections.csv"
 cand_dir = cwd + "-candidates/"
@@ -57,6 +57,7 @@ def main():
     parser.add_argument('--nbursts',type=int,help='Number of injected bursts; default = 1; if > 1, the SNR, width, and DM are drawn from normal distributions centered on the provided values',default=1)
     parser.add_argument('--delay',type=float,help='If multiple bursts injected, the time in seconds between each burst; default 30 seconds',default=30)
     parser.add_argument('--randomize',action='store_true',default=False,help='randomize DM and widths over the search range')
+    parser.add_argument('--nchansend',type=int,help='Number of channels to send, used for testing, default=16',default=16)
     args = parser.parse_args()
 
     #make image
@@ -70,7 +71,7 @@ def main():
         image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=args.SNR*100,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
 
         #send
-        for i in range(nchans):#NUM_CHANNELS//AVERAGING_FACTOR):
+        for i in range(args.nchansend):#NUM_CHANNELS//AVERAGING_FACTOR):
             #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
             msg=TXclient.send_data(time_start_isot, image_tesseract[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=60,port=args.port)
             if args.verbose: print(msg)
@@ -112,7 +113,7 @@ def main():
             csvfile.close()
 
             #send
-            for i in range(nchans):#NUM_CHANNELS//AVERAGING_FACTOR):
+            for i in range(args.nchansend):#NUM_CHANNELS//AVERAGING_FACTOR):
                 #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
                 msg=TXclient.send_data(time_start_isot, image_tesseract[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
                 if args.verbose: print(msg)

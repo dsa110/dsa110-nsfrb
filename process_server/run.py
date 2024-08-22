@@ -1,4 +1,5 @@
 import numpy as np
+import select
 import os
 import jax
 import socket
@@ -226,8 +227,8 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     #printlog(str(data[:128]),output_file=processfile)
    
     printlog("totaldatasize: " + str(len(fullMsg)),output_file=processfile)
-    printlog("without HTTP header: "  + str(len(fullMsg[fullMsg.index(HEADER_DELIM):])))
-    printlog("without NP header: " + str(len(fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):]))) 
+    printlog("without HTTP header: "  + str(len(fullMsg[fullMsg.index(HEADER_DELIM):])),output_file=processfile)
+    printlog("without NP header: " + str(len(fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):])),output_file=processfile) 
     data = fullMsg[fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex):fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex) + (2*content_length)]
 
 
@@ -471,6 +472,7 @@ def main(args):
     parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
     parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
+    parser.add_argument('--timeout',type=float,help='Number of seconds for recv timeout,default=10',default=10)
     args = parser.parse_args()    
     """
 
@@ -578,9 +580,11 @@ def main(args):
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
     #total expected number of bytes for each sub-band image
     if args.datasize%2 != 0:
-        maxbytes = args.gridsize*args.gridsize*args.nsamps*(args.datasize-1) + args.headersize
+        maxbytes = args.gridsize*args.gridsize*args.nsamps*(args.datasize-1) + args.headersize #really just payload size
+        maxbyteshex = (args.gridsize*args.gridsize*args.nsamps*(args.datasize-1) + args.headersize + 4)*2 + 404 #http header is 404
     else:
-        maxbytes = args.gridsize*args.gridsize*args.nsamps*args.datasize + args.headersize #+ 42 #35 extra bytes are from the meta-data appended by the persistent RX server, but need to wait to see length of the ip address
+        maxbytes = args.gridsize*args.gridsize*args.nsamps*args.datasize + args.headersize #really just payload size
+        maxbyteshex = (args.gridsize*args.gridsize*args.nsamps*args.datasize + args.headersize + 4)*2 + 404 #http header is 404
     printlog("MAXBYTES: " + str(maxbytes),output_file=processfile)
     printlog("SHAPE: "  + str((args.gridsize,args.gridsize,args.nsamps,args.nchans)),output_file=processfile)
    
@@ -617,6 +621,7 @@ def main(args):
     while True: # want to keep accepting connections
         printlog("accepting connection...",output_file=processfile,end='')
         clientSocket,address = servSockD.accept()
+        clientSocket.setblocking(0)
         corr_address, tmp = clientSocket.getpeername()
         printlog("client: " + str(corr_address) + "...",output_file=processfile,end='')
         recstatus = 1
@@ -650,21 +655,52 @@ def main(args):
             else:
                 raise
         """
-        while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
+        #while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
+        t_timeout = time.time()
+        t_startread = time.time()
+        totalbyteshex =0
+        while (totalbyteshex < maxbyteshex) and time.time()-t_startread<60:# and time.time()-t_timeout<args.timeout:
             try:
-                (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
+                #check if data is ready to read first
+                t_ready = time.time()
+                while not select.select([clientSocket],[],[],args.timeout) and time.time()-t_ready<args.timeout:
+                    continue
+                if not select.select([clientSocket],[],[],args.timeout):
+                    raise socket.timeout
+                printlog("Data ready",output_file=processfile)
+                
+                (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(args.chunksize)#255)
                 #printlog(strData,output_file=processfile)
                 recstatus = len(strData)
+                if recstatus > 0: 
+                    t_timeout = time.time()
+                if recstatus == 0 and time.time()-t_timeout>args.timeout:
+                    raise socket.timeout
+
+                """
+                if recstatus+totalbytes > maxbytes:
+                    printlog("Read " + str(recstatus) + " bytes, truncating to " + str(maxbytes-totalbytes) + ", total " + str(totalbytes+maxbytes-totalbytes),output_file=processfile)
+                    #printlog("Read " + str(len(strData.hex())) + " bytes, truncating to " + str((maxbytes-totalbytes)*2) + ", total " + str(fullMsg+(strData[:maxbytes-totalbytes].hex())),output_file=processfile)
+                    strData = strData[:maxbytes-totalbytes]
+                    recstatus = len(strData)
+                else:
+                """
+                printlog("Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus),output_file=processfile)
+                #printlog("Read "+ str(len(strData.hex())) + " bytes, total "+ str(len(fullMsg+strData.hex())),output_file=processfile)
+                printlog("Message flags:" + str(msg_flags),output_file=processfile)
+                printlog("AncData:" + str(ancdata),output_file=processfile)
+                #if recstatus < args.chunksize:
+                #    printlog("--->" + str(strData),output_file=processfile)
 
                 #printlog(strData.hex(),output_file=processfile,end='')
                 fullMsg += strData.hex()
                 totalbytes += recstatus
-
+                totalbyteshex += len(strData.hex())
                 #don't know how long the header is, so don't start counting until hit NP data
                 if "93" in fullMsg:
                     printlog("Found start byte at index " + str(fullMsg.index("93")),output_file=processfile)
                     totalbytes = (len(fullMsg) - fullMsg.index("93"))//2
-                
+                #if totalbytes >= maxbytes: printlog(strData,output_file=processfile)        
             except Exception as ex:
                 if type(ex) == socket.timeout:
                     printlog("Timed out after reading " + str(totalbytes) + " bytes; proceeding...",output_file=processfile)
@@ -683,9 +719,12 @@ def main(args):
         
         #check if data is the size we expect
         try:
-            assert(totalbytes>=maxbytes)
+            #assert(totalbytes>=maxbytes)
+            assert(totalbyteshex>=maxbyteshex)
         except AssertionError as exc:
             printlog("Invalid data size, " + str(totalbytes) + " received when expected at least " + str(maxbytes) + ": " + str(exc),output_file=processfile)
+            
+            printlog("Invalid data size, " + str(totalbyteshex) + " received when expected at least " + str(maxbyteshex) + ": " + str(exc),output_file=processfile)
             printlog("Setting truncated data size flag...",output_file=processfile,end='')
             pflag = set_pflag_loc("datasize_error")
             if pflag == None:
@@ -799,10 +838,11 @@ if __name__=="__main__":
     parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
     parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
     parser.add_argument('--datasize',type=int,help='Expected size of each element in sub-band image in bytes,default=8',default=8,choices=list(dtypelookup.keys()))
+    parser.add_argument('--chunksize',type=int,help='Number of bytes to read from client at a time, default=18874368 (for data size ~18 MB)',default=18874368)
     parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
     parser.add_argument('-T','--testh23',action='store_true')
     parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
-    parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 10',default=10)
+    parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 1',default=1)
 
     #arguments for classifier from classifier.py
     #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')

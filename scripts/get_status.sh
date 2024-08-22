@@ -46,6 +46,11 @@ do
         echo ">>>>>>>>>>>>>>>"
 
 	echo ""
+        echo ">>>>>>>>>>>>>>> inject_error_log.txt"
+        tail -$2 ${cwd}-logfiles/inject_error_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/server_log.txt
+        echo ">>>>>>>>>>>>>>>"
+
+	echo ""
         echo ">>>>>>>>>>>>>>> candcutter_log.txt"
         tail -$2 ${cwd}-logfiles/candcutter_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
         echo ">>>>>>>>>>>>>>>"
