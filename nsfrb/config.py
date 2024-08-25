@@ -43,3 +43,6 @@ corr_shifts_all_hi = None
 corr_shifts_all_low = None
 image_tesseract_point_DM = None
 """
+
+#DASK configuration stuff
+#QSETUP = False

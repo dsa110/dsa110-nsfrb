@@ -59,7 +59,7 @@ plt.rcParams.update({
 This file runs the process server which receives data from the RX server and buffers it until data from all 16 channels 
 is received; then it starts the search pipeline
 """
-from nsfrb import searching as sl
+#from nsfrb import searching as sl
 from nsfrb import pipeline
 from nsfrb import plotting as pl
 from nsfrb import config
@@ -87,6 +87,19 @@ from nsfrb.imaging import uv_to_pix
 Dask manager
 """
 from dask.distributed import Client,Queue,fire_and_forget
+QSETUP = False
+if 'DASKPORT' in os.environ.keys():
+    try:
+        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1,heartbeat_interval=1000)#get_client()
+        QWORKERS = ['proc_server_WRKR']
+        QSETUP = True
+        QQUEUE = Queue("cand_cutter_queue")
+    except TimeoutError as exc:
+        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+    except OSError as exc:
+        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+
+from nsfrb import searching as sl
 """if 'DASKPORT' in os.environ.keys():
     QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
     QWORKERS = ['proc_server_WRKR']#-0','cand_cutter_WRKR-1']
@@ -416,16 +429,21 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     return fullimg.image_tesseract_searched#, SNRthresh#fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
 
 """
-
+fullimg_dict = dict()
 def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis):
     """
     This function prints the result once a thread finishes processing an image
     """
-    printlog(future.result(),output_file=processfile)
-    pl.binary_plot(future.result(),SNRthresh,timestepisot,RA_axis,DEC_axis)
+    if QSETUP and not (future.result()[1] is None):
+        QQUEUE.put(future.result()[1])
+    printlog(future.result()[0],output_file=processfile)
+    pl.binary_plot(future.result()[0],SNRthresh,timestepisot,RA_axis,DEC_axis)
     printlog("****Thread Completed****",output_file=processfile)
     printlog(future.result(),output_file=processfile)
     printlog("************************",output_file=processfile)
+
+    #delete from array
+    del fullimg_dict[timestepisot]
     return
 
 def main(args):
@@ -589,8 +607,8 @@ def main(args):
     printlog("SHAPE: "  + str((args.gridsize,args.gridsize,args.nsamps,args.nchans)),output_file=processfile)
    
     #array to store image ids temporarily
-    fullimg_array = np.ndarray(shape=(args.maxProcesses),dtype=fullimg)
-
+    #fullimg_array = np.ndarray(shape=(args.maxProcesses),dtype=fullimg)
+    #fullimg_dict = dict()
 
     #create socket
     printlog("creating socket...",output_file=processfile,end='')
@@ -610,10 +628,10 @@ def main(args):
     
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
-    """if "DASKPORT" in os.environ.keys():
+    if "DASKPORT" in os.environ.keys() and QSETUP:
         executor = QCLIENT
-    else:"""
-    executor = ThreadPoolExecutor(args.maxProcesses)
+    else:
+        executor = ThreadPoolExecutor(args.maxProcesses)
     #executor = Client(processes=False)#"10.41.0.254:8844")
 
     task_list = []
@@ -779,46 +797,51 @@ def main(args):
             continue
         printlog("Data: " + str(arrData),output_file=processfile)
 
+        #if object is in dict
+        if img_id_isot not in fullimg_dict.keys():
+            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[args.nchans]])))
+
+        """
         #if object corresponding to the image is in list
         idx,openidx = find_id(img_id_isot,fullimg_array)
         printlog("FIND_ID: " + str(idx) + ", " + str(openidx),output_file=processfile)#if it's not in the list, but there's an open spot, add it
         if idx == -1 and openidx != -1:
             #need to create new object
-            fullimg_array[openidx] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[16]])))
+            fullimg_array[openidx] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[args.nchans]])))
             idx = openidx
         elif idx == -1 and openidx == -1: # shouldn't reach this case often, but if we don't have space for a new object, busy wait
             while openidx == -1: 
                 printlog("Process server image array full, waiting for opening...",output_file=processfile,end='')
                 idx,openidx = find_id(img_id_isot,fullimg_array)
         #otherwise, just add to the image at idx
-            	
+        """ 	
         #add image and update flags
-        fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
+        fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,args.testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
         #if the image is complete, start the search
         printlog("corrstatus:",output_file=processfile,end='')
-        printlog(fullimg_array[idx].corrstatus,output_file=processfile)
-        if fullimg_array[idx].is_full():
+        printlog(fullimg_dict[img_id_isot].corrstatus,output_file=processfile)
+        if fullimg_dict[img_id_isot].is_full(): #fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            printlog("Submitting new task for image " + str(idx),output_file=processfile)
-            RA_axis_idx = copy.deepcopy(fullimg_array[idx].RA_axis)
-            DEC_axis_idx= copy.deepcopy(fullimg_array[idx].DEC_axis)
+            printlog("Submitting new task for image " + str(img_id_isot),output_file=processfile)
+            RA_axis_idx = copy.deepcopy(fullimg_dict[img_id_isot].RA_axis) #copy.deepcopy(fullimg_array[idx].RA_axis)
+            DEC_axis_idx= copy.deepcopy(fullimg_dict[img_id_isot].DEC_axis) #copy.deepcopy(fullimg_array[idx].DEC_axis)
             
-            """
-            if "DASKPORT" in os.environ.keys():
-                task_list.append(executor.submit(sl.search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+            
+            if "DASKPORT" in os.environ.keys() and QSETUP:
+                task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,workers=QWORKERS))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,QSETUP,workers=QWORKERS))
                 fire_and_forget(task_list[-1])
             else:   
-            """
-            task_list.append(executor.submit(sl.search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+            
+                task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,QSETUP))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx))
             #after finishes execution, remove from list by setting element to None
-            fullimg_array[idx] = None
+            #fullimg_array[idx] = None
     
 
         

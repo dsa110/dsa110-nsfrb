@@ -16,8 +16,10 @@ from PIL import Image,ImageOps
 #from gen_dmtrials_copy import gen_dm
 import time
 import torch
-torch.multiprocessing.set_start_method("spawn") 
 from torch.nn import functional as tf
+from nsfrb import config
+#if not config.QSETUP:
+#    torch.multiprocessing.set_start_method("spawn") 
 from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
@@ -73,7 +75,7 @@ processfile = cwd + "-logfiles/process_log.txt"
 frame_dir = cwd + "-frames/"
 f=open(output_file,"w")
 f.close()
-
+"""
 from dask.distributed import Client,Queue,fire_and_forget
 #if the dask scheduler is set up, put the cand file name in the queue
 QSETUP = False
@@ -86,7 +88,7 @@ if 'DASKPORT' in os.environ.keys():
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
     except OSError as exc:
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-
+"""
 """
 Search parameters
 """
@@ -1975,7 +1977,12 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     else:
         return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
 
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
+CONTEXTSETUP = False
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax,QSETUP):
+    global CONTEXTSETUP
+    if not QSETUP and not CONTEXTSETUP:
+        CONTEXTSETUP = True
+        torch.multiprocessing.set_start_method("spawn")
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
@@ -2023,31 +2030,18 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         f.close()
 
         #if the dask scheduler is set up, put the cand file name in the queue
-        if 'DASKPORT' in os.environ.keys() and QSETUP:
-            QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
-            """
-            #try scheduling a task instead
-            try:
-                #QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1)#get_client()
-                #QQUEUE = Queue("cand_cutter_queue")
-                QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
-            except TimeoutError as exc:
-                printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-            except OSError as exc:
-                printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-            else:
-                raise
-            """ 
+        #if 'DASKPORT' in os.environ.keys() and QSETUP:
+        #    QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
 
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
     if len(fullimg.candidxs)==0:
         printlog("No candidates found",output_file=processfile)
-        return fullimg.image_tesseract_searched#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
+        return fullimg.image_tesseract_searched,None#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
     else:
         printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
-        return fullimg.image_tesseract_searched
+        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ".csv"
 
 
 

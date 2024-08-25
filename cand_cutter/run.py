@@ -92,15 +92,10 @@ from nsfrb import plotting as pl
 Dask scheduler
 """
 from dask.distributed import Client,Queue,fire_and_forget
-if 'DASKPORT' in os.environ.keys():
-    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
-    QWORKERS = ['cand_cutter_WRKR']#-0','cand_cutter_WRKR-1']
-    QQUEUE = Queue("cand_cutter_queue")
-
 QSETUP = False
 if 'DASKPORT' in os.environ.keys():
     try:
-        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1)#get_client()
+        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1,heartbeat_interval=1000)#get_client()
         QSETUP = True
         QWORKERS = ['cand_cutter_WRKR']
         QQUEUE = Queue("cand_cutter_queue")
@@ -131,9 +126,9 @@ def main(args):
     args = parser.parse_args()
     """
     printlog("Starting CandCutter...",output_file=cutterfile)
-    if 'DASKPORT' in os.environ.keys() and QSETUP:
-        printlog("Restarting Dask client...",output_file=cutterfile)
-        QCLIENT.restart_workers(QWORKERS)
+    #if 'DASKPORT' in os.environ.keys() and QSETUP:
+    #    printlog("Restarting Dask client...",output_file=cutterfile)
+    #    QCLIENT.restart_workers(QWORKERS)
     #start main loop
     while True:
         #if dask scheduler is setup, look for candidates in the queue
@@ -156,12 +151,12 @@ def main(args):
                 printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
                 candcutter_task(fname,vars(args))
 
-        printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
         if args.sleep > 0:
+            printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
             time.sleep(args.sleep)
             if 'DASKPORT' in os.environ.keys() and QSETUP:
                 printlog("Restarting Dask client...",output_file=cutterfile)
-                QCLIENT.restart_workers(QWORKERS)
+                #QCLIENT.restart_workers(QWORKERS)
     return 0
 """
             cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]

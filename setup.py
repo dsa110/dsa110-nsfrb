@@ -17,6 +17,7 @@ os.system("pwd > metadata.txt")
 #make logfile directory outside of git repo
 os.system("mkdir ../dsa110-nsfrb-logfiles")
 logfiles = ["error_log.txt",
+            "inject_error_log.txt",
             "pipe_log.txt",
             "run_log.txt",
             "search_log.txt",
