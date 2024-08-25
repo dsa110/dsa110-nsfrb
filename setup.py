@@ -45,6 +45,10 @@ os.system("mkdir ../dsa110-nsfrb-candidates/backup_raw_cands/")
 
 #create injections directory
 os.system("mkdir ../dsa110-nsfrb-injections/")
+
+#create directory for stored PSFs
+os.system("mkdir ../dsa110-nsfrb-PSF/")
+
 import csv
 with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')

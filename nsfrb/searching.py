@@ -1,4 +1,5 @@
 import numpy as np
+import glob
 import jax
 import jax.numpy as jnp
 import sys
@@ -73,6 +74,7 @@ output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/
 cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 processfile = cwd + "-logfiles/process_log.txt"
 frame_dir = cwd + "-frames/"
+psf_dir = cwd + "-PSF/"
 f=open(output_file,"w")
 f.close()
 """
@@ -266,7 +268,32 @@ csvfile.close()
 ANTENNALATS = np.array(ANTENNALATS)
 ANTENNALONS = np.array(ANTENNALONS)
 ANTENNAELEVS = np.array(ANTENNAELEVS)
-default_PSF = sim.make_PSF_cube()
+#default_PSF = sim.make_PSF_cube()
+#default_PSF_params = (gridsize,
+
+"""
+pre-computed psf values
+"""
+PSF_dict = dict()
+PSF_decs = []
+psfnames = glob.glob(psf_dir+"gridsize_*")
+for psfname in psfnames:
+    gsize = int(psfname[psfname.index("gridsize_")+9:])
+    PSF_dict[gsize] = dict()
+    PSF_decs = []
+    decnames = glob.glob(psfname+"/*npy")
+    for decname in decnames:
+        dec = float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")])
+        PSF_decs.append(float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")]))
+
+    PSF_dict[gsize]['declabels'] = np.array(np.sort(PSF_decs))
+if gridsize in PSF_dict.keys():
+    printlog("loading PSF for gridsize " + str(gridsize) +", declination " + str(PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]),output_file=processfile)
+    default_PSF = np.load(psf_dir + "gridsize_" + str(gridsize) + "/PSF_" + str(gridsize) + "_{d:.2f}".format(d=PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]) + "_deg.npy")[:,:,np.newaxis,:].repeat(nsamps,axis=2)
+    default_PSF_params = (gridsize,PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))])
+else:
+    default_PSF = sim.make_PSF_cube()
+    default_PSF_params = (gridsize,np.nan)
 
 """Search functions"""
 
@@ -1605,6 +1632,11 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     if space_filter:
         t1 = time.time()
         assert(gridsize_RA == gridsize_DEC)
+
+        #get PSF if possible
+        #if gridsize in PSF_dict.keys():
+        #    PSF = PSF_dict[gridsize][PSF_decs[np.argmin(PSF_dec_bins-np.mean(DEC_axis))]]
+
         #create PSF if the shape doesn't match
         #if PSF.shape != image_tesseract.shape:
         #    print(printprefix + "Updating PSF...",file=fout)
@@ -1992,6 +2024,13 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     nsamps = fullimg.image_tesseract.shape[2]
     nchans = fullimg.image_tesseract.shape[3]
     time_axis = np.arange(nsamps)*tsamp
+    global default_PSF
+    global default_PSF_params
+    if gridsize in PSF_dict.keys() and default_PSF_params != (gridsize,PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]):
+        best_dec = PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]
+        printlog("loading PSF for gridsize " + str(gridsize) +", declination " + str(best_dec),output_file=processfile)
+        default_PSF = np.load(psf_dir + "gridsize_" + str(gridsize) + "/PSF_" + str(gridsize) + "_{d:.2f}".format(d=best_dec) + "_deg.npy")[:,:,np.newaxis,:].repeat(nsamps,axis=2)
+        default_PSF_params = (gridsize,best_dec)
     canddict = dict()
 
     #print("starting process " + str(img_id) + "...")

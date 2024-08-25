@@ -12,7 +12,7 @@ from nsfrb.imaging import uniform_image
 from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
 
 
-def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix):
+def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -33,6 +33,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
     - spectral_index_low (float): Lower bound for spectral index.
     - spectral_index_high (float): Upper bound for spectral index.
     - zoom_pix (int): Number of pixels to zoom in.
+    - tonumpy (bool): If set, save to .npy file
 
     Returns:
     - None
@@ -114,6 +115,8 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
         metadata = []
 
         # Saving the images and collecting metadata
+        if tonumpy:
+            dirty_img_all = np.zeros((zoom_pix//2,zoom_pix//2,int(NUM_CHANNELS//AVERAGING_FACTOR)))
         for i, dirty_img in enumerate(dirty_images):
             avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
             filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
@@ -121,7 +124,10 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             im_zoom = np.array(np.fliplr(np.abs(dirty_img.T)))
             im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix), (IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix)]
             plt.imsave(filepath, im_zoom, cmap='gray')
-
+            if tonumpy:
+                dirty_img_all[:,:,i] = im_zoom
+        if tonumpy:
+            np.save(os.path.join(observation_dir,f'final_img_{HA:.2f}_hr_{Dec:.2f}_deg.npy'),dirty_img_all)
         metadata.append({
             #'filename': filename,
             'desired_shift_pixels_x': desired_shift_pixels_x,
@@ -152,6 +158,7 @@ if __name__ == "__main__":
     parser.add_argument('--spectral_index_low', type=float, default=-2, help='Lower bound for spectral index')
     parser.add_argument('--spectral_index_high', type=float, default=2, help='Upper bound for spectral index')
     parser.add_argument('--zoom_pix', type=int, default=25, help='Number of pixels to zoom in')
+    parser.add_argument('--tonumpy',action='store_true',help='Save image to a numpy file')
     args = parser.parse_args()
 
-    generate_src_images(args.dataset_dir, args.num_observations, args.noise_std_low, args.noise_std_high, args.exclude_antenna_percentage, args.HA_low, args.HA_high, args.Dec_low, args.Dec_high, args.spectral_index_low, args.spectral_index_high, args.zoom_pix)
+    generate_src_images(args.dataset_dir, args.num_observations, args.noise_std_low, args.noise_std_high, args.exclude_antenna_percentage, args.HA_low, args.HA_high, args.Dec_low, args.Dec_high, args.spectral_index_low, args.spectral_index_high, args.zoom_pix,args.tonumpy)
