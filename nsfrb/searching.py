@@ -19,7 +19,7 @@ import torch
 from torch.nn import functional as tf
 from nsfrb import config
 #if not config.QSETUP:
-#    torch.multiprocessing.set_start_method("spawn") 
+torch.multiprocessing.set_start_method("spawn") 
 from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
@@ -1977,12 +1977,12 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     else:
         return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
 
-CONTEXTSETUP = False
+#CONTEXTSETUP = False
 def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax,QSETUP):
-    global CONTEXTSETUP
-    if not QSETUP and not CONTEXTSETUP:
-        CONTEXTSETUP = True
-        torch.multiprocessing.set_start_method("spawn")
+    #global CONTEXTSETUP
+    #if not QSETUP and not CONTEXTSETUP:
+    #    CONTEXTSETUP = True
+    #    torch.multiprocessing.set_start_method("spawn")
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params

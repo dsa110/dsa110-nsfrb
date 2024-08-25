@@ -3,6 +3,8 @@ import os
 import jax
 import socket
 import time
+import matplotlib
+matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import random
 import copy

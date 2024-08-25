@@ -125,6 +125,7 @@ def main(args):
     
     args = parser.parse_args()
     """
+    executor = ThreadPoolExecutor(args.maxProcesses)
     printlog("Starting CandCutter...",output_file=cutterfile)
     #if 'DASKPORT' in os.environ.keys() and QSETUP:
     #    printlog("Restarting Dask client...",output_file=cutterfile)
@@ -136,10 +137,8 @@ def main(args):
             printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)
             fname = raw_cand_dir + str(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-            fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
-            #future = QCLIENT.submit(main,args,workers=QWORKER)
-            #fire_and_forget(future)
-            #future.result()
+            future = executor.submit(cc.candcutter_task,fname,vars(args))
+            #fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
         else:
             #look for candidate files in raw cands dir
             rawfiles = glob.glob(raw_cand_dir + "candidates_*.csv")
@@ -154,9 +153,9 @@ def main(args):
         if args.sleep > 0:
             printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
             time.sleep(args.sleep)
-            if 'DASKPORT' in os.environ.keys() and QSETUP:
-                printlog("Restarting Dask client...",output_file=cutterfile)
-                #QCLIENT.restart_workers(QWORKERS)
+            #if 'DASKPORT' in os.environ.keys() and QSETUP:
+            #    printlog("Restarting Dask client...",output_file=cutterfile)
+            #    #QCLIENT.restart_workers(QWORKERS)
     return 0
 """
             cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
@@ -300,6 +299,7 @@ if __name__=="__main__":
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
+    parser.add_argument('--maxProcesses',type=int,help='Maximum number of threads for thread pool; default=5',default=5)
 
     args = parser.parse_args()
     main(args)

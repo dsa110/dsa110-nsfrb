@@ -628,10 +628,10 @@ def main(args):
     
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
-    if "DASKPORT" in os.environ.keys() and QSETUP:
-        executor = QCLIENT
-    else:
-        executor = ThreadPoolExecutor(args.maxProcesses)
+    #if "DASKPORT" in os.environ.keys() and QSETUP:
+    #    executor = QCLIENT
+    #else:
+    executor = ThreadPoolExecutor(args.maxProcesses)
     #executor = Client(processes=False)#"10.41.0.254:8844")
 
     task_list = []
@@ -826,15 +826,16 @@ def main(args):
             RA_axis_idx = copy.deepcopy(fullimg_dict[img_id_isot].RA_axis) #copy.deepcopy(fullimg_array[idx].RA_axis)
             DEC_axis_idx= copy.deepcopy(fullimg_dict[img_id_isot].DEC_axis) #copy.deepcopy(fullimg_array[idx].DEC_axis)
             
-            
+            """
             if "DASKPORT" in os.environ.keys() and QSETUP:
                 task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,QSETUP,workers=QWORKERS))
                 fire_and_forget(task_list[-1])
-            else:   
             
-                task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+            else:   
+            """
+            task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,QSETUP))
             
