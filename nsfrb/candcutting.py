@@ -421,8 +421,43 @@ def candcutter_task(fname,args):
             printlog("done!",output_file=cutterfile)
 
 
-    #once finished, move raw data to backup directory (at some point, make this an scp to dsastorage)
-    os.system("mv " + raw_cand_dir + "*" + cand_isot + "* " + backup_cand_dir)
+    #once finished, move raw data to backup directory if there are remaining candidates, otherwise, delete (at some point, make this an scp to dsastorage)
+    if len(finalidxs) > 0:
+        os.system("mv " + raw_cand_dir + "*" + cand_isot + "* " + backup_cand_dir)
+    else:
+        os.system("rm " + raw_cand_dir + "*" + cand_isot + "*")
+    
+    #send final candidates to T4 because they will be removed from h24 when it runs out of space
+    if len(finalidxs) > 0 and 'NSFRBT4' in os.environ.keys():
+        #make a new directory for timestamp on T4
+        T4dir = os.environ['NSFRBT4']
+        if injection_flag:
+            T4dir += "injections"
+        else:
+            T4dir += "candidates"
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+"\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+"\"")
+        
+
+        #copy csv and cand plot
+        printlog("scp " + final_cand_dir + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+
+        #make folder for each candidate
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname for lastname in allcandnames]) + "\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname for lastname in allcandnames]) + "\"")
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
+        for lastname in allcandnames:
+            #copy numpy files
+            printlog("scp " + final_cand_dir + prefix + lastname + ".npy user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
+            os.system("scp " + final_cand_dir + prefix + lastname + ".npy user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
+            
+            #once we figure out etcd, also copy voltage files
+        #once we figure out etcd, also copy visibility files if offline
+
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
     return
 
