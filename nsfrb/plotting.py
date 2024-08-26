@@ -172,7 +172,8 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     if injection:
         fig.patch.set_facecolor('red')
     plt.subplot(1,2,1)
-    plt.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+
+    plt.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     #plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
     plt.imshow(img.mean((2,3))[::-1,:],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
     plt.axvline(RA_axis[gridsize//2],color='grey')
@@ -238,14 +239,14 @@ def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_
         csvfile.write("-"*89 + "\n")
         wtr = csv.writer(csvfile,delimiter='\t')
         d = "DECLINATION"
-        for i in range(binplot.shape[0]):
-            row = np.array(binplot[i,:],dtype=str)
-            row[binplotdets[i,:]] = "X" #"◎"
-            row[~binplotdets[i,:]] = "·"
+        for i in range(binplot.shape[0])[::-1]:
+            row = np.array(binplot[i,::-1],dtype=str)
+            row[binplotdets[i,::-1]] = "X" #"◎"
+            row[~binplotdets[i,::-1]] = "·"
             wtr.writerow(["|"] + list(row) + ["|"] + [str(np.around(DEC_axis[i],1))]  + [d[1 + i]])
             wtr.writerow([])
         csvfile.write("-"*89 + "\n")
-        wtr.writerow(["|"] + list(np.array(np.around(RA_axis,1),dtype=str)) + ["|"])
+        wtr.writerow(["|"] + list(np.array(np.around(RA_axis,1),dtype=str)[::-1]) + ["|"])
         csvfile.write(" "*(89//2 - 15//2) + "RIGHT ASCENSION" + "\n")
         
     csvfile.close()

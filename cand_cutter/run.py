@@ -300,6 +300,7 @@ if __name__=="__main__":
     parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of threads for thread pool; default=5',default=5)
+    parser.add_argument('--archive',action='store_true',help='Archive candidates on dsastorage')
 
     args = parser.parse_args()
     main(args)

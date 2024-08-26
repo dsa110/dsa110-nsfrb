@@ -428,7 +428,7 @@ def candcutter_task(fname,args):
         os.system("rm " + raw_cand_dir + "*" + cand_isot + "*")
     
     #send final candidates to T4 because they will be removed from h24 when it runs out of space
-    if len(finalidxs) > 0 and 'NSFRBT4' in os.environ.keys():
+    if args['archive'] and len(finalidxs) > 0 and 'NSFRBT4' in os.environ.keys():
         #make a new directory for timestamp on T4
         T4dir = os.environ['NSFRBT4']
         if injection_flag:
