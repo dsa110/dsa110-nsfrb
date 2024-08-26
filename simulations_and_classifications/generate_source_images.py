@@ -116,7 +116,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
 
         # Saving the images and collecting metadata
         if tonumpy:
-            dirty_img_all = np.zeros((zoom_pix//2,zoom_pix//2,int(NUM_CHANNELS//AVERAGING_FACTOR)))
+            dirty_img_all = np.zeros((zoom_pix*2,zoom_pix*2,int(NUM_CHANNELS//AVERAGING_FACTOR)))
         for i, dirty_img in enumerate(dirty_images):
             avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
             filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
@@ -143,6 +143,8 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
         metadata_df.to_csv(os.path.join(dataset_dir, f'observation_{obs+1}/metadata.csv'), index=False)
 
     print("All observations saved.")
+    if tonumpy:
+        return dirty_img_all
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate images of sources observed with DSA-110 core antennas.')

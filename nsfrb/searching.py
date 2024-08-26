@@ -25,6 +25,7 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from nsfrb import simulating as sim
+from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.outputlogging import printlog
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
@@ -289,11 +290,11 @@ for psfname in psfnames:
     PSF_dict[gsize]['declabels'] = np.array(np.sort(PSF_decs))
 if gridsize in PSF_dict.keys():
     printlog("loading PSF for gridsize " + str(gridsize) +", declination " + str(PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]),output_file=processfile)
-    default_PSF = np.load(psf_dir + "gridsize_" + str(gridsize) + "/PSF_" + str(gridsize) + "_{d:.2f}".format(d=PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]) + "_deg.npy")[:,:,np.newaxis,:].repeat(nsamps,axis=2)
+    default_PSF = np.array(np.load(psf_dir + "gridsize_" + str(gridsize) + "/PSF_" + str(gridsize) + "_{d:.2f}".format(d=PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]) + "_deg.npy"),dtype=np.float32)[:,:,np.newaxis,:].repeat(nsamps,axis=2)
     default_PSF_params = (gridsize,PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))])
 else:
-    default_PSF = sim.make_PSF_cube()
-    default_PSF_params = (gridsize,np.nan)
+    default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),gridsize//2,True,nsamps)#sim.make_PSF_cube()
+    default_PSF_params = (gridsize,np.nanmean(DEC_axis))
 
 """Search functions"""
 
@@ -2026,11 +2027,17 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     time_axis = np.arange(nsamps)*tsamp
     global default_PSF
     global default_PSF_params
-    if gridsize in PSF_dict.keys() and default_PSF_params != (gridsize,PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]):
-        best_dec = PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]
-        printlog("loading PSF for gridsize " + str(gridsize) +", declination " + str(best_dec),output_file=processfile)
-        default_PSF = np.load(psf_dir + "gridsize_" + str(gridsize) + "/PSF_" + str(gridsize) + "_{d:.2f}".format(d=best_dec) + "_deg.npy")[:,:,np.newaxis,:].repeat(nsamps,axis=2)
-        default_PSF_params = (gridsize,best_dec)
+    if kernel_size in PSF_dict.keys() and default_PSF_params != (kernel_size,PSF_dict[kernel_size]['declabels'][np.argmin(np.abs(PSF_dict[kernel_size]['declabels']-np.nanmean(DEC_axis)))]):
+        best_dec = PSF_dict[kernel_size]['declabels'][np.argmin(np.abs(PSF_dict[kernel_size]['declabels']-np.nanmean(DEC_axis)))]
+        printlog("loading PSF for kernelsize " + str(kernel_size) +", declination " + str(best_dec),output_file=processfile)
+        default_PSF = np.array(np.load(psf_dir + "gridsize_" + str(kernel_size) + "/PSF_" + str(kernel_size) + "_{d:.2f}".format(d=best_dec) + "_deg.npy"),dtype=np.float32)[:,:,np.newaxis,:].repeat(nsamps,axis=2)
+        default_PSF_params = (kernel_size,best_dec)
+    elif kernel_size not in PSF_dict.keys() and (default_PSF_params[0] != kernel_size or np.abs(default_PSF_params[1] - float("{d:.2f}".format(d=np.nanmean(DEC_axis))))>1.5):
+        printlog("making PSF for kernelsize " + str(kernel_size) + ", declination " + "{d:.2f}".format(d=np.nanmean(DEC_axis)),output_file=processfile)
+        default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),kernel_size//2,True,nsamps)
+        default_PSF_params = (kernel_size,float("{d:.2f}".format(d=np.nanmean(DEC_axis))))
+
+
     canddict = dict()
 
     #print("starting process " + str(img_id) + "...")

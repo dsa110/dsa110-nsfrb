@@ -248,13 +248,13 @@ Below are Myles's functions to quickly simulated injections and a model PSF base
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 log_file = cwd + "-logfiles/inject_log.txt"
-
+"""
 def make_PSF_cube(gridsize=config.gridsize,nchans=config.nchans,nsamps=config.nsamps,RFI=False,output_file=log_file,datagridsize=256):
-    """
-    This function creates a frequency-dependent PSF based on Nikita's source simulation pipeline. It
-    uses pre-defined images and downsamples to the desired resolution. The PSF is duplicated along the time
-    axis.   
-    """
+    
+    #This function creates a frequency-dependent PSF based on Nikita's source simulation pipeline. It
+    #uses pre-defined images and downsamples to the desired resolution. The PSF is duplicated along the time
+    #axis.   
+    
     if output_file != "":
         fout = open(output_file,"a")
     else:
@@ -333,9 +333,9 @@ def make_PSF_cube(gridsize=config.gridsize,nchans=config.nchans,nsamps=config.ns
 
 def make_image_cube(PSFimg,snr=1000,width=5,loc=0.5,gridsize=config.gridsize,nchans=config.nchans,nsamps=config.nsamps,RFI=False,DM=0,output_file=log_file,datagridsize=256):
     #get pngs
-    """
-    This function makes test images with finite width using Nikita's test pngs
-    """
+    #
+    #This function makes test images with finite width using Nikita's test pngs
+    #
 
 
 
@@ -444,3 +444,4 @@ def make_image_cube(PSFimg,snr=1000,width=5,loc=0.5,gridsize=config.gridsize,nch
     if output_file != "":
         fout.close()
     return sourceimg_dm
+"""
