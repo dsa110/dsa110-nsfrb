@@ -53,7 +53,7 @@ def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,
         fout = sys.stdout
     
     #for proper normalization need to scale snr
-    snr = snr#40.625#*100/3
+    snr = snr*100*1000*0.75*75/15#40.625#*100/3
     
     
     #create a noiseless image

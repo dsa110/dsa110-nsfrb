@@ -429,7 +429,7 @@ def candcutter_task(fname,args):
         RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DMtrials,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir,show=False,s100=SNRthresh/2,injection=injection_flag,vmax=2*SNRthresh)
+                                            output_dir=final_cand_dir,show=False,s100=SNRthresh/2,injection=injection_flag,vmax=SNRthresh+2,vmin=SNRthresh)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:

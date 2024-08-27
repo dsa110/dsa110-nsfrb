@@ -87,7 +87,9 @@ from nsfrb.imaging import uv_to_pix
 """
 Dask manager
 """
+"""
 from dask.distributed import Client,Queue,fire_and_forget
+
 QSETUP = False
 if 'DASKPORT' in os.environ.keys():
     try:
@@ -99,6 +101,10 @@ if 'DASKPORT' in os.environ.keys():
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
     except OSError as exc:
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+"""
+import dsautils.dsa_store as ds
+ETCD = ds.DsaStore()
+ETCDKEY = f'/mon/nsfrb/candidates'
 
 from nsfrb import searching as sl
 """if 'DASKPORT' in os.environ.keys():
@@ -432,12 +438,20 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
 """
 fullimg_dict = dict()
-def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis):
+def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled):
     """
     This function prints the result once a thread finishes processing an image
     """
-    if QSETUP and not (future.result()[1] is None):
-        QQUEUE.put(future.result()[1])
+    #if QSETUP and not (future.result()[1] is None):
+    #    QQUEUE.put(future.result()[1])
+    if etcd_enabled and not (future.result()[1] is None):
+        printlog("adding " + future.result()[1] + "to etcd queue",output_file=processfile)
+        ETCD.put_dict(
+                    ETCDKEY,
+                    {
+                        "candfile":future.result()[1]
+                    }
+                )
     printlog(future.result()[0],output_file=processfile)
     pl.binary_plot(future.result()[0],SNRthresh,timestepisot,RA_axis,DEC_axis)
     printlog("****Thread Completed****",output_file=processfile)
@@ -452,52 +466,11 @@ def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
     
-    """ 
-    #argument parsing
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
-    parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
-    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
-    parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
-    parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
-    parser.add_argument('--datasize',type=int,help='Expected size of each element in sub-band image in bytes,default=8',default=8,choices=list(dtypelookup.keys()))
-    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
-    parser.add_argument('-T','--testh23',action='store_true')
-    parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
-    parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 10',default=10)
 
-    #arguments for classifier from classifier.py
-    #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')
-    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
-    parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
-    parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
-    parser.add_argument('--spacefilter',action='store_true', help='Use PSF to spatial matched filter the input image')
-    parser.add_argument('--kernelsize',type=int,help='Kernel size for PSF spatial matched filter; default is same as image size',default=300)
-    parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
-    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
-    parser.add_argument('--multithreading',action='store_true',help='Enable multithreading in search')
-    parser.add_argument('--nrows',type=int,help='Number of rows to break image into if multithreading, default = 4',default=4)
-    parser.add_argument('--ncols',type=int,help='Number of columns to break image into if multithreading, default = 2',default=2)
-    parser.add_argument('--threadDM',action='store_true',help='Break DM trials among multiple threads')
-    parser.add_argument('--samenoise',action='store_true',help='Assume the noise in each pixel is the same')
-    parser.add_argument('--cuda',action='store_true',help='Uses PyTorch to accelerate computation with GPUs. The cuda flag overrides the multithreading option')
-    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
-    parser.add_argument('--PyTorchDedispersion',action='store_true',help='Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
-    parser.add_argument('--exportmaps',action='store_true',help='Output noise maps for each DM and width trial to the noise directory')
-    parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
-    parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
-    parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
-    parser.add_argument('--appendframe',action='store_true',help='Use the previous image to fill in dedispersion search')
-    parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
-    parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
-    parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
-    parser.add_argument('--timeout',type=float,help='Number of seconds for recv timeout,default=10',default=10)
-    args = parser.parse_args()    
-    """
-
-    if "DASKPORT" in os.environ.keys():
-        printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
+    #if "DASKPORT" in os.environ.keys():
+    #    printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
+    if args.etcd:
+        printlog("Etcd enabled, will push candidates to " + ETCDKEY,output_file=processfile)
 
     #update default values and lookup tables
     sl.SNRthresh = args.SNRthresh
@@ -587,11 +560,13 @@ def main(args):
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
 
         else:
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
                                                jax.device_put(tdelays_frac,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
                                                jax.device_put(tdelays_frac,jax.devices()[1]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
                                                jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1)
@@ -844,10 +819,10 @@ def main(args):
             """
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,QSETUP))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax))
             
             #printlog(future.result(),output_file=processfile)
-            task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx))
+            task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
             #after finishes execution, remove from list by setting element to None
             #fullimg_array[idx] = None
     
@@ -902,6 +877,7 @@ if __name__=="__main__":
     parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
     parser.add_argument('--offline',action='store_true',help='Run system offline, relaxes realtime requirement and can update noise from injections')
+    parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
     args = parser.parse_args()
 
     

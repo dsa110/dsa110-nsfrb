@@ -19,8 +19,6 @@ import time
 import torch
 from torch.nn import functional as tf
 from nsfrb import config
-#if not config.QSETUP:
-torch.multiprocessing.set_start_method("spawn") 
 from scipy.interpolate import interp1d
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
@@ -78,6 +76,14 @@ frame_dir = cwd + "-frames/"
 psf_dir = cwd + "-PSF/"
 f=open(output_file,"w")
 f.close()
+
+
+try:
+    torch.multiprocessing.set_start_method("spawn")
+except:
+    printlog("Failed to set torch multiprocess method...sucks for you",output_file=output_file)
+
+
 """
 from dask.distributed import Client,Queue,fire_and_forget
 #if the dask scheduler is set up, put the cand file name in the queue
@@ -1752,7 +1758,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
             global jaxdev
             outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered,dtype=np.float32),jax.devices()[jaxdev]),
-                                                                 jax.device_put(np.array(PSF,dtype=np.float32),jax.devices()[jaxdev]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:],dtype=np.float32),jax.devices()[jaxdev]),
                                                                  jax.device_put(corr_shifts_all,jax.devices()[jaxdev]),
                                                                  jax.device_put(tdelays_frac,jax.devices()[jaxdev]),
                                                                  jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[jaxdev]),
@@ -2017,7 +2023,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
 
 #CONTEXTSETUP = False
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax,QSETUP):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
     #global CONTEXTSETUP
     #if not QSETUP and not CONTEXTSETUP:
     #    CONTEXTSETUP = True

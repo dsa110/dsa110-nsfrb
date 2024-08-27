@@ -91,6 +91,7 @@ from nsfrb import plotting as pl
 """
 Dask scheduler
 """
+"""
 from dask.distributed import Client,Queue,fire_and_forget
 QSETUP = False
 if 'DASKPORT' in os.environ.keys():
@@ -103,6 +104,22 @@ if 'DASKPORT' in os.environ.keys():
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
     except OSError as exc:
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+"""
+from multiprocessing import Process, Queue
+import dsautils.dsa_store as ds
+ETCD = ds.DsaStore()
+ETCDKEY = f'/mon/nsfrb/candidates'
+QQUEUE = Queue()
+
+def etcd_to_queue(etcd_dict,queue=QQUEUE):
+    """
+    This is a callback function that takes a candidate from etcd and adds it to the cand cutter queue
+    """
+    printlog("found etcd candidate:" ,output_file=cutterfile)
+    printlog(etcd_dict,output_file=cutterfile)
+    printlog("putting in queue",output_file=cutterfile)
+    queue.put(etcd_dict['candfile'])
+    return
 
 
 def main(args):
@@ -130,10 +147,15 @@ def main(args):
     #if 'DASKPORT' in os.environ.keys() and QSETUP:
     #    printlog("Restarting Dask client...",output_file=cutterfile)
     #    QCLIENT.restart_workers(QWORKERS)
+    if args.etcd:
+        printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
+        ETCD.add_watch(ETCDKEY, etcd_to_queue)
+
+
     #start main loop
     while True:
         #if dask scheduler is setup, look for candidates in the queue
-        if 'DASKPORT' in os.environ.keys() and QSETUP:
+        if args.etcd:#'DASKPORT' in os.environ.keys() and QSETUP:
             printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)
             fname = raw_cand_dir + str(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
@@ -301,6 +323,7 @@ if __name__=="__main__":
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of threads for thread pool; default=5',default=5)
     parser.add_argument('--archive',action='store_true',help='Archive candidates on dsastorage')
+    parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
 
     args = parser.parse_args()
     main(args)
