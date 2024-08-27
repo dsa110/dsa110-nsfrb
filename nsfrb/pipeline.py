@@ -2,9 +2,10 @@ import sys
 import numpy as np
 import os
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 
 output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
 f=open(output_file,"w")

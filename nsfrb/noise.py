@@ -4,9 +4,10 @@ import sys
 import os
 import glob
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 from nsfrb.config import *
 
@@ -58,6 +59,18 @@ def noise_update(noise,gridsize_RA,gridsize_DEC,DM,width,noise_dir=noise_dir,out
     return noise_dict[DM][width]
 
 
+def get_noise_dict(gridsize_RA,gridsize_DEC):
+    #find noise pkl file
+    fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) +".pkl"
+    try:
+        f = open(fname,"rb")
+        noise_dict = pkl.load(f)
+        f.close()
+    except:
+        print("Initializing to Empty Noise Dict",file=fout)#Creating noise file " + fname + "...",file=fout)
+        noise_dict = dict()
+    return noise_dict
+
 def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file,writeonly=False,readonly=False):
     """
     This function retrieves and updates the running mean standard deviation 
@@ -102,7 +115,11 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
                 nextnoise = (prevnoise*prevN + noise[j,i])/nextN
                 noise_dict[DM][width] = [nextN, nextnoise]
             elif writeonly: #writeonly set to true if noise has already been updated, so just increment the number and write the new noise
+                prevN, prevnoise = noise_dict[DM][width]
+                nextN = prevN + 1
                 noise_dict[DM][width] = [nextN+1, noise[j,i]]
+            elif readonly:
+                prevN, prevnoise = noise_dict[DM][width]
             noise_final[j,i] = noise_dict[DM][width][1]
     print("OUTPUT_NOISE MEDIAN:" + str(noise_final),file=fout)
     f = open(fname,"wb")

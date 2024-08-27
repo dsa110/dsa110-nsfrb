@@ -26,6 +26,7 @@ to the persistent server for searching. For the realtime system, this should be 
 #http parameters
 port = 8080
 ipaddress = "10.41.0.254"#"10.42.0.232"#"10.41.0.94" #corr20
+#ipaddress = "10.41.0.228"
 host = ipaddress + ":" + str(port)
 #url = "http://" + host + "/" + fname
 keepalive_time = 15
@@ -143,6 +144,8 @@ def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbo
         
             #check response to see if successful
             pflags = int(r.data.decode('utf-8')[-2])
+            if verbose:
+                print("number of bytes sent:",r.tell())
             if (pflags & pflagdict['parse_error']): #once moved to git, get the flag value from nsfrb.pipeline.pflagdict
                 if verbose:
                     print("Parse Error, Re-sending...")

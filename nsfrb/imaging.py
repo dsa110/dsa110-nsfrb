@@ -8,9 +8,11 @@ import astropy.units as u
 from astropy.time import Time
 import sys
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+import os
+cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 

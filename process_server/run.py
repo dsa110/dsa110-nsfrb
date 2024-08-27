@@ -1,4 +1,7 @@
 import numpy as np
+import select
+import os
+import jax
 import socket
 import time
 from matplotlib import pyplot as plt
@@ -18,10 +21,10 @@ from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
-
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 
 import sys
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
@@ -29,7 +32,8 @@ import csv
 import copy
 
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
-from nsfrb.noise import init_noise
+from nsfrb.noise import init_noise,noise_update_all,get_noise_dict
+#from nsfrb.simulating import make_PSF_cube
 fsize=45
 fsize2=35
 plt.rcParams.update({
@@ -55,7 +59,7 @@ plt.rcParams.update({
 This file runs the process server which receives data from the RX server and buffers it until data from all 16 channels 
 is received; then it starts the search pipeline
 """
-from nsfrb import searching as sl
+#from nsfrb import searching as sl
 from nsfrb import pipeline
 from nsfrb import plotting as pl
 from nsfrb import config
@@ -70,14 +74,43 @@ output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa
 processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
 cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+psf_dir = cwd + "-PSF/"
 error_file = cwd + "-logfiles/error_log.txt"
+
 """
-Arguments: data file
+NSFRB modules
 """
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack 
 from nsfrb.imaging import uv_to_pix
 
+"""
+Dask manager
+"""
+"""
+from dask.distributed import Client,Queue,fire_and_forget
+
+QSETUP = False
+if 'DASKPORT' in os.environ.keys():
+    try:
+        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1,heartbeat_interval=1000)#get_client()
+        QWORKERS = ['proc_server_WRKR']
+        QSETUP = True
+        QQUEUE = Queue("cand_cutter_queue")
+    except TimeoutError as exc:
+        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+    except OSError as exc:
+        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
+"""
+import dsautils.dsa_store as ds
+ETCD = ds.DsaStore()
+ETCDKEY = f'/mon/nsfrb/candidates'
+
+from nsfrb import searching as sl
+"""if 'DASKPORT' in os.environ.keys():
+    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
+    QWORKERS = ['proc_server_WRKR']#-0','cand_cutter_WRKR-1']
+    QQUEUE = Queue("cand_cutter_queue")"""
 """
 HTTP variables
 """
@@ -93,6 +126,7 @@ pflagdict['all'] = 15
 def set_pflag_loc(flag=None,on=True,reset=False):
     if (not (flag in pflagdict.keys())): return None
     return pflagdict[flag]	
+
 
 
 
@@ -214,8 +248,8 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     #printlog(str(data[:128]),output_file=processfile)
    
     printlog("totaldatasize: " + str(len(fullMsg)),output_file=processfile)
-    printlog("without HTTP header: "  + str(len(fullMsg[fullMsg.index(HEADER_DELIM):])))
-    printlog("without NP header: " + str(len(fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):]))) 
+    printlog("without HTTP header: "  + str(len(fullMsg[fullMsg.index(HEADER_DELIM):])),output_file=processfile)
+    printlog("without NP header: " + str(len(fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):])),output_file=processfile) 
     data = fullMsg[fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex):fullMsg.index(NPheaderMsgHex) + len(NPheaderMsgHex) + (2*content_length)]
 
 
@@ -232,8 +266,8 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
 
     return corr_node,img_id_isot,img_id_mjd,shape,img_data
 
-
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,usejax):
+"""
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
 
     #define search params
@@ -248,26 +282,53 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     #print("starting process " + str(img_id) + "...")
     timing1 = time.time()
     if PyTorchDedispersion: #uses Nikita's dedisp code
+        total_noise = None
         printlog("Using PyTorchDedispersion",output_file=processfile)
         fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = sl.run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=sl.output_file,usefft=usefft,space_filter=space_filter)
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),PSF=sl.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax)
+    
+    #update noise stats
+    if total_noise is not None:
+        sl.current_noise = (noise_update_all(total_noise,gridsize,gridsize,sl.DM_trials,sl.widthtrials),sl.current_noise[1] + 1)
+
+    #update last frame
+    if append_frame:
+        sl.save_last_frame(sl.last_frame,full=True)
+        printlog("Writing to last_frame.npy",output_file=processfile)
+
+    if savesearch or len(fullimg.candidxs)>0:
+        #write raw candidates to csv
+        csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+        for i in range(len(fullimg.candidxs)):
+            wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i],dtype=int)]))
+        csvfile.close()
+
+        #save image
+        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
+        np.save(f,fullimg.image_tesseract_binned)
+        f.close()
+        
+        #if the dask scheduler is set up, put the cand file name in the queue
+        if 'DASKPORT' in os.environ.keys():
+            #try scheduling a task instead
+            QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
-    if savesearch:
-        f = open(cand_dir + fullimg.img_id_isot + ".npy","wb")
-        np.save(f,fullimg.image_tesseract_searched)
-        f.close()
-
-    #only save if we find candidates
     if len(fullimg.candidxs)==0:
         printlog("No candidates found",output_file=processfile)
         return fullimg.image_tesseract_searched#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
+    else:
+        printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
+        return fullimg.image_tesseract_searched
+"""
 
 
-
+"""
     #clustering with hdbscan
     if cluster:
         printlog("clustering with HDBSCAN...",output_file=processfile)
@@ -294,10 +355,10 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     printlog("obtaining image cutouts...",output_file=processfile,end='')
     fullimg.subimgs = np.zeros((len(fullimg.unique_cands),subimgpix,subimgpix,fullimg.image_tesseract_binned.shape[3]),dtype=np.float16)
-    """
+    
     for i in range(len(fullimg.unique_cands)):
         fullimg.subimgs[i,:,:,:] = sl.get_subimage(fullimg.image_tesseract_binned,fullimg.unique_cands[i][0],fullimg.unique_cands[i][1],save=False,subimgpix=subimgpix)[:,:,int(fullimg.unique_cands[i][2]),:]
-    """
+    
     data_array = np.nan_to_num(fullimg.subimgs,nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
 
 
@@ -375,63 +436,91 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     return fullimg.image_tesseract_searched#, SNRthresh#fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
 
-def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis):
+"""
+fullimg_dict = dict()
+def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled):
     """
     This function prints the result once a thread finishes processing an image
     """
-    printlog(future.result(),output_file=processfile)
-    pl.binary_plot(future.result(),SNRthresh,timestepisot,RA_axis,DEC_axis)
+    #if QSETUP and not (future.result()[1] is None):
+    #    QQUEUE.put(future.result()[1])
+    if etcd_enabled and not (future.result()[1] is None):
+        printlog("adding " + future.result()[1] + "to etcd queue",output_file=processfile)
+        ETCD.put_dict(
+                    ETCDKEY,
+                    {
+                        "candfile":future.result()[1]
+                    }
+                )
+    printlog(future.result()[0],output_file=processfile)
+    pl.binary_plot(future.result()[0],SNRthresh,timestepisot,RA_axis,DEC_axis)
     printlog("****Thread Completed****",output_file=processfile)
     printlog(future.result(),output_file=processfile)
     printlog("************************",output_file=processfile)
+
+    #delete from array
+    del fullimg_dict[timestepisot]
     return
 
-def main():
+def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
     
-    
-    #argument parsing
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
-    parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
-    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
-    parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
-    parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
-    parser.add_argument('--datasize',type=int,help='Expected size of each element in sub-band image in bytes,default=8',default=8,choices=list(dtypelookup.keys()))
-    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
-    parser.add_argument('-T','--testh23',action='store_true')
-    parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
-    parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 10',default=10)
 
-    #arguments for classifier from classifier.py
-    #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')
-    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
-    parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
-    parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
-    parser.add_argument('--spacefilter',action='store_true', help='Use PSF to spatial matched filter the input image')
-    parser.add_argument('--kernelsize',type=int,help='Kernel size for PSF spatial matched filter; default is same as image size',default=300)
-    parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
-    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
-    parser.add_argument('--multithreading',action='store_true',help='Enable multithreading in search')
-    parser.add_argument('--nrows',type=int,help='Number of rows to break image into if multithreading, default = 4',default=4)
-    parser.add_argument('--ncols',type=int,help='Number of columns to break image into if multithreading, default = 2',default=2)
-    parser.add_argument('--threadDM',action='store_true',help='Break DM trials among multiple threads')
-    parser.add_argument('--samenoise',action='store_true',help='Assume the noise in each pixel is the same')
-    parser.add_argument('--cuda',action='store_true',help='Uses PyTorch to accelerate computation with GPUs. The cuda flag overrides the multithreading option')
-    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
-    parser.add_argument('--PyTorchDedispersion',action='store_true',help='Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
-    parser.add_argument('--exportmaps',action='store_true',help='Output noise maps for each DM and width trial to the noise directory')
-    parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
-    parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
-    parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
-    parser.add_argument('--appendframe',action='store_true',help='Use the previous image to fill in dedispersion search')
-    parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, defauls = 1',default=1)
-    parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
-    args = parser.parse_args()    
+    #if "DASKPORT" in os.environ.keys():
+    #    printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
+    if args.etcd:
+        printlog("Etcd enabled, will push candidates to " + ETCDKEY,output_file=processfile)
 
-   
+    #update default values and lookup tables
+    sl.SNRthresh = args.SNRthresh
+    if args.gridsize != config.gridsize or args.nchans != config.nchans or args.nsamps != config.nsamps:
+
+        config.nsamps = args.nsamps
+        config.T = config.nsamps*config.tsamp
+        sl.time_axis = np.linspace(0,config.T,config.nsamps)
+
+        config.nchans = args.nchans
+        config.chanbw = (config.fmax-config.fmin)/config.nchans #MHz
+        sl.freq_axis = np.linspace(config.fmin,config.fmax,config.nchans)
+
+        config.gridsize = args.gridsize
+        sl.RA_axis = np.linspace(config.RA_point-config.pixsize*config.gridsize//2,config.RA_point+config.pixsize*config.gridsize//2,config.gridsize)
+        sl.DEC_axis = np.linspace(config.DEC_point-config.pixsize*config.gridsize//2,config.DEC_point+config.pixsize*config.gridsize//2,config.gridsize)
+
+
+        sl.DM_trials = np.array(sl.gen_dm(sl.minDM,sl.maxDM,1.5,config.fc*1e-3,config.nchans,config.tsamp,config.chanbw))#[0:1]
+        sl.nDMtrials = len(sl.DM_trials)
+
+        sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,config.nsamps)
+
+        sl.corr_shifts_all_append,sl.tdelays_frac_append,sl.corr_shifts_all_no_append,sl.tdelays_frac_no_append = sl.gen_dm_shifts(sl.DM_trials,sl.freq_axis,config.tsamp,config.nsamps) 
+
+        sl.default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(sl.DEC_axis),args.kernelsize//2,True,args.nsamps) #make_PSF_cube(gridsize=args.kernelsize,nsamps=args.nsamps,nchans=args.nchans)
+        sl.default_PSF_params = (args.kernelsize,"{d:.2f}".format(d=np.nanmean(sl.DEC_axis)))
+
+        sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
+        sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
+        sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
+
+    #write DM and width trials to file for cand cutter
+    np.save(cand_dir + "DMtrials.npy",np.array(sl.DM_trials))
+    np.save(cand_dir + "widthtrials.npy",np.array(sl.widthtrials))
+    np.save(cand_dir + "SNRthresh.npy",sl.SNRthresh)
+    np.save(cand_dir + "DMcorr_shifts.npy",sl.corr_shifts_all_no_append)
+    np.save(cand_dir + "DMdelays_frac.npy",sl.tdelays_frac_no_append)
+
+    #initialize last_frame 
+    if args.initframes:
+        printlog("Initializing previous frames...",output_file=processfile)
+        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps,args.nchans)
+
+    #initialize noise stats
+    if args.initnoise:
+        printlog("Initializing noise statistics...",output_file=processfile)
+        init_noise()
+        sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
+
     #initialize jax functions
     if args.usejax:
         #if args.initframes: nsamps = args.nsamps*2
@@ -442,33 +531,62 @@ def main():
         #printlog("CORR_LOW:" + str(config.corr_shifts_all_low),output_file=processfile)
         #printlog("CORR_HI:" + str(config.corr_shifts_all_hi),output_file=processfile)
         printlog("Initializing JIT functions...",output_file=processfile)
-        jax_funcs.inner_dedisperse_jit(image_tesseract_point=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,args.nchans)),
-                                    DM_trials_in=sl.DM_trials,tsamp=sl.tsamp,freq_axis_in=sl.freq_axis)
-        jax_funcs.inner_snr_fft_jit(image_tesseract_filtered_dm=np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
-                                    boxcar=np.random.normal(size=(len(sl.widthtrials),args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,args.nsamps,len(sl.DM_trials))),
-                                    noise=np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),past_noise_N=1,noiseth=0.1)
-    #initialize last_frame 
-    if args.initframes:
-        printlog("Initializing previous frames...",output_file=processfile)
-        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps,args.nchans)
+        if args.appendframe:
+            tDM_max = (4.15)*np.max(sl.DM_trials)*((1/sl.fmin/1e-3)**2 - (1/sl.fmax/1e-3)**2) #ms
+            maxshift = int(np.ceil(tDM_max/sl.tsamp))
+            corr_shifts_all = sl.corr_shifts_all_append
+            tdelays_frac = sl.tdelays_frac_append
+        else: 
+            maxshift = 0
+            corr_shifts_all = sl.corr_shifts_all_no_append
+            tdelays_frac = sl.tdelays_frac_no_append
 
-    #initialize noise stats
-    if args.initnoise:
-        printlog("Initializing noise statistics...",output_file=processfile)
-        init_noise()
+        if args.DMbatches > 1:
+            subgridsize_DEC = subgridsize_RA = args.gridsize//args.DMbatches
+            #subband_size = args.nchans//(args.DMbatches)#*args.DMbatches)
+            for i in range(args.DMbatches):
+                for j in range(args.DMbatches):
+                    jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]))
+
+
+                    jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(corr_shifts_all,jax.devices()[0]),
+                                               jax.device_put(tdelays_frac,jax.devices()[0]),
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1,i=i,j=j)
+                    jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),
+                                               jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
+                                               jax.device_put(tdelays_frac,jax.devices()[1]),
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
+
+        else:
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
+                                               jax.device_put(tdelays_frac,jax.devices()[0]),
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
+                                               jax.device_put(tdelays_frac,jax.devices()[1]),
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1)
+
+
 
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
     #total expected number of bytes for each sub-band image
     if args.datasize%2 != 0:
-        maxbytes = args.gridsize*args.gridsize*args.nsamps*(args.datasize-1) + args.headersize
+        maxbytes = args.gridsize*args.gridsize*args.nsamps*(args.datasize-1) + args.headersize #really just payload size
+        maxbyteshex = (args.gridsize*args.gridsize*args.nsamps*(args.datasize-1) + args.headersize + 4)*2 + 404 #http header is 404
     else:
-        maxbytes = args.gridsize*args.gridsize*args.nsamps*args.datasize + args.headersize #+ 42 #35 extra bytes are from the meta-data appended by the persistent RX server, but need to wait to see length of the ip address
+        maxbytes = args.gridsize*args.gridsize*args.nsamps*args.datasize + args.headersize #really just payload size
+        maxbyteshex = (args.gridsize*args.gridsize*args.nsamps*args.datasize + args.headersize + 4)*2 + 404 #http header is 404
     printlog("MAXBYTES: " + str(maxbytes),output_file=processfile)
     printlog("SHAPE: "  + str((args.gridsize,args.gridsize,args.nsamps,args.nchans)),output_file=processfile)
    
     #array to store image ids temporarily
-    fullimg_array = np.ndarray(shape=(args.maxProcesses),dtype=fullimg)
-
+    #fullimg_array = np.ndarray(shape=(args.maxProcesses),dtype=fullimg)
+    #fullimg_dict = dict()
 
     #create socket
     printlog("creating socket...",output_file=processfile,end='')
@@ -488,12 +606,18 @@ def main():
     
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
-    executor = ThreadPoolExecutor(args.maxProcesses)#ProcessPoolExecutor(args.maxProcesses)
+    #if "DASKPORT" in os.environ.keys() and QSETUP:
+    #    executor = QCLIENT
+    #else:
+    executor = ThreadPoolExecutor(args.maxProcesses)
+    #executor = Client(processes=False)#"10.41.0.254:8844")
+
     task_list = []
 
     while True: # want to keep accepting connections
         printlog("accepting connection...",output_file=processfile,end='')
         clientSocket,address = servSockD.accept()
+        clientSocket.setblocking(0)
         corr_address, tmp = clientSocket.getpeername()
         printlog("client: " + str(corr_address) + "...",output_file=processfile,end='')
         recstatus = 1
@@ -527,21 +651,52 @@ def main():
             else:
                 raise
         """
-        while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
+        #while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
+        t_timeout = time.time()
+        t_startread = time.time()
+        totalbyteshex =0
+        while (totalbyteshex < maxbyteshex) and time.time()-t_startread<60:# and time.time()-t_timeout<args.timeout:
             try:
-                (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
+                #check if data is ready to read first
+                t_ready = time.time()
+                while not select.select([clientSocket],[],[],args.timeout) and time.time()-t_ready<args.timeout:
+                    continue
+                if not select.select([clientSocket],[],[],args.timeout):
+                    raise socket.timeout
+                printlog("Data ready",output_file=processfile)
+                
+                (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(args.chunksize)#255)
                 #printlog(strData,output_file=processfile)
                 recstatus = len(strData)
+                if recstatus > 0: 
+                    t_timeout = time.time()
+                if recstatus == 0 and time.time()-t_timeout>args.timeout:
+                    raise socket.timeout
+
+                """
+                if recstatus+totalbytes > maxbytes:
+                    printlog("Read " + str(recstatus) + " bytes, truncating to " + str(maxbytes-totalbytes) + ", total " + str(totalbytes+maxbytes-totalbytes),output_file=processfile)
+                    #printlog("Read " + str(len(strData.hex())) + " bytes, truncating to " + str((maxbytes-totalbytes)*2) + ", total " + str(fullMsg+(strData[:maxbytes-totalbytes].hex())),output_file=processfile)
+                    strData = strData[:maxbytes-totalbytes]
+                    recstatus = len(strData)
+                else:
+                """
+                printlog("Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus),output_file=processfile)
+                #printlog("Read "+ str(len(strData.hex())) + " bytes, total "+ str(len(fullMsg+strData.hex())),output_file=processfile)
+                printlog("Message flags:" + str(msg_flags),output_file=processfile)
+                printlog("AncData:" + str(ancdata),output_file=processfile)
+                #if recstatus < args.chunksize:
+                #    printlog("--->" + str(strData),output_file=processfile)
 
                 #printlog(strData.hex(),output_file=processfile,end='')
                 fullMsg += strData.hex()
                 totalbytes += recstatus
-
+                totalbyteshex += len(strData.hex())
                 #don't know how long the header is, so don't start counting until hit NP data
                 if "93" in fullMsg:
                     printlog("Found start byte at index " + str(fullMsg.index("93")),output_file=processfile)
                     totalbytes = (len(fullMsg) - fullMsg.index("93"))//2
-                
+                #if totalbytes >= maxbytes: printlog(strData,output_file=processfile)        
             except Exception as ex:
                 if type(ex) == socket.timeout:
                     printlog("Timed out after reading " + str(totalbytes) + " bytes; proceeding...",output_file=processfile)
@@ -560,9 +715,12 @@ def main():
         
         #check if data is the size we expect
         try:
-            assert(totalbytes>=maxbytes)
+            #assert(totalbytes>=maxbytes)
+            assert(totalbyteshex>=maxbyteshex)
         except AssertionError as exc:
             printlog("Invalid data size, " + str(totalbytes) + " received when expected at least " + str(maxbytes) + ": " + str(exc),output_file=processfile)
+            
+            printlog("Invalid data size, " + str(totalbyteshex) + " received when expected at least " + str(maxbyteshex) + ": " + str(exc),output_file=processfile)
             printlog("Setting truncated data size flag...",output_file=processfile,end='')
             pflag = set_pflag_loc("datasize_error")
             if pflag == None:
@@ -617,37 +775,56 @@ def main():
             continue
         printlog("Data: " + str(arrData),output_file=processfile)
 
+        #if object is in dict
+        if img_id_isot not in fullimg_dict.keys():
+            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[args.nchans]])))
+
+        """
         #if object corresponding to the image is in list
         idx,openidx = find_id(img_id_isot,fullimg_array)
         printlog("FIND_ID: " + str(idx) + ", " + str(openidx),output_file=processfile)#if it's not in the list, but there's an open spot, add it
         if idx == -1 and openidx != -1:
             #need to create new object
-            fullimg_array[openidx] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[16]])))
+            fullimg_array[openidx] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[args.nchans]])))
             idx = openidx
         elif idx == -1 and openidx == -1: # shouldn't reach this case often, but if we don't have space for a new object, busy wait
             while openidx == -1: 
                 printlog("Process server image array full, waiting for opening...",output_file=processfile,end='')
                 idx,openidx = find_id(img_id_isot,fullimg_array)
         #otherwise, just add to the image at idx
-            	
+        """ 	
         #add image and update flags
-        fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
+        fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,args.testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
         #if the image is complete, start the search
         printlog("corrstatus:",output_file=processfile,end='')
-        printlog(fullimg_array[idx].corrstatus,output_file=processfile)
-        if fullimg_array[idx].is_full():
+        printlog(fullimg_dict[img_id_isot].corrstatus,output_file=processfile)
+        if fullimg_dict[img_id_isot].is_full(): #fullimg_array[idx].is_full():
             #submit a search task to the process pool
-            printlog("Submitting new task for image " + str(idx),output_file=processfile)
-            RA_axis_idx = copy.deepcopy(fullimg_array[idx].RA_axis)
-            DEC_axis_idx= copy.deepcopy(fullimg_array[idx].DEC_axis)
-            task_list.append(executor.submit(search_task,fullimg_array[idx],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+            printlog("Submitting new task for image " + str(img_id_isot),output_file=processfile)
+            RA_axis_idx = copy.deepcopy(fullimg_dict[img_id_isot].RA_axis) #copy.deepcopy(fullimg_array[idx].RA_axis)
+            DEC_axis_idx= copy.deepcopy(fullimg_dict[img_id_isot].DEC_axis) #copy.deepcopy(fullimg_array[idx].DEC_axis)
+
+            #update noise from file if offline
+            if args.offline:
+                sl.last_frame = sl.get_last_frame()
+            
+            """
+            if "DASKPORT" in os.environ.keys() and QSETUP:
+                task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.usejax))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,QSETUP,workers=QWORKERS))
+                fire_and_forget(task_list[-1])
+            
+            else:   
+            """
+            task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax))
             
             #printlog(future.result(),output_file=processfile)
-            task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx))
+            task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
             #after finishes execution, remove from list by setting element to None
-            fullimg_array[idx] = None
+            #fullimg_array[idx] = None
     
 
         
@@ -659,4 +836,49 @@ def main():
 
 
 if __name__=="__main__":
-    main()
+    #argument parsing
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
+    parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
+    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
+    parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
+    parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
+    parser.add_argument('--datasize',type=int,help='Expected size of each element in sub-band image in bytes,default=8',default=8,choices=list(dtypelookup.keys()))
+    parser.add_argument('--chunksize',type=int,help='Number of bytes to read from client at a time, default=18874368 (for data size ~18 MB)',default=18874368)
+    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
+    parser.add_argument('-T','--testh23',action='store_true')
+    parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
+    parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 1',default=1)
+
+    #arguments for classifier from classifier.py
+    #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')
+    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
+    parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
+    parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
+    parser.add_argument('--spacefilter',action='store_true', help='Use PSF to spatial matched filter the input image')
+    parser.add_argument('--kernelsize',type=int,help='Kernel size for PSF spatial matched filter; default is same as image size',default=300)
+    parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
+    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
+    parser.add_argument('--multithreading',action='store_true',help='Enable multithreading in search')
+    parser.add_argument('--nrows',type=int,help='Number of rows to break image into if multithreading, default = 4',default=4)
+    parser.add_argument('--ncols',type=int,help='Number of columns to break image into if multithreading, default = 2',default=2)
+    parser.add_argument('--threadDM',action='store_true',help='Break DM trials among multiple threads')
+    parser.add_argument('--samenoise',action='store_true',help='Assume the noise in each pixel is the same')
+    parser.add_argument('--cuda',action='store_true',help='Uses PyTorch to accelerate computation with GPUs. The cuda flag overrides the multithreading option')
+    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
+    parser.add_argument('--PyTorchDedispersion',action='store_true',help='Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
+    parser.add_argument('--exportmaps',action='store_true',help='Output noise maps for each DM and width trial to the noise directory')
+    parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
+    parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
+    parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
+    parser.add_argument('--appendframe',action='store_true',help='Use the previous image to fill in dedispersion search')
+    parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
+    parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
+    parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
+    parser.add_argument('--offline',action='store_true',help='Run system offline, relaxes realtime requirement and can update noise from injections')
+    parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
+    args = parser.parse_args()
+
+    
+    main(args)

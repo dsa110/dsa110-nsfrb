@@ -1,13 +1,37 @@
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
+fsize=45
+fsize2=35
+plt.rcParams.update({
+                    'font.size': fsize,
+                    'font.family': 'sans-serif',
+                    'axes.labelsize': fsize,
+                    'axes.titlesize': fsize,
+                    'xtick.labelsize': fsize,
+                    'ytick.labelsize': fsize,
+                    'xtick.direction': 'in',
+                    'ytick.direction': 'in',
+                    'xtick.top': True,
+                    'ytick.right': True,
+                    'lines.linewidth': 1,
+                    'lines.markersize': 5,
+                    'legend.fontsize': fsize2,
+                    'legend.borderaxespad': 0,
+                    'legend.frameon': False,
+                    'legend.loc': 'lower right'})
 import numpy as np
 import sys
 import csv
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+import os
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
+cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 
 binary_file = cwd + "-logfiles/binary_log.txt"
+inject_file = cwd + "-injections/injections.csv"
 
 def plot_uv_coverage(u, v, title='u-v Coverage'):
     """
@@ -122,44 +146,64 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False):
     """
     Makes updated diagnostic plots for search system
     """
     gridsize = len(RA_axis)
-    decs,ras,wids,dms=canddict['dec_idxs'],canddict['ra_idxs'],canddict['wid_idxs'],canddict['dm_idxs']#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
-    snrs = canddict['snrs']#imgsearched.flatten()[(imgsearched>2500).flatten()]
+    decs,ras,wids,dms=np.array(canddict['dec_idxs'],dtype=int),np.array(canddict['ra_idxs'],dtype=int),np.array(canddict['wid_idxs'],dtype=int),np.array(canddict['dm_idxs'],dtype=int)#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
+    snrs = np.array(canddict['snrs'])#imgsearched.flatten()[(imgsearched>2500).flatten()]
 
+    """
+    #check if the candidate is an injection
+    injection = False
+    with open(inject_file,"r") as csvfile:
+        re = csv.reader(csvfile,delimiter=',')
+        i = 0
+        for row in re:
+            if i != 0:
+                if row[0] == isot:
+                    injection = True
+                    break
+            i += 1
+    csvfile.close()
+    """
+    fig=plt.figure(figsize=(40,12))
+    if injection:
+        fig.patch.set_facecolor('red')
+    ax = plt.subplot(1,2,1)
 
+    ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    #plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
+    ax.imshow((img.mean((2,3)))[::-1,:],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
+    
+    ax.axvline(RA_axis[gridsize//2],color='grey')
+    ax.axhline(DEC_axis[gridsize//2],color='grey')
+    ax.set_xlabel(r"RA ($^\circ$)")
+    ax.set_ylabel(r"DEC ($^\circ$)")
+    ax.invert_xaxis()
 
-    plt.figure(figsize=(40,12))
-    plt.subplot(1,2,1)
-    plt.scatter(ras,decs,c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
-    plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
-    #plt.imshow(img.mean((2,3)),cmap='pink_r',aspect='auto')
-    plt.axvline(gridsize//2,color='grey')
-    plt.axhline(gridsize//2,color='grey')
-    plt.xlabel("RA index")
-    plt.ylabel("DEC index")
-
-    plt.subplot(1,2,2)
-    plt.scatter(widthtrials[wids],
+    ax=plt.subplot(1,2,2)
+    c=ax.scatter(widthtrials[wids],
                 DM_trials[dms],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
-    plt.colorbar(label='S/N')
+    plt.colorbar(mappable=c,ax=ax,label='S/N')
     for i in widthtrials:
-        plt.axvline(i,color='grey',linestyle='--')
+        ax.axvline(i,color='grey',linestyle='--')
     for i in DM_trials:
-        plt.axhline(i,color='grey',linestyle='--')
-    plt.xlim(0,np.max(widthtrials)*2)
-    plt.ylim(0,np.max(DM_trials)*10)
-    plt.xlabel("Width (Samples)")
-    plt.ylabel("DM (pc/cc)")
-    plt.savefig(output_dir + "diagnostic_RA_DEC.png")
+        ax.axhline(i,color='grey',linestyle='--')
+    ax.set_xlim(0,np.max(widthtrials)*2)
+    ax.set_ylim(0,np.max(DM_trials)*10)
+    ax.set_xlabel("Width (Samples)")
+    ax.set_ylabel(r"DM (pc/cc)")
+    t = "NSFRB" + isot
+    if injection: t = t + " (injection)"
+    plt.suptitle(t)
+    plt.savefig(output_dir + isot + "_NSFRBcandplot.png")
     if show:
         plt.show()
     else:
         plt.close()
-    return "diagnostic_RA_DEC.png"
+    return isot + "_NSFRBcandplot.png"
 
 def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_file=binary_file):
     """
@@ -196,14 +240,14 @@ def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_
         csvfile.write("-"*89 + "\n")
         wtr = csv.writer(csvfile,delimiter='\t')
         d = "DECLINATION"
-        for i in range(binplot.shape[0]):
-            row = np.array(binplot[i,:],dtype=str)
-            row[binplotdets[i,:]] = "X" #"◎"
-            row[~binplotdets[i,:]] = "·"
+        for i in range(binplot.shape[0])[::-1]:
+            row = np.array(binplot[i,::-1],dtype=str)
+            row[binplotdets[i,::-1]] = "X" #"◎"
+            row[~binplotdets[i,::-1]] = "·"
             wtr.writerow(["|"] + list(row) + ["|"] + [str(np.around(DEC_axis[i],1))]  + [d[1 + i]])
             wtr.writerow([])
         csvfile.write("-"*89 + "\n")
-        wtr.writerow(["|"] + list(np.array(np.around(RA_axis,1),dtype=str)) + ["|"])
+        wtr.writerow(["|"] + list(np.array(np.around(RA_axis,1),dtype=str)[::-1]) + ["|"])
         csvfile.write(" "*(89//2 - 15//2) + "RIGHT ASCENSION" + "\n")
         
     csvfile.close()
