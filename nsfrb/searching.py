@@ -1770,15 +1770,18 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         t1 = time.time()
         print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
         #find candidates above SNR threshold
-        condition = (image_tesseract_binned>=SNRthresh).flatten()
-        ncands = np.sum(condition)
-        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
+        #condition = (image_tesseract_binned>=SNRthresh).flatten()
+        #ncands = np.sum(condition)
+        #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
+
+        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+        ncands = len(canddec_idxs)
 
         canddecs = DEC_axis[canddec_idxs]
         candras = RA_axis[candra_idxs]
         candwids = widthtrials[candwid_idxs]
         canddms = DM_trials[canddm_idxs]
-        candsnrs = image_tesseract_binned.flatten()[condition]
+        candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
 
         candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
         cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
@@ -1978,15 +1981,18 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         t1 = time.time()
         print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
         #find candidates above SNR threshold
-        condition = (image_tesseract_binned>=SNRthresh).flatten()
-        ncands = np.sum(condition)
-        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*nDMtrials*nwidthtrials)[condition],(gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))#[1].shape
+        #condition = (image_tesseract_binned>=SNRthresh).flatten()
+        #ncands = np.sum(condition)
+        #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*nDMtrials*nwidthtrials)[condition],(gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))#[1].shape
     
+        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+        ncands = len(canddec_idxs)
+
         canddecs = DEC_axis[canddec_idxs]
         candras = RA_axis[candra_idxs]
         candwids = widthtrials[candwid_idxs]
         canddms = DM_trials[canddm_idxs]
-        candsnrs = image_tesseract_binned.flatten()[condition]
+        candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
     
         candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
         cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
@@ -2067,12 +2073,17 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         wr = csv.writer(csvfile,delimiter=',')
         wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
         for i in range(len(fullimg.candidxs)):
-            wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i],dtype=int)]))
+            wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i][:-1],dtype=int),[fullimg.candidxs[i][-1]]]))
         csvfile.close()
 
         #save image
         f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
         np.save(f,fullimg.image_tesseract_binned)
+        f.close()
+
+        #save image
+        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.npy","wb")
+        np.save(f,fullimg.image_tesseract_searched)
         f.close()
 
         #if the dask scheduler is set up, put the cand file name in the queue

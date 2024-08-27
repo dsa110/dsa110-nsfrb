@@ -828,6 +828,10 @@ def main(args):
             printlog("Submitting new task for image " + str(img_id_isot),output_file=processfile)
             RA_axis_idx = copy.deepcopy(fullimg_dict[img_id_isot].RA_axis) #copy.deepcopy(fullimg_array[idx].RA_axis)
             DEC_axis_idx= copy.deepcopy(fullimg_dict[img_id_isot].DEC_axis) #copy.deepcopy(fullimg_array[idx].DEC_axis)
+
+            #update noise from file if offline
+            if args.offline:
+                sl.last_frame = sl.get_last_frame()
             
             """
             if "DASKPORT" in os.environ.keys() and QSETUP:
@@ -897,6 +901,7 @@ if __name__=="__main__":
     parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
     parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
+    parser.add_argument('--offline',action='store_true',help='Run system offline, relaxes realtime requirement and can update noise from injections')
     args = parser.parse_args()
 
     

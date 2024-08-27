@@ -41,21 +41,19 @@ log_file = cwd + "-logfiles/inject_log.txt"
 inject_file = cwd + "-injections/injections.csv"
 cand_dir = cwd + "-candidates/"
 psf_dir = cwd + "-PSF/"
+frame_dir = cwd + "-frames/"
 
-
-def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file):
+def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file,maxshift=0,offline=False):
     """
     Uses functions from simulations_and_classifications to make injections
     """
-    offsetRA = 0
-    offsetDEC = 75
     if output_file != "":
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
     
     #for proper normalization need to scale snr
-    snr = snr#*100/3
+    snr = snr#40.625#*100/3
     
     
     #create a noiseless image
@@ -115,6 +113,23 @@ def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,
         sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
     #    noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
 
+    #if this is in offline mode, we won't have a previous noise frame to scale the noise to. So instead, overwrite it with pure noise matching whats in the injection
+    if offline:
+        noise_frame = np.zeros_like(sourceimg_dm)
+        for i in range(nchans):
+            noise_frame[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
+        noise_frame = np.real(np.fft.fftshift(
+                                                np.fft.ifft2(
+                                                    np.fft.fft2(np.fft.ifftshift(noise_frame,axes=(0,1)),
+                                                        axes=(0,1),s=(gridsize,gridsize))*np.fft.fft2(np.fft.ifftshift(PSFimg,axes=(0,1)),
+                                                            axes=(0,1),s=(gridsize,gridsize))
+                                                    ,axes=(0,1),s=(gridsize,gridsize))
+                                                ,axes=(0,1))) 
+        f = open(frame_dir + "last_frame.npy","wb")
+        np.save(f,noise_frame[:,:,-maxshift:,:])
+        f.close()
+
+
     if output_file != "":
         fout.close()
     return sourceimg_dm
@@ -128,7 +143,11 @@ def main(args):
 
     #make image
     #PSF = sim.make_PSF_cube(gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,output_file=log_file)
-
+    DMtrials = np.load(cand_dir + "DMtrials.npy")
+    widthtrials = np.load(cand_dir + "widthtrials.npy")
+    freq_axis = np.linspace(fmin,fmax,nchans)
+    tDM_max = (4.15)*np.max(DMtrials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
+    maxshift = int(np.ceil(tDM_max/tsamp))
     if args.nbursts == 1:
         #get current time
         time_start = Time.now()
@@ -137,8 +156,16 @@ def main(args):
         printlog("Injecting burst " + str(time_start_isot) + " with DM = " + str(args.DM) + ", width = " + str(args.width) + ", S/N = " + str(args.SNR),output_file=log_file)
         printlog("RA=" + str(np.nanmean(RA_axis)),output_file=log_file)
         printlog("DEC="+str(np.nanmean(DEC_axis)),output_file=log_file)
-        image_tesseract = generate_inject_image(DEC=np.nanmean(DEC_axis),offsetRA=np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int)),offsetDEC=np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int)),snr=args.SNR,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
+        image_tesseract = generate_inject_image(DEC=np.nanmean(DEC_axis),offsetRA=np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int)),offsetDEC=np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int)),snr=args.SNR,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file,maxshift=maxshift,offline=args.offline)
         #image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=args.SNR*100,width=args.width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=args.DM,output_file=log_file)
+
+        """
+        #if offline, ask user input before send
+        if input("Proceed? (Y/n)") == "n":
+            print("Cancelling injection")
+            return
+        print("Sending injection")
+        """
 
         #send
         for i in range(args.nchansend):#NUM_CHANNELS//AVERAGING_FACTOR):
@@ -187,8 +214,17 @@ def main(args):
             printlog("RA=" + str(RA),output_file=log_file)
             printlog("DEC="+str(DEC),output_file=log_file)
             
-            image_tesseract = generate_inject_image(DEC=DEC,offsetRA=offsetRAs[j],offsetDEC=offsetDECs[j],snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file)
+            image_tesseract = generate_inject_image(DEC=DEC,offsetRA=offsetRAs[j],offsetDEC=offsetDECs[j],snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file,maxshift=maxshift,offline=args.offline)
             #image_tesseract = sim.make_image_cube(PSFimg=PSF,snr=SNR*100,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.nchans,nsamps=args.nsamps,DM=DM,output_file=log_file)
+
+            """#if offline, ask user input before 1st burst
+            if j == 0:
+                #if offline, ask user input before send
+                if input("Proceed? (Y/n)") == "n":
+                    print("Cancelling injection")
+                    return
+                print("Sending injections")
+            """
 
             #report in injections file
             with open(inject_file,"a") as csvfile:
@@ -221,6 +257,7 @@ if __name__ == '__main__':
     parser.add_argument('--delay',type=float,help='If multiple bursts injected, the time in seconds between each burst; default 30 seconds',default=30)
     parser.add_argument('--randomize',action='store_true',default=False,help='randomize DM and widths over the search range')
     parser.add_argument('--nchansend',type=int,help='Number of channels to send, used for testing, default=16',default=16)
+    parser.add_argument('--offline',action='store_true',default=False,help='Run offline injection system')
     args = parser.parse_args()
     main(args)
 

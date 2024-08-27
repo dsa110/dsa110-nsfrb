@@ -286,15 +286,8 @@ def is_injection(isot,inject_file=inject_file):
     csvfile.close()
     return injection
 
-#main cand cutter task function
-def candcutter_task(fname,args):
-    """
-    Main task to obtain cutouts
-    """
-    #for each candidate get the isot and find the corresponding image
-    cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
-    cand_mjd = Time(cand_isot,format='isot').mjd
-    #read cand file
+
+def read_candfile(fname):
     finalcands = []
     raw_cand_names = []
     with open(fname,"r") as csvfile:
@@ -304,6 +297,29 @@ def candcutter_task(fname,args):
                 finalcands.append(np.array(r[1:],dtype=float))
                 raw_cand_names.append(r[0])
     csvfile.close()
+    return raw_cand_names,finalcands
+
+#main cand cutter task function
+def candcutter_task(fname,args):
+    """
+    Main task to obtain cutouts
+    """
+    #for each candidate get the isot and find the corresponding image
+    cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
+    cand_mjd = Time(cand_isot,format='isot').mjd
+    #read cand file
+    raw_cand_names,finalcands = read_candfile(fname)
+    """
+    finalcands = []
+    raw_cand_names = []
+    with open(fname,"r") as csvfile:
+        re = csv.reader(csvfile,delimiter=',')
+        for r in re:
+            if 'candname' not in r:
+                finalcands.append(np.array(r[1:],dtype=float))
+                raw_cand_names.append(r[0])
+    csvfile.close()
+    """
     finalidxs = np.arange(len(finalcands),dtype=int)
 
     #if getting cutouts, read image
@@ -338,6 +354,7 @@ def candcutter_task(fname,args):
 
         finalidxs = np.arange(len(cluster_cands),dtype=int)
         finalcands = cluster_cands
+        
 
 
     if args['classify']:
@@ -387,9 +404,9 @@ def candcutter_task(fname,args):
             lastname = names.increment_name(cand_mjd,lastname=lastname)
         sys.stdout = sysstdout
         if args['classify']:
-            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j],dtype=int),[probabilities[j]]]))
+            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
         else:
-            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j],dtype=int)]))
+            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
         allcandnames.append(lastname)
     csvfile.close()
 

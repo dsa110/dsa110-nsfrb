@@ -171,32 +171,33 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     fig=plt.figure(figsize=(40,12))
     if injection:
         fig.patch.set_facecolor('red')
-    plt.subplot(1,2,1)
+    ax = plt.subplot(1,2,1)
 
-    plt.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     #plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
-    plt.imshow(img.mean((2,3))[::-1,:],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
-    plt.axvline(RA_axis[gridsize//2],color='grey')
-    plt.axhline(DEC_axis[gridsize//2],color='grey')
-    plt.xlabel(r"RA ($^\circ$)")
-    plt.ylabel(r"DEC ($^\circ$)")
-    plt.gca().invert_xaxis()
+    ax.imshow((img.mean((2,3)))[::-1,:],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
+    
+    ax.axvline(RA_axis[gridsize//2],color='grey')
+    ax.axhline(DEC_axis[gridsize//2],color='grey')
+    ax.set_xlabel(r"RA ($^\circ$)")
+    ax.set_ylabel(r"DEC ($^\circ$)")
+    ax.invert_xaxis()
 
-    plt.subplot(1,2,2)
-    plt.scatter(widthtrials[wids],
+    ax=plt.subplot(1,2,2)
+    c=ax.scatter(widthtrials[wids],
                 DM_trials[dms],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
-    plt.colorbar(label='S/N')
+    plt.colorbar(mappable=c,ax=ax,label='S/N')
     for i in widthtrials:
-        plt.axvline(i,color='grey',linestyle='--')
+        ax.axvline(i,color='grey',linestyle='--')
     for i in DM_trials:
-        plt.axhline(i,color='grey',linestyle='--')
-    plt.xlim(0,np.max(widthtrials)*2)
-    plt.ylim(0,np.max(DM_trials)*10)
-    plt.xlabel("Width (Samples)")
-    plt.ylabel(r"DM (pc/cc)")
+        ax.axhline(i,color='grey',linestyle='--')
+    ax.set_xlim(0,np.max(widthtrials)*2)
+    ax.set_ylim(0,np.max(DM_trials)*10)
+    ax.set_xlabel("Width (Samples)")
+    ax.set_ylabel(r"DM (pc/cc)")
     t = "NSFRB" + isot
     if injection: t = t + " (injection)"
-    plt.title(t)
+    plt.suptitle(t)
     plt.savefig(output_dir + isot + "_NSFRBcandplot.png")
     if show:
         plt.show()
