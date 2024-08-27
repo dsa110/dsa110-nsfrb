@@ -82,12 +82,21 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
     noise = noise.at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
                                             jnp.nanmedian(
                                                 jnp.nanstd(
+                                                    image_tesseract_binned,axis=4,where=mask
+                                                ),axis=1
+                                            ),axis=1
+                                        ))))/(past_noise_N+1))
+    
+    """
+    noise = noise.at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
+                                            jnp.nanmedian(
+                                                jnp.nanstd(
                                                     image_tesseract_binned*mask,axis=4
                                                     )*jnp.sqrt(nsamps/(mask.sum(4))
                                                 ),axis=1
                                             ),axis=1
                                         ))))/(past_noise_N+1))
-    
+    """
     #compute SNR
     image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise,(1,2)))))[:,:,:,:,0].transpose(1,2,0,3)
 

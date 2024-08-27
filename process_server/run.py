@@ -553,7 +553,7 @@ def main(args):
                                                jax.device_put(corr_shifts_all,jax.devices()[0]),
                                                jax.device_put(tdelays_frac,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1,i=i,j=j)
+                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth,i=i,j=j)
                     jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),
                                                jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
                                                jax.device_put(tdelays_frac,jax.devices()[1]),
@@ -564,12 +564,12 @@ def main(args):
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
                                                jax.device_put(tdelays_frac,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1)
+                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
             jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
                                                jax.device_put(tdelays_frac,jax.devices()[1]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
-                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1)
+                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
 
 
 
@@ -819,7 +819,7 @@ def main(args):
             """
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
@@ -878,6 +878,7 @@ if __name__=="__main__":
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
     parser.add_argument('--offline',action='store_true',help='Run system offline, relaxes realtime requirement and can update noise from injections')
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
+    parser.add_argument('--noiseth',type=float,help='Quantile threshold below which samples are included in noise calculation; default=0.1',default=0.1)
     args = parser.parse_args()
 
     

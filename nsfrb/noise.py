@@ -108,7 +108,7 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
                 if not readonly:
                     noise_dict[DM][width] = [1, noise[j,i]]
                 else:
-                    noise_dict[DM][width] = [1, np.nan]
+                    noise_dict[DM][width] = [0,0]#[1, np.nan]
             elif not writeonly and not readonly:
                 prevN, prevnoise = noise_dict[DM][width]
                 nextN = prevN + 1
