@@ -503,6 +503,12 @@ def main(args):
         sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
         sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
 
+    if args.nocutoff:
+        sl.default_cutoff = 0
+    else:
+        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis))
+        printlog("Initialized pixel cutoff to " + str(sl.default_cutoff) + " pixels",output_file=processfile)
+
     #write DM and width trials to file for cand cutter
     np.save(cand_dir + "DMtrials.npy",np.array(sl.DM_trials))
     np.save(cand_dir + "widthtrials.npy",np.array(sl.widthtrials))
@@ -542,11 +548,13 @@ def main(args):
             tdelays_frac = sl.tdelays_frac_no_append
 
         if args.DMbatches > 1:
-            subgridsize_DEC = subgridsize_RA = args.gridsize//args.DMbatches
+            #subgridsize_DEC = subgridsize_RA = args.gridsize//args.DMbatches
+            subgridsize_DEC = args.gridsize//args.DMbatches
+            subgridsize_RA = (args.gridsize-sl.default_cutoff)//args.DMbatches
             #subband_size = args.nchans//(args.DMbatches)#*args.DMbatches)
             for i in range(args.DMbatches):
                 for j in range(args.DMbatches):
-                    jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]))
+                    jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]))
 
 
                     jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
@@ -819,7 +827,7 @@ def main(args):
             """
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
@@ -879,6 +887,7 @@ if __name__=="__main__":
     parser.add_argument('--offline',action='store_true',help='Run system offline, relaxes realtime requirement and can update noise from injections')
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
     parser.add_argument('--noiseth',type=float,help='Quantile threshold below which samples are included in noise calculation; default=0.1',default=0.1)
+    parser.add_argument('--nocutoff',action='store_true',help='If set, ignores offset between successive time batches (3.25 seconds)')
     args = parser.parse_args()
 
     

@@ -42,6 +42,7 @@ inject_file = cwd + "-injections/injections.csv"
 cand_dir = cwd + "-candidates/"
 psf_dir = cwd + "-PSF/"
 frame_dir = cwd + "-frames/"
+noise_dir = cwd + "-noise/"
 
 def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file,maxshift=0,offline=False):
     """
@@ -128,6 +129,12 @@ def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,
         f = open(frame_dir + "last_frame.npy","wb")
         np.save(f,noise_frame[:,:,-maxshift:,:])
         f.close()
+    elif len(glob.glob(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")) > 0:
+        noise_per_chan = np.load(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")
+        print("Rescaling with noise: " + str(noise_per_chan),file=fout)
+        for i in range(nchans):
+            sourceimg_dm[:,:,:,i] *= noise_per_chan[i]/np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans) #rescale the noise
+    
 
 
     if output_file != "":

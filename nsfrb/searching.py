@@ -302,6 +302,23 @@ else:
     default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),gridsize//2,True,nsamps)#sim.make_PSF_cube()
     default_PSF_params = (gridsize,np.nanmean(DEC_axis))
 
+
+
+
+"""
+pre-computed cutoff pixels
+"""
+def get_RA_cutoff(dec,T=T,pixsize=pixsize):
+    """
+    dec: current declination
+    T: integration time in milliseconds
+    """
+    cutoff_as = (T/1000)*15/np.cos(dec*np.pi/180) #arcseconds
+    cutoff_pix = (cutoff_as/3600)//pixsize
+    return int(cutoff_pix)
+default_cutoff = get_RA_cutoff(0)
+
+
 """Search functions"""
 
 from scipy.signal import convolve2d
@@ -1597,7 +1614,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
                    multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
-                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True):
+                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -1625,6 +1642,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         device = None
         usingGPU = False
     print("Using device: " + str(device),file=fout)
+
 
 
     #get axis sizes
@@ -1705,22 +1723,24 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             global last_frame
 
             truensamps = image_tesseract_filtered.shape[2]
-            image_tesseract_filtered = np.concatenate([last_frame,image_tesseract_filtered],axis=2)
+            image_tesseract_filtered_cut = np.concatenate([last_frame[:,RA_cutoff:,:,:],image_tesseract_filtered[:,:-RA_cutoff,:,:]],axis=2)
             nsamps = image_tesseract_filtered.shape[2]
             corr_shifts_all = corr_shifts_all_append
             tdelays_frac = tdelays_frac_append
             
-            print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered.shape),file=fout)
+            print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered_cut.shape),file=fout)
         
             #save frame
             last_frame = image_tesseract_filtered[:,:,-maxshift:,:]
             #save_last_frame(image_tesseract_filtered)
             #print("Writing to last_frame.npy",file=fout)
+            RA_axis = RA_axis[RA_cutoff:-RA_cutoff]
+            gridsize_RA = len(RA_axis)
         else:
             corr_shifts_all = corr_shifts_all_no_append
             tdelays_frac = tdelays_frac_no_append
             truensamps = nsamps = image_tesseract_filtered.shape[2]
-
+            image_tesseract_filtered_cut=image_tesseract_filtered_cut
         #subgrid
         subgridsize_RA = gridsize_RA//DMbatches
         subgridsize_DEC = gridsize_DEC//DMbatches
@@ -1741,9 +1761,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             for i in range(DMbatches):
                 for j in range(DMbatches):
                     if j%2 == 0:
-                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),jax.device_put(tdelays_frac,jax.devices()[0]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
+                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered_cut[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),jax.device_put(tdelays_frac,jax.devices()[0]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
                     else:
-                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),jax.device_put(tdelays_frac,jax.devices()[1]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
+                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered_cut[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),jax.device_put(tdelays_frac,jax.devices()[1]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
                     
 
 
@@ -1757,7 +1777,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         else:
             #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
             global jaxdev
-            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered,dtype=np.float32),jax.devices()[jaxdev]),
+            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[jaxdev]),
                                                                  jax.device_put(np.array(PSF[:,:,0:1,:],dtype=np.float32),jax.devices()[jaxdev]),
                                                                  jax.device_put(corr_shifts_all,jax.devices()[jaxdev]),
                                                                  jax.device_put(tdelays_frac,jax.devices()[jaxdev]),
@@ -2022,13 +2042,28 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     else:
         return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
 
+
+
+
+
 #CONTEXTSETUP = False
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax,noiseth):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff):
     #global CONTEXTSETUP
     #if not QSETUP and not CONTEXTSETUP:
     #    CONTEXTSETUP = True
     #    torch.multiprocessing.set_start_method("spawn")
     printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
+
+
+    #need to account for shift between successive images of 3.25 seconds
+    """
+    global default_cutoff
+    if nocutoff:
+        default_cutoff = 0
+    else:
+        default_cutoff = get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2])
+    """
+
 
     #define search params
     gridsize=fullimg.image_tesseract.shape[0]
@@ -2057,10 +2092,11 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     if PyTorchDedispersion: #uses Nikita's dedisp code
         total_noise = None
         printlog("Using PyTorchDedispersion",output_file=processfile)
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=output_file,usefft=usefft,space_filter=space_filter,noiseth=noiseth)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=output_file,usefft=usefft,space_filter=space_filter,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2]))
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2]))
+
 
     #update noise stats
     if total_noise is not None:
