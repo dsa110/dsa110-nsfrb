@@ -27,7 +27,7 @@ from nsfrb import TXclient
 import argparse
 from concurrent.futures import ProcessPoolExecutor
 from nsfrb.imaging import uv_to_pix
-
+import glob
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
@@ -73,7 +73,13 @@ def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,
     elif offsetDEC < 0:
         sourceimg = np.pad(sourceimg,((0,-offsetDEC),(0,0),(0,0),(0,0)))[-gridsize:,:,:,:]
     print("IMG shape:"+str(sourceimg.shape),file=fout)
+    
+    
     #normalize based on snr
+    if len(glob.glob(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")) > 0:
+        noise_per_chan = np.load(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")
+    else:
+        noise_per_chan = np.ones(nchans)
     for i in range(nchans):
         sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]/(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]))#/np.sum(PSFimg[:,:,:,i]))
 
@@ -82,7 +88,7 @@ def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,
 
 
         #img[16,16,500:500+wid,:] = snr/wid
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr#/np.sum(PSFimg[:,:,0,i])
+        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr*noise_per_chan[i]#/np.sum(PSFimg[:,:,0,i])
 
         sourceimg[:,:,:int(loc*nsamps),:] = 0
         sourceimg[:,:,int(loc*nsamps) + width:,:] = 0
@@ -110,8 +116,15 @@ def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,
 
     else:
         sourceimg_dm = sourceimg
-    for i in range(nchans):
-        sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
+
+
+    #add noise
+    if len(glob.glob(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")) > 0:
+        for i in range(nchans):
+            sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=noise_per_chan[i],size=(gridsize,gridsize,nsamps))
+    else:
+        for i in range(nchans):
+            sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
     #    noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
 
     #if this is in offline mode, we won't have a previous noise frame to scale the noise to. So instead, overwrite it with pure noise matching whats in the injection
@@ -129,11 +142,6 @@ def generate_inject_image(DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,
         f = open(frame_dir + "last_frame.npy","wb")
         np.save(f,noise_frame[:,:,-maxshift:,:])
         f.close()
-    elif len(glob.glob(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")) > 0:
-        noise_per_chan = np.load(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")
-        print("Rescaling with noise: " + str(noise_per_chan),file=fout)
-        for i in range(nchans):
-            sourceimg_dm[:,:,:,i] *= noise_per_chan[i]/np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans) #rescale the noise
     
 
 

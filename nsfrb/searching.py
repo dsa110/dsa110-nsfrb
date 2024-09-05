@@ -222,9 +222,19 @@ SNRthresh = 6
 tDM_max = (4.15)*np.max(DM_trials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
 maxshift = int(np.ceil(tDM_max/tsamp))
 def init_last_frame(gridsize_DEC,gridsize_RA,nsamps,nchans,frame_dir=frame_dir):
+    noise = np.zeros((gridsize_DEC,gridsize_RA,nsamps,nchans))
+    #check if raw noise file exists
+    if len(glob.glob(noise_dir + "raw_noise_" + str(gridsize_DEC) + "x" + str(gridsize_RA) + ".npy")) > 0:
+        raw_noise = np.load(noise_dir + "raw_noise_" + str(gridsize_DEC) + "x" + str(gridsize_RA) + ".npy")
+        for i in range(nchans):
+            noise[:,:,:,i] = norm.rvs(loc=0,scale=raw_noise[i],size=(gridsize_DEC,gridsize_RA,nsamps))
     f = open(frame_dir + "last_frame.npy","wb")
-    np.save(f,np.zeros((gridsize_DEC,gridsize_RA,nsamps,nchans)))
+    np.save(f,noise)
     f.close()
+    return
+
+    
+    
 
 def save_last_frame(image_tesseract,full=False,maxDM=np.max(DM_trials),tsamp=tsamp,frame_dir=frame_dir):
     """
@@ -1734,7 +1744,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             last_frame = image_tesseract_filtered[:,:,-maxshift:,:]
             #save_last_frame(image_tesseract_filtered)
             #print("Writing to last_frame.npy",file=fout)
-            RA_axis = RA_axis[RA_cutoff:-RA_cutoff]
+            RA_axis = RA_axis[:-RA_cutoff]
             gridsize_RA = len(RA_axis)
         else:
             corr_shifts_all = corr_shifts_all_no_append
