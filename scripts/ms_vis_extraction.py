@@ -18,7 +18,9 @@ from tqdm import tqdm
 import time
 from scipy.stats import norm
 import nsfrb.searching as sl
-def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False):
+from nsfrb.outputlogging import numpy_to_fits
+
+def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False,savefits=False):
     """
     Process data from a CASA .ms table containing visibility data, which includes extracting the CORRECTED_DATA column data, 
     forming dirty images and sending them for further analysis.
@@ -134,6 +136,8 @@ def process_data(num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_anal
         dirty_images_all = np.pad(dirty_images_all,((0,0),(0,0),(11,12),(0,0)))
         print(dirty_images_all.shape)
         dirty_images_all += norm.rvs(loc=0,scale=np.nanmax(dirty_images_all)/100,size=dirty_images_all.shape)
+        if savefits:
+            numpy_to_fits(dirty_images_all,"/home/ubuntu/msherman_nsfrb/test_data/2023-10-03_1459+716.fits")
         #np.save("tmpfile.npy",dirty_images_all) 
         #print(sl.snr_vs_RA_DEC_new(dirty_images_all.mean(3),1))
         gridsize = 300
@@ -154,9 +158,10 @@ def main():
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--plot-uv-analysis', action='store_true',default=False, help='Enable UV analysis plotting')
     parser.add_argument('--plot-dirty-images', action='store_true', default=False, help='Enable dirty images plotting')
+    parser.add_argument('--savefits',action='store_true',default=False,help='save image to a fits file')
     args = parser.parse_args()
 
-    process_data(args.num_gulp, args.num_time_samples, args.verbose, args.plot_uv_analysis, args.plot_dirty_images)
+    process_data(args.num_gulp, args.num_time_samples, args.verbose, args.plot_uv_analysis, args.plot_dirty_images,args.savefits)
 
 if __name__ == '__main__':
     main()

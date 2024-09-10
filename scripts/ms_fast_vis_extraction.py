@@ -19,7 +19,8 @@ from tqdm import tqdm
 import time
 from scipy.stats import norm
 import nsfrb.searching as sl
-def process_data_sb(fname, num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False, num_channels=NUM_CHANNELS,averaging_factor=AVERAGING_FACTOR,image_size=IMAGE_SIZE):
+from nsfrb.outputlogging import numpy_to_fits
+def process_data_sb(fname, num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False, num_channels=NUM_CHANNELS,averaging_factor=AVERAGING_FACTOR,image_size=IMAGE_SIZE,savefits=False):
     """
     Process data from a CASA .ms table containing visibility data, which includes extracting the CORRECTED_DATA column data, 
     forming dirty images and sending them for further analysis.
@@ -154,6 +155,8 @@ def process_data_sb(fname, num_gulp, num_time_samples=25, verbose_flag=False, pl
         dirty_images_all += norm.rvs(loc=0,scale=np.nanmax(dirty_images_all)/100,size=dirty_images_all.shape)
         #np.save("tmpfile.npy",dirty_images_all) 
         #print(sl.snr_vs_RA_DEC_new(dirty_images_all.mean(3),1))
+        if savefits:
+            numpy_to_fits(dirty_images_all,f"{time_block[0]}_dirty_images.fits")
         gridsize = 300
         for i in range(num_channels//averaging_factor):
             #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
@@ -175,6 +178,7 @@ def main():
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--plot-uv-analysis', action='store_true',default=False, help='Enable UV analysis plotting')
     parser.add_argument('--plot-dirty-images', action='store_true', default=False, help='Enable dirty images plotting')
+    parser.add_argument('--savefits', action='store_true', default=False, help='save image to fits file')
     args = parser.parse_args()
 
     process_data_sb(args.fname,args.num_gulp, args.num_time_samples, args.verbose, args.plot_uv_analysis, args.plot_dirty_images,num_channels=32,averaging_factor=2)

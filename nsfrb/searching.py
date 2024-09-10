@@ -2133,10 +2133,17 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         np.save(f,fullimg.image_tesseract_binned)
         f.close()
 
+        #save fits
+        numpy_to_fits(fullimg.image_tesseract_binned,cand_dir + "raw_cands/" + fullimg.img_id_isot + ".fits")
+
         #save image
         f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.npy","wb")
         np.save(f,fullimg.image_tesseract_searched)
         f.close()
+        
+        #save fits
+        numpy_to_fits(fullimg.image_tesseract_searched,cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.fits")
+
 
         #if the dask scheduler is set up, put the cand file name in the queue
         #if 'DASKPORT' in os.environ.keys() and QSETUP:

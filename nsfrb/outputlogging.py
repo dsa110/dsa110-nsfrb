@@ -3,6 +3,7 @@
 #cwd = f.read()[:-1]
 #f.close()
 import os
+from astropy.io import fits
 cwd = os.environ['NSFRBDIR']
 
 output_file = cwd + "-logfiles/run_log.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
@@ -35,3 +36,9 @@ def send_candidate_slack(filename,filedir=final_cand_dir,error_file=error_file):
     except Exception as e:
         printlog(e,output_file=error_file)
         return 1
+
+#save image to fits file
+def numpy_to_fits(img,fname):
+    hdu = PrimaryHDU(img)
+    hdu.writeto(fname,overwrite=True)
+    return
