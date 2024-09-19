@@ -1,3 +1,5 @@
+import csv
+from matplotlib import pyplot as plt
 import numpy as np
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
 from astropy.time import Time
@@ -77,10 +79,10 @@ def make_phase_table(u,v,w,ra_center,dec_center,ra_point,dec_point,verbose=False
     This function computes the phase terms for each baseline to be phase referenced
     to the meridian.
     """
-    l = np.cos(ra_center*np.pi/180)
-    m = np.cos((90+dec_center)*np.pi/180)
-    l0 = np.cos(ra_point*np.pi/180)
-    m0 = np.cos((90+dec_point)*np.pi/180)
+    l = np.cos(ra_point*np.pi/180)
+    m = np.cos((90+dec_point)*np.pi/180)
+    l0 = np.cos(ra_center*np.pi/180)
+    m0 = np.cos((90+dec_center)*np.pi/180)
     if verbose:
         print(l,m,l0,m0)
         print('uterm',u*(l-l0))
@@ -95,4 +97,142 @@ def make_phase_table(u,v,w,ra_center,dec_center,ra_point,dec_point,verbose=False
                                 v*(m-m0) + 
                                 w*(((1 - l**2 - m**2)**0.5-1) - 
                                     ((1 - l0**2 - m0**2)**0.5-1))))
+
+def read_raw_vis(fname,datasize=4,nbase=4656,nchan=48,npol=2):
+    """
+    Read raw visibility data from given file.
+    fname: file name
+    datasize: size of data in bytes
+    """
+    if datasize==4:
+        dtype = np.float32
+        dtypecomplex = np.complex64
+    elif datasize==2:
+        dtype = np.float16
+        dtypecomplex = np.complex32
+    elif datasize==8:
+        dtype = np.float64
+        dtypecomplex = np.complex128
+    elif datasize==16:
+        dtype = np.float128
+        dtypecomplex = np.complex256
+    else:
+        print("Invalid datasize")
+        return None
+
+
+    f = open(fname,"rb")
+    raw_data =np.frombuffer(f.read(),dtype=dtype)
+    f.close()
+
+    ntimes = int(len(raw_data)/nbase/nchan/npol/2)
+
+    dat = raw_data.reshape((ntimes,nbase,nchan,npol,2))
+
+    #real and imaginary
+    dat_complex = np.zeros(dat.shape[:-1],dtype=dtypecomplex)
+    dat_complex[:,:,:,:] = dat[:,:,:,:,0] + 1j*dat[:,:,:,:,1]
+    return dat_complex
+
+
+#21 22 23 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 
+EX_ANTENNAS = ['DSA-021',
+               'DSA-022',
+               'DSA-023',
+               'DSA-052',
+               'DSA-053',
+               'DSA-054',
+               'DSA-055',
+               'DSA-056',
+               'DSA-057',
+               'DSA-058',
+               'DSA-059',
+               'DSA-060',
+               'DSA-061',
+               'DSA-062',
+               'DSA-063',
+               'DSA-064',
+               'DSA-065',
+               'DSA-066',
+               'DSA-067',
+               'DSA-117']
+"""
+f = open("/home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat","r")
+EX_ANTENNASdat = f.read().split("\n")[:-1]
+f.close()
+EX_ANTENNAS = ['DSA-' + str('0'+EX_ANTENNASdat[i] if len(EX_ANTENNASdat[i])==2 else EX_ANTENNASdat[i]) for i in range(len(EX_ANTENNASdat))]
+print(EX_ANTENNAS)
+"""
+def antpos_to_uv(coordfile=coordfile,frequency=1.4e9,plot=False,core_only=False):
+    #read antenna positions
+    ANTENNALONS = []
+    ANTENNALATS = []
+    ANTENNAELEVS = []
+    ANTENNANAMES = []
+    with open(coordfile,'r') as csvfile:
+        rdr = csv.reader(csvfile,delimiter=',')
+        i = 0
+        for row in rdr:
+            #print(row)
+            if row[1][:3] == 'DSA' and (row[1] not in EX_ANTENNAS) and row[1] != 'DSA-110 Station Coordinates':
+                ANTENNALATS.append(float(row[2]))
+                ANTENNALONS.append(float(row[3]))
+                ANTENNANAMES.append(row[1])
+                if row[4] == '':
+                    ANTENNAELEVS.append(np.nan)
+                else:
+                    ANTENNAELEVS.append(float(row[4]))
+    csvfile.close()
+
+    ANTENNALATS = np.array(ANTENNALATS)
+    ANTENNALONS = np.array(ANTENNALONS)
+    ANTENNAELEVS = np.array(ANTENNAELEVS)
+    ANTENNANAMES = np.array(ANTENNANAMES)
+
+    if core_only:
+        core_lat_lims = [37.2325,37.2375]
+        core_lon_lims = [-0.0875-1.182e2,-0.0800-1.182e2]
+        core_condition = np.logical_and(np.logical_and(ANTENNALATS>core_lat_lims[0],ANTENNALATS<core_lat_lims[1]),
+                                                np.logical_and(ANTENNALONS>core_lon_lims[0],ANTENNALONS<core_lon_lims[1]))
+
+    if plot:
+        plt.figure()
+        plt.plot(ANTENNALONS,ANTENNALATS,'o')
+
+        if core_only:
+            plt.plot(ANTENNALONS[core_condition],
+                    ANTENNALATS[core_condition],'o')
+
+
+        plt.savefig("DSAANTENNAPOSITIONS.png")
+        plt.close()
+    print("total antennas:",len(ANTENNALATS))
+    if core_only:
+        ANTENNALONS = ANTENNALONS[core_condition]
+        ANTENNALATS = ANTENNALATS[core_condition]
+        ANTENNAELEVS = ANTENNAELEVS[core_condition]
+        ANTENNANAMES = ANTENNANAMES[core_condition]
+        print("using core:",len(ANTENNALATS),ANTENNANAMES)
+    print(ANTENNANAMES)
+    # get uvw coordinates
+    antpos = EarthLocation(lat=ANTENNALATS*u.deg, lon=ANTENNALONS*u.deg,height=ANTENNAELEVS*u.m)
+    c = 3e8 #m/s
+    wav = c/frequency #m
+    U = []
+    V = []
+    W = []
+    for i in range(len(antpos)):
+        for j in range(i+1,len(antpos)):
+            U.append((antpos[i].x.value-antpos[j].x.value)/wav)
+            V.append((antpos[i].y.value-antpos[j].y.value)/wav)
+            W.append((antpos[i].z.value-antpos[j].z.value)/wav)
+
+    return U,V,W
+
+
+def apply_phasecal(data,fringetable):
+    """
+    Applies fringe stopping calibration given the visibilities and fringe table dict
+    """
+    
 

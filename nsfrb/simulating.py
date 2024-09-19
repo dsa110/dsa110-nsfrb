@@ -12,7 +12,38 @@ from PIL import Image,ImageOps
 from nsfrb import config
 from scipy.stats import norm
 
-def get_core_coordinates():
+
+def get_all_coordinates(flagged_antennas=[]):
+    """
+    COPY OF get_core_coordinates without cutting out outriggers
+
+    Extracts core antenna coordinates from a dataframe.
+
+    Parameters:
+    df: DataFrame containing antenna coordinates with columns 'x_m', 'y_m', 'z_m'.
+
+    Returns:
+    x_core, y_core, z_core: core coordinates of the antennas.
+    """
+    df = get_itrf()
+    x_m = df['x_m'].values
+    y_m = df['y_m'].values
+    z_m = df['z_m'].values
+    
+    # Skip flagged antennas
+    core_mask = np.array([list(df.index)[i] not in flagged_antennas for i in range(len(df))])
+
+    print(list(df.index[core_mask]))
+
+    # Extract core coordinates using the mask
+    x_core = x_m[core_mask]
+    y_core = y_m[core_mask]
+    z_core = z_m[core_mask]
+
+    return x_core, y_core, z_core
+
+
+def get_core_coordinates(flagged_antennas=[]):
     """
     Extracts core antenna coordinates from a dataframe.
 
@@ -31,8 +62,12 @@ def get_core_coordinates():
     x_min, x_max = -2.41e6, -2.4092e6
     y_min, y_max = -4.47830e6, -4.47775e6
 
+    # Skip flagged antennas
+    flag_mask = np.array([list(df.index)[i] not in flagged_antennas for i in range(len(df))])
+
     # Create a mask for core antennas
-    core_mask = (x_m > x_min) & (x_m < x_max) & (y_m > y_min) & (y_m < y_max)
+    core_mask = (x_m > x_min) & (x_m < x_max) & (y_m > y_min) & (y_m < y_max) & flag_mask
+    print(list(df.index[core_mask]))
 
     # Extract core coordinates using the mask
     x_core = x_m[core_mask]
