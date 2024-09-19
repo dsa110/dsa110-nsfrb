@@ -99,7 +99,7 @@ def make_phase_table(U,V,W,ra_center,dec_center,ra_point,dec_point,verbose=False
                                 w*(((1 - l**2 - m**2)**0.5-1) - 
                                     ((1 - l0**2 - m0**2)**0.5-1))))"""
 
-def read_raw_vis(fname,datasize=4,nbase=4656,nchan=48,npol=2):
+def read_raw_vis(fname,datasize=4,nbase=4656,nchan=48,npol=2,nsamps=-1,gulp=0):
     """
     Read raw visibility data from given file.
     fname: file name
@@ -123,7 +123,12 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=48,npol=2):
 
 
     f = open(fname,"rb")
-    raw_data =np.frombuffer(f.read(),dtype=dtype)
+    if nsamps == -1:
+        raw_data = np.frombuffer(f.read(),dtype=dtype) #default reads all time samples
+    else:
+        print("Reading from byte",gulp*nsamps*nbase*nchan*npol*2*datasize)
+        f.seek(gulp*nsamps*nbase*nchan*npol*2*datasize)
+        raw_data = np.frombuffer(f.read(nsamps*nbase*nchan*npol*2*datasize),dtype=dtype)
     f.close()
 
     ntimes = int(len(raw_data)/nbase/nchan/npol/2)

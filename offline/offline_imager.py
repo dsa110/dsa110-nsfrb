@@ -12,7 +12,7 @@ f.close()
 
 sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,tsamp
 from nsfrb.imaging import uniform_image, uv_to_pix
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
@@ -41,7 +41,9 @@ flagged_antennas = np.array(f.read().split("\n")[:-1],dtype=int)
 f.close()
 """
 def main(args):
+
     verbose = args.verbose
+    """
     #read raw data for each corr node
     dat_all = None
     for i in range(len(corrs)):
@@ -49,28 +51,56 @@ def main(args):
         fname = args.path + "/lxd110"+ corr + "/" + corr + args.filelabel + ".out"
         fname = args.path + "/3C286_vis/" + corr + args.filelabel + ".out"
         try:
-            dat_corr = cal.read_raw_vis(fname,datasize=args.datasize).mean(2,keepdims=True)
+            tmp = cal.read_raw_vis(fname,datasize=args.datasize)
+            #print("tmp",tmp)
+            dat_corr = np.nanmean(cal.read_raw_vis(fname,datasize=args.datasize),axis=2,keepdims=True)
             if verbose: print(dat_corr.shape)
             if dat_all is None:
                 dat_all = np.nan*np.ones(dat_corr.shape,dtype=dat_corr.dtype).repeat(len(corrs),axis=2)
-            dat_all[:,:,i,:] = dat_corr
-        except:
+            #print(dat_all.shape,dat_corr.shape)
+            dat_all[:,:,i,:] = dat_corr[:,:,0,:]
+            #print("tmp2",dat_all[:,:,i,:],dat_corr)
+        except Exception as exc:
             if verbose: print("No data for " + corr)
-
-    
+            if verbose: print(exc)
+    """
     #send in sub-gulps
     
-    num_gulps = int(dat_all.shape[0]//args.num_time_samples)
+    num_gulps = 1#int(dat_all.shape[0]//args.num_time_samples)
     if args.num_gulps != -1:
-        num_gulps = np.min([args.num_gulps,num_gulps])
+        num_gulps = args.num_gulps#np.min([args.num_gulps,num_gulps])
     num_chans = int(NUM_CHANNELS//AVERAGING_FACTOR)
     for gulp in range(num_gulps):
-        dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
+        #dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
+        
+        #read raw data for each corr node
+        dat = None
+        for i in range(len(corrs)):
+            corr = corrs[i]
+            fname = args.path + "/lxd110"+ corr + "/" + corr + args.filelabel + ".out"
+            fname = args.path + "/3C286_vis/" + corr + args.filelabel + ".out"
+            try:
+                #tmp = cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples)
+                #print("tmp",tmp)
+                dat_corr = np.nanmean(cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=gulp),axis=2,keepdims=True)
+                if verbose: print(dat_corr.shape)
+                if dat is None:
+                    dat = np.nan*np.ones(dat_corr.shape,dtype=dat_corr.dtype).repeat(len(corrs),axis=2)
+                #print(dat_all.shape,dat_corr.shape)
+                dat[:,:,i,:] = dat_corr[:,:,0,:]
+                #print("tmp2",dat_all[:,:,i,:],dat_corr)
+            except Exception as exc:
+                if verbose: print("No data for " + corr)
+                if verbose: print(exc)
+        
+        
+        
         print("Gulp size:",dat.shape)
 
         #use MJD to get pointing
-        mjd = Time(args.timestamp,format='isot').mjd + (args.num_time_samples/86400)
+        mjd = Time(args.timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp*1e-3/86400)
         time_start_isot = Time(mjd,format='mjd').isot
+        print("Time:",time_start_isot)
         HA,Dec =  uv_to_pix(mjd,1,Lat=37.23,Lon=-118.2851)
         HA = HA[0]
         Dec = Dec[0]
@@ -94,6 +124,8 @@ def main(args):
                 for j in range(num_chans):
                     for k in range(dat.shape[-1]):
                         phaseterms = cal.make_phase_table(U/wavs[j],V/wavs[j],W/wavs[j],ra_center,dec_center,ra_point,dec_point,verbose=False)
+                        print(dat[i,:,j,k])
+                        print(phaseterms)
                         dat[i,:,j,k] *= phaseterms
     
         #image
@@ -105,12 +137,17 @@ def main(args):
                         dirty_img[:,:,i,j] = uniform_image(dat[i, :, j, k],U,V,IMAGE_SIZE)**2
                     else:
                         dirty_img[:,:,i,j] += uniform_image(dat[i, :, j, k],U,V,IMAGE_SIZE)**2
+        
+        #save image to fits, numpy file
+        if args.save:
+            np.save(args.path + "/3C286_vis/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".npy",dirty_img)
+            numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.path + "/3C286_vis/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".fits")
 
         #send to proc server
         if args.search:
             for i in range(num_chans):
                 #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-                msg=send_data(time_start_isot, dirty_images_all[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
+                msg=send_data(time_start_isot, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
                 if args.verbose: print(msg)
                 time.sleep(1)
 
@@ -130,6 +167,7 @@ if __name__=="__main__":
     parser.add_argument('--path',type=str,help='Path to raw data files',default=vispath)
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
+    parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')
     args = parser.parse_args()
     main(args)
 

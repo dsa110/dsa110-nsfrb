@@ -13,9 +13,10 @@ CH0 = 1311.387  # MHz
 CH_WIDTH = 0.244141  # MHz
 
 # Time parameters
-tsamp = 130 #ms
-T = 3250 #ms
-nsamps = int(T/tsamp)
+tsamp = 0.1342182159423828*1000 #130 #ms
+nsamps = 25
+T = tsamp*nsamps #3250 #ms
+#nsamps = int(T/tsamp)
 
 # Image channel information
 fmax  = 1530 #MHz

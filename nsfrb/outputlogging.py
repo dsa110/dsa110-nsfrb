@@ -39,6 +39,6 @@ def send_candidate_slack(filename,filedir=final_cand_dir,error_file=error_file):
 
 #save image to fits file
 def numpy_to_fits(img,fname):
-    hdu = PrimaryHDU(img)
+    hdu = fits.PrimaryHDU(img)
     hdu.writeto(fname,overwrite=True)
     return
