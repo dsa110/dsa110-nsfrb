@@ -20,7 +20,7 @@ def main(args):
     if args.verbose: print("num fringes:",len(fringe_time_axis))
 
     #define dec axis
-    dec_axis = np.arange(-90,90,args.dec_interval) + args.dec_interval/2
+    dec_axis = np.arange(-90,90-args.dec_interval,args.dec_interval) + args.dec_interval/2
 
     if not args.usetemplate:
         #make UVW grid

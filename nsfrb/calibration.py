@@ -74,29 +74,30 @@ def get_phase_center(mjd_obs,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerangems=1
     return icrs_pos.ra.value,icrs_pos.dec.value
 
 
-def make_phase_table(u,v,w,ra_center,dec_center,ra_point,dec_point,verbose=False):
+def make_phase_table(U,V,W,ra_center,dec_center,ra_point,dec_point,verbose=False):
     """
     This function computes the phase terms for each baseline to be phase referenced
     to the meridian.
     """
-    l = np.cos(ra_point*np.pi/180)
-    m = np.cos((90+dec_point)*np.pi/180)
-    l0 = np.cos(ra_center*np.pi/180)
-    m0 = np.cos((90+dec_center)*np.pi/180)
+    #get direction cosines
+    coord = SkyCoord(ra=ra_point*u.deg,dec=dec_point*u.deg,frame='icrs')
+    coord0 = SkyCoord(ra=ra_center*u.deg,dec=dec_center*u.deg,frame='icrs')
+    l,m,n = coord.cartesian.x.value/coord.distance.value,coord.cartesian.y.value/coord.distance.value,coord.cartesian.z.value/coord.distance.value
+    l0,m0,n0 = coord0.cartesian.x.value/coord0.distance.value,coord0.cartesian.y.value/coord0.distance.value,coord0.cartesian.z.value/coord0.distance.value
     if verbose:
         print(l,m,l0,m0)
-        print('uterm',u*(l-l0))
-        print('vterm',v*(m-m0))
-        print('wterm',w*(((1 - l**2 - m**2)**0.5-1) -
-                                    ((1 - l0**2 - m0**2)**0.5-1)))
-    if np.all(w==0):
+        print('uterm',U*(l-l0))
+        print('vterm',V*(m-m0))
+        print('wterm',W*(n-n0))
+    return np.exp(-1j*2*np.pi*(U*(l-l0) + V*(m-m0) + W*(n-n0)))
+    """if np.all(w==0):
         return np.exp(-1j*2*np.pi*(u*(l-l0) +
                                 v*(m-m0)))
     else:
         return np.exp(-1j*2*np.pi*(u*(l-l0) + 
                                 v*(m-m0) + 
                                 w*(((1 - l**2 - m**2)**0.5-1) - 
-                                    ((1 - l0**2 - m0**2)**0.5-1))))
+                                    ((1 - l0**2 - m0**2)**0.5-1))))"""
 
 def read_raw_vis(fname,datasize=4,nbase=4656,nchan=48,npol=2):
     """
