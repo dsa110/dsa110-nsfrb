@@ -24,7 +24,7 @@ from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from nsfrb import simulating as sim
 from simulations_and_classifications import generate_PSF_images as scPSF
-from nsfrb.outputlogging import printlog
+from nsfrb.outputlogging import printlog,numpy_to_fits
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 
@@ -126,8 +126,8 @@ jaxdev = 0
 
 
 #create axes
-RA_axis = np.linspace(RA_point-pixsize*gridsize//2,RA_point+pixsize*gridsize//2,gridsize)
-DEC_axis = np.linspace(DEC_point-pixsize*gridsize//2,DEC_point+pixsize*gridsize//2,gridsize)
+RA_axis = np.linspace(RA_point-(pixsize*gridsize/2),RA_point+(pixsize*gridsize/2),gridsize)
+DEC_axis = np.linspace(DEC_point-(pixsize*gridsize/2),DEC_point+(pixsize*gridsize/2),gridsize)
 time_axis = np.linspace(0,T,nsamps) #ms
 freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
@@ -1734,6 +1734,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
             truensamps = image_tesseract_filtered.shape[2]
             image_tesseract_filtered_cut = np.concatenate([last_frame[:,RA_cutoff:,:,:],image_tesseract_filtered[:,:-RA_cutoff,:,:]],axis=2)
+            PSF = PSF[:,int(RA_cutoff//2):-(RA_cutoff - int(RA_cutoff//2)),:,:]
             nsamps = image_tesseract_filtered.shape[2]
             corr_shifts_all = corr_shifts_all_append
             tdelays_frac = tdelays_frac_append
@@ -1810,9 +1811,11 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #ncands = np.sum(condition)
         #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
 
+        print(image_tesseract_binned.shape,image_tesseract_filtered_cut.shape,file=fout)
         canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
         ncands = len(canddec_idxs)
-
+        #print(len(DEC_axis),np.max(canddec_idxs),len(RA_axis),np.max(candra_idxs),file=fout)
+        #fout.close()
         canddecs = DEC_axis[canddec_idxs]
         candras = RA_axis[candra_idxs]
         candwids = widthtrials[candwid_idxs]
@@ -2134,7 +2137,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         f.close()
 
         #save fits
-        numpy_to_fits(fullimg.image_tesseract_binned,cand_dir + "raw_cands/" + fullimg.img_id_isot + ".fits")
+        numpy_to_fits(fullimg.image_tesseract_binned.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ".fits")
 
         #save image
         f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.npy","wb")
@@ -2142,7 +2145,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         f.close()
         
         #save fits
-        numpy_to_fits(fullimg.image_tesseract_searched,cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.fits")
+        numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.fits")
 
 
         #if the dask scheduler is set up, put the cand file name in the queue

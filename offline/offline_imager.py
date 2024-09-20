@@ -147,7 +147,12 @@ def main(args):
         if args.inject and (gulp == inject_gulp):
             offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp)
             print(offsetRA,offsetDEC,SNR,width,DM,maxshift)
-            inject_img = injecting.generate_inject_image(HA=HA_axis[int(len(HA_axis)//2 + offsetRA)],DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=False,noiseless=True)
+            dat[:,:,:,:] = 0
+            DM = 0
+            SNR = 10000
+            width = 2
+            offsetRA = offsetDEC = 0
+            inject_img = injecting.generate_inject_image(HA=HA_axis[int(len(HA_axis)//2 + offsetRA)],DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=True,noiseless=False)
         else:
             inject_img = np.zeros((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],num_chans))
         dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],num_chans))

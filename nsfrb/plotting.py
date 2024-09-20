@@ -216,18 +216,21 @@ def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_
     binplotdets = binplot >= SNRthresh
 
 
+
     #downscale
-    gridsize = binplot.shape[0]
-    if gridsize%size != 0:
-        binplot = binplot[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2)),
-                        gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
-        RA_axis = RA_axis[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
-        DEC_axis = DEC_axis[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
-    gridsize = binplot.shape[0]
-    binplot = np.nanmax(binplot.reshape((size,gridsize//size,size,gridsize//size)),(1,3))
+    gridsize_DEC,gridsize_RA = binplot.shape
+    if len(RA_axis) != gridsize_RA:
+        RA_axis = RA_axis[int((len(RA_axis)-gridsize_RA)//2):-((len(RA_axis)-gridsize_RA) - int((len(RA_axis)-gridsize_RA)//2))]
+    if gridsize_DEC%size != 0 or gridsize_RA%size != 0:
+        binplot = binplot[gridsize_DEC%size // 2: gridsize_DEC - (gridsize_DEC%size - (gridsize_DEC%size // 2)),
+                        gridsize_RA%size // 2: gridsize_RA - (gridsize_RA%size - (gridsize_RA%size // 2))]
+        RA_axis = RA_axis[gridsize_RA%size // 2: gridsize_RA - (gridsize_RA%size - (gridsize_RA%size // 2))]
+        DEC_axis = DEC_axis[gridsize_DEC%size // 2: gridsize_DEC - (gridsize_DEC%size - (gridsize_DEC%size // 2))]
+    gridsize_DEC,gridsize_RA = binplot.shape
+    binplot = np.nanmax(binplot.reshape((size,gridsize_DEC//size,size,gridsize_RA//size)),(1,3))
     binplotdets = binplot >= SNRthresh
-    RA_axis = RA_axis.reshape((size,gridsize//size)).mean(1)
-    DEC_axis = DEC_axis.reshape((size,gridsize//size)).mean(1)
+    RA_axis = RA_axis.reshape((size,gridsize_RA//size)).mean(1)
+    DEC_axis = DEC_axis.reshape((size,gridsize_DEC//size)).mean(1)
 
     #normalize
     binplot = (binplot - np.nanpercentile(binplot,10))/(np.nanpercentile(binplot,90) - np.nanpercentile(binplot,10))

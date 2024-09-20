@@ -170,7 +170,7 @@ def main(args):
             for i in range(len(rawfiles)):
                 fname = rawfiles[i]
                 printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-                candcutter_task(fname,vars(args))
+                cc.candcutter_task(fname,vars(args))
 
         if args.sleep > 0:
             printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)

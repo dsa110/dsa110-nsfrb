@@ -80,13 +80,19 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
 
     #matched filter
     truensamps = boxcar.shape[3]
+    gridsize_DEC,gridsize_RA = image_tesseract.shape[:2]
+    padby_DEC = (gridsize_DEC - PSFimg.shape[0])//2
+    padby_RA = (gridsize_RA - PSFimg.shape[1])//2
+    """
     gridsize = image_tesseract.shape[0]
     padby = (gridsize - PSFimg.shape[0])//2
+    """
     #image_tesseract_point = jnp.concatenate([image_tesseract[:,:,:-truensamps,:],jnp.pad(jnp.real(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract[:,:,-truensamps:,:],axes=(0,1),s=image_tesseract.shape[:2])*jnp.fft.fft2(PSFimg,axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1),s=image_tesseract.shape[:2])),((0,padby),(0,padby),(0,0),(0,0)))[-gridsize:,-gridsize:,:,:]],axis=2)
     #image_tesseract_point = jnp.concatenate([image_tesseract[:,:,:-truensamps,:],jnp.real(jnp.fft.fftshift(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract[:,:,-truensamps:,:],axes=(0,1),s=image_tesseract.shape[:2])*jnp.fft.fft2(jnp.pad(PSFimg,((padby,padby),(padby,padby),(0,0),(0,0))),axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1)))],axis=2)
 
 
     #since we combined matched filtering, etc, we need to filter the full combined image
+    """
     image_tesseract_point = jnp.real(jnp.fft.fftshift(
                                                 jnp.fft.ifft2(
                                                     jnp.fft.fft2(jnp.fft.ifftshift(image_tesseract,axes=(0,1)),
@@ -95,6 +101,16 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
                                                             ((padby,padby),(padby,padby),(0,0),(0,0))),
                                                             axes=(0,1),s=(gridsize,gridsize))
                                                     ,axes=(0,1),s=(gridsize,gridsize))
+                                                ,axes=(0,1)))
+    """
+    image_tesseract_point = jnp.real(jnp.fft.fftshift(
+                                                jnp.fft.ifft2(
+                                                    jnp.fft.fft2(jnp.fft.ifftshift(image_tesseract,axes=(0,1)),
+                                                        axes=(0,1),s=(gridsize_DEC,gridsize_RA))*jnp.fft.fft2(jnp.pad(
+                                                            (jnp.fft.ifftshift(PSFimg.repeat(image_tesseract.shape[2],axis=2),axes=(0,1))),
+                                                            ((padby_DEC,padby_DEC),(padby_RA,padby_RA),(0,0),(0,0))),
+                                                            axes=(0,1),s=(gridsize_DEC,gridsize_RA))
+                                                    ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
                                                 ,axes=(0,1)))
     """
     image_tesseract_point = jnp.concatenate([image_tesseract[:,:,:-truensamps,:],
