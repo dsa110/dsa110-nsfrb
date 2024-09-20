@@ -506,7 +506,7 @@ def main(args):
     if args.nocutoff:
         sl.default_cutoff = 0
     else:
-        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis))
+        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=sl.DEC_axis[1]-sl.DEC_axis[0])
         printlog("Initialized pixel cutoff to " + str(sl.default_cutoff) + " pixels",output_file=processfile)
 
     #write DM and width trials to file for cand cutter

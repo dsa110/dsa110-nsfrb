@@ -111,17 +111,19 @@ def main(args):
         LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=-118.2851).to(u.hourangle).value
         print("Time:",time_start_isot)
         print("LST (hr):",LST)
-        RA,Dec =  uv_to_pix(mjd,1,Lat=37.23,Lon=-118.2851)
         RA_axis,Dec_axis = uv_to_pix(mjd,IMAGE_SIZE,Lat=37.23,Lon=-118.2851)
         HA_axis = (LST*15) - RA_axis
-        HA = (LST*15) - RA[0]
-        Dec = Dec[0]
-        if verbose: print("Coordinates:",RA,Dec)
-        if verbose: print("Hour angle:",HA)
+        #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
+        RA = RA_axis[int(len(RA_axis)//2)]
+        HA = HA_axis[int(len(HA_axis)//2)]
+        Dec = Dec_axis[int(len(Dec_axis)//2)]
+
+        if verbose: print("Coordinates (deg):",RA,Dec)
+        if verbose: print("Hour angle (deg):",HA)
 
         #get UVW coordinates
-        x_m,y_m,z_m = get_all_coordinates(flagged_antennas)
-        U,V,W = compute_uvw(x_m,y_m,z_m,HA,Dec)
+        x_m,y_m,z_m = get_all_coordinates(flagged_antennas) #meters
+        U,V,W = compute_uvw(x_m,y_m,z_m,HA,Dec) #meters
         if verbose: print(x_m.shape,y_m.shape,z_m.shape)
         if verbose: print(U.shape,V.shape,W.shape)
         #if verbose: print("core idxs",len(core_idxs),core_idxs)

@@ -8,7 +8,9 @@ import astropy.units as u
 from astropy.time import Time
 import sys
 from matplotlib import pyplot as plt
+from nsfrb import simulating
 
+flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
@@ -92,7 +94,7 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     Returns:
     A numpy array representing the dirty image.
     """
-    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3
+    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
@@ -148,7 +150,7 @@ def inverse_uniform_image(dirty_image,u,v):
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerangems=100,maxtries=5,output_file=output_file):
+def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtries=5,output_file=output_file,az_offset=1.23001):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -167,8 +169,10 @@ def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerange
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
-
+    """
     #create offset grid using pixel size and max UV diagonal distance
+    x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas)
+    U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,Dec)
     pixel_resolution = (0.20 / uv_diag) / 3
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
@@ -176,7 +180,7 @@ def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerange
     offset_grid = np.arange(-1/uv_resolution/2,1/uv_resolution/2,1/uv_max/2)*180/np.pi
     #print(len(offset_grid) , image_size)
     assert(len(offset_grid) == image_size)
-
+    """
     #find RA, dec at center of the image 
 
     #(1) ovro location
@@ -200,14 +204,37 @@ def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerange
     else:
         bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
         elev = result['antmon']['ant_el'].values[bestidx]
-        alt = 180-elev
-        alt = elev - 90
-        antpos = AltAz(obstime=tobs,location=loc,az=180*u.deg,alt=alt*u.deg)
+        #alt = 180-elev
+        #alt = elev - 90
+        alt = 90 - elev
+
+
+        if elev > 90:
+            alt = 180 - elev
+            az = 180 - az_offset
+        else:
+            alt = elev
+            az = az_offset
+
+        print("Retrieved elevation: " + str(elev) + "deg",file=fout)
+
+        antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
 
         #(4) convert to ICRS frame
         icrs_pos = antpos.transform_to(ICRS())
     
     print("Retrieved Coordinates: " + str(tobs.isot) + ", RA="+str(icrs_pos.ra.value) + "deg, DEC="+str(icrs_pos.dec.value) + "deg",file=fout)
+
+
+    #create offset grid using pixel size and max UV diagonal distance
+    x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas) #meters
+    U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
+    uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
+    pixel_resolution = (0.20 / uv_diag) / 3 #radians
+    offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
+
+    print(offset_grid)
+    assert(len(offset_grid) == image_size)
 
     #add offset from image center
     ra_grid = icrs_pos.ra.value + offset_grid
