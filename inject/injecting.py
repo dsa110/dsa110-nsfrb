@@ -58,7 +58,7 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
     
     
     #create a noiseless image
-    PSFimg = scPSF.generate_PSF_images(psf_dir,HA,DEC,gridsize//2,True,nsamps,dtype=np.float64)
+    PSFimg = scPSF.generate_PSF_images(psf_dir,HA*np.pi/180,DEC*np.pi/180,gridsize//2,True,nsamps,dtype=np.float64)
     PSFimg -= np.nanmin(PSFimg)
     print("PSF shape:" + str(PSFimg.shape),file=fout)
     sourceimg=copy.deepcopy(PSFimg)

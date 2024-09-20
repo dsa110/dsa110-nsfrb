@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 from simulations_and_classifications.generate_source_images import generate_src_images
 import os
-from nsfrb.config import gridsize
+from nsfrb.config import gridsize,pixsize
 """
 Generate PSF images for declinations spaced by the instantaneous FOV (3 degrees)
 """
@@ -25,6 +25,10 @@ def generate_PSF_images(dataset_dir,HA,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.fl
 #average FOV
 FOV = gridsize*(36/3600) #~3 degrees
 decs = np.arange(-90,90,FOV)
+
+#need to compute for each timestep and pixel for HA dependence
+HAs = np.arange(int(-gridsize//2),int(gridsize//2))*pixsize*(12/np.pi)/3600
+
 
 #output dir
 num_observations = 1
