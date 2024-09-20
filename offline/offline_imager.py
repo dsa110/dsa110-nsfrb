@@ -110,7 +110,7 @@ def main(args):
         time_start_isot = Time(mjd,format='mjd').isot
         LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=-118.2851).to(u.hourangle).value
         print("Time:",time_start_isot)
-        print("LST:",LST)
+        print("LST (hr):",LST)
         RA,Dec =  uv_to_pix(mjd,1,Lat=37.23,Lon=-118.2851)
         RA_axis,Dec_axis = uv_to_pix(mjd,IMAGE_SIZE,Lat=37.23,Lon=-118.2851)
         HA_axis = (LST*15) - RA_axis
