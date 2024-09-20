@@ -40,7 +40,13 @@ def get_all_coordinates(flagged_antennas=[]):
     y_core = y_m[core_mask]
     z_core = z_m[core_mask]
 
-    return x_core, y_core, z_core
+
+    #also return indices of which ones are in the core
+    # Define core antenna limits
+    #x_min, x_max = -2.41e6, -2.4092e6
+    #y_min, y_max = -4.47830e6, -4.47775e6
+    #core_idxs = np.arange(len(x_core),dtype=int)[(x_core > x_min) & (x_core < x_max) & (y_core > y_min) & (y_core < y_max)]
+    return x_core, y_core, z_core#, core_idxs
 
 
 def get_core_coordinates(flagged_antennas=[]):

@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.fftpack import ifftshift, ifft2
+from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
 from nsfrb.config import IMAGE_SIZE,UVMAX
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
@@ -7,6 +7,7 @@ from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
 import astropy.units as u
 from astropy.time import Time
 import sys
+from matplotlib import pyplot as plt
 
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
@@ -79,7 +80,7 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     return np.real(dirty_image)
 
 
-def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int) -> np.ndarray:
+def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None) -> np.ndarray:
     """
     Converts visibility data into a 'dirty' image.
 
@@ -104,9 +105,44 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
     np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
 
-    dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
+    if inject_img is not None:
+        visibility_grid += inverse_uniform_image(inject_img,u,v) 
 
-    return np.real(dirty_image)
+    #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
+    #visibility_grid[i_indices, j_indices] /= count_indices
+
+    dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
+    
+    return np.real(dirty_image) if not return_complex else dirty_image
+
+
+def inverse_uniform_image(dirty_image,u,v):
+    """
+    Inverse of uniform_image, used for injection purposes; inverts image to get gridded visibilities
+
+    Parameters:
+    dirty_image: Dirty image with shape (gridsize,gridsize)
+    pixel_resolution: image pixel size in degrees (?)
+    u,v: Coordinates in UV plane at which visibilities should be returned; the nearest grid point will be used
+    """
+
+    image_size = dirty_image.shape[0]
+    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3
+    uv_resolution = 1 / (image_size * pixel_resolution)
+    uv_max = uv_resolution * image_size / 2
+    grid_res = 2 * uv_max / image_size
+
+    visibility_grid = fftshift(fft2(fftshift(dirty_image)))
+    
+    
+    """
+    #get nearest visibility grid point for each u,v
+    i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
+    j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
+    #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
+    chunk_V = visibility_grid[i_indices,j_indices]#/count_indices
+    """
+    return visibility_grid
 
 
 

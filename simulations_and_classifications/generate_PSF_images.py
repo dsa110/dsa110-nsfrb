@@ -9,11 +9,11 @@ Generate PSF images for declinations spaced by the instantaneous FOV (3 degrees)
 
 
 #simple wrapper function to make single PSF
-def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float32):
+def generate_PSF_images(dataset_dir,HA,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float32):
     num_observations = 1
     noise_std_low = noise_std_high = 0 #noiseless
     exclude_antenna_percentage = (0,0) #ideally have all antennas
-    HA_low = HA_high = 0 #shouldn't vary with HA
+    HA_low = HA_high = HA #shouldn't vary with HA
     spectral_index_low = spectral_index_high = 0
     tonumpy = True
     Dec_low = Dec_high = dec
@@ -31,6 +31,7 @@ num_observations = 1
 noise_std_low = noise_std_high = 0 #noiseless
 exclude_antenna_percentage = (0,0) #ideally have all antennas
 HA_low = HA_high = 0 #shouldn't vary with HA
+HAs = np.arange(0,360,FOV)
 spectral_index_low = spectral_index_high = 0
 tonumpy = True
 
@@ -40,13 +41,14 @@ def main(args):
     os.system("mkdir " + args.dataset_dir + "gridsize_" + str(args.gridsize))
 
     for dec in decs:
-        generate_PSF_images(args.dataset_dir,dec,zoom_pix,tonumpy)
-        #Dec_low = Dec_high = dec
-        #generate_src_images(args.dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy)
-        #move to top level for ease of access
-        outpath = os.path.join(args.dataset_dir, f'src_examples/observation_1/images/final_img_{HA_low:.2f}_hr_{dec:.2f}_deg.npy')
-        print("mv " + outpath + " " + args.dataset_dir + "gridsize_" + str(args.gridsize) + "/PSF_" + str(args.gridsize) + f"_{dec:.2f}_deg.npy")
-        os.system("mv " + outpath + " " + args.dataset_dir + "gridsize_" + str(args.gridsize) + "/PSF_" + str(args.gridsize) + f"_{dec:.2f}_deg.npy")
+        for HA in HAs:
+            generate_PSF_images(args.dataset_dir,HA,dec,zoom_pix,tonumpy)
+            #Dec_low = Dec_high = dec
+            #generate_src_images(args.dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy)
+            #move to top level for ease of access
+            outpath = os.path.join(args.dataset_dir, f'src_examples/observation_1/images/final_img_{HA:.2f}_hr_{dec:.2f}_deg.npy')
+            print("mv " + outpath + " " + args.dataset_dir + "gridsize_" + str(args.gridsize) + "/PSF_" + str(args.gridsize) + f"_{dec:.2f}_deg.npy")
+            os.system("mv " + outpath + " " + args.dataset_dir + "gridsize_" + str(args.gridsize) + "/PSF_" + str(args.gridsize) + f"_{dec:.2f}_deg.npy")
     return 0
 
 if __name__ == "__main__":
