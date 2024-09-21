@@ -69,3 +69,6 @@ os.system("mkdir ../dsa110-nsfrb-frames/")
 os.system("mkdir ../dsa110-nsfrb-fast-visibilities/")
 for s in ["lxd110h03","lxd110h04","lxd110h05","lxd110h06","lxd110h07","lxd110h08","lxd110h10","lxd110h11","lxd110h12","lxd110h14","lxd110h15","lxd110h16","lxd110h18","lxd110h19","lxd110h21","lxd110h22"]:
     os.system("mkdir ../dsa110-nsfrb-fast-visibilities/" + s)
+
+#create ddirectories for images
+os.system("mkdir ../dsa110-nsfrb-images/")

@@ -26,6 +26,7 @@ import nsfrb.searching as sl
 from nsfrb.outputlogging import numpy_to_fits
 from nsfrb import calibration as cal
 vispath = cwd + "-fast-visibilities"
+imgpath = cwd + "-images"
 """
 This script reads raw fast visibility data from a file on disk, applies fringe-stopping from a pre-made table,
 applies calibration, and images. If specified, the resulting image is transmitted to the process server.
@@ -179,8 +180,8 @@ def main(args):
                         dirty_img[:,:,i,j] += uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j])
         #save image to fits, numpy file
         if args.save:
-            np.save(args.path + "/3C286_vis/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".npy",dirty_img)
-            numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.path + "/3C286_vis/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".fits")
+            np.save(args.outpath + "/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".npy",dirty_img)
+            numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".fits")
 
         #send to proc server
         if args.search:
@@ -204,6 +205,7 @@ if __name__=="__main__":
     #parser.add_argument('--fringetable',type=str,help='Fringe stop manually with specified table in the dsa110-nsfrb-fast-visibilities dir',default='')
     parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=4)
     parser.add_argument('--path',type=str,help='Path to raw data files',default=vispath)
+    parser.add_argument('--outpath',type=str,help='Output path for images',default=imgpath)
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
     parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')
