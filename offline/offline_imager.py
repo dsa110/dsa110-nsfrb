@@ -1,4 +1,5 @@
 import argparse
+import csv
 from matplotlib import pyplot as plt
 from nsfrb.simulating import compute_uvw,get_core_coordinates,get_all_coordinates
 from inject import injecting
@@ -27,6 +28,7 @@ from nsfrb.outputlogging import numpy_to_fits
 from nsfrb import calibration as cal
 vispath = cwd + "-fast-visibilities"
 imgpath = cwd + "-images"
+inject_file = cwd + "-injections/injections.csv"
 """
 This script reads raw fast visibility data from a file on disk, applies fringe-stopping from a pre-made table,
 applies calibration, and images. If specified, the resulting image is transmitted to the process server.
@@ -143,19 +145,29 @@ def main(args):
                         print(phaseterms)
                         dat[i,:,j,k] *= phaseterms
     
-        #image
-        #dat[:,:,:,:] = 0
+        #creating injection
         if args.inject and (gulp == inject_gulp):
             offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp)
             print(offsetRA,offsetDEC,SNR,width,DM,maxshift)
-            dat[:,:,:,:] = 0
-            DM = 0
-            SNR = 10000
-            width = 2
-            offsetRA = offsetDEC = 0
-            inject_img = injecting.generate_inject_image(HA=HA_axis[int(len(HA_axis)//2 + offsetRA)],DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=True,noiseless=False)
+            #dat[:,:,:,:] = 0
+            #DM = 0
+            #SNR = 10000
+            #width = 2
+            #offsetRA = offsetDEC = 0
+            inject_img = injecting.generate_inject_image(HA=HA_axis[int(len(HA_axis)//2 + offsetRA)],DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=True)
+
+
+            #report injection in log file
+            with open(inject_file,"a") as csvfile:
+                wr = csv.writer(csvfile,delimiter=',')
+                wr.writerow([time_start_isot,DM,width,SNR])
+            csvfile.close()
+
+
         else:
             inject_img = np.zeros((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],num_chans))
+        
+        #imaging
         dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],num_chans))
         for i in range(dat.shape[0]):
             for j in range(num_chans):
@@ -210,6 +222,7 @@ if __name__=="__main__":
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
     parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')
     parser.add_argument('--inject',action='store_true',default=False,help='Inject a burst into the gridded visibilities')
+    parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     args = parser.parse_args()
     main(args)
 
