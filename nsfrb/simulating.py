@@ -13,7 +13,7 @@ from nsfrb import config
 from scipy.stats import norm
 
 
-def get_all_coordinates(flagged_antennas=[]):
+def get_all_coordinates(flagged_antennas=[],return_names=False):
     """
     COPY OF get_core_coordinates without cutting out outriggers
 
@@ -46,10 +46,10 @@ def get_all_coordinates(flagged_antennas=[]):
     #x_min, x_max = -2.41e6, -2.4092e6
     #y_min, y_max = -4.47830e6, -4.47775e6
     #core_idxs = np.arange(len(x_core),dtype=int)[(x_core > x_min) & (x_core < x_max) & (y_core > y_min) & (y_core < y_max)]
-    return x_core, y_core, z_core#, core_idxs
+    if return_names: return x_core,y_core,z_core,list(df.index[core_mask])
+    else: return x_core, y_core, z_core
 
-
-def get_core_coordinates(flagged_antennas=[]):
+def get_core_coordinates(flagged_antennas=[],return_names=False):
     """
     Extracts core antenna coordinates from a dataframe.
 
@@ -80,7 +80,10 @@ def get_core_coordinates(flagged_antennas=[]):
     y_core = y_m[core_mask]
     z_core = z_m[core_mask]
 
-    return x_core, y_core, z_core
+    if return_names: return x_core,y_core,z_core,list(df.index[core_mask])
+    else: return x_core, y_core, z_core
+
+
 
 def compute_uvw(x_m, y_m, z_m, HA, Dec):
 

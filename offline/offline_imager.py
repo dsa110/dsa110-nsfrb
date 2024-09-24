@@ -9,6 +9,10 @@ import numpy as np
 from astropy.time import Time
 import astropy.units as u
 import sys
+from dsamfs import utils as pu
+from dsautils import cnf
+from collections import OrderedDict
+my_cnf = cnf.Conf(use_etcd=True)
 
 f = open("../metadata.txt","r")
 cwd = f.read()[:-1]
@@ -124,13 +128,34 @@ def main(args):
         if verbose: print("Coordinates (deg):",RA,Dec)
         if verbose: print("Hour angle (deg):",HA)
 
-        #get UVW coordinates
-        x_m,y_m,z_m = get_all_coordinates(flagged_antennas) #meters
-        U,V,W = compute_uvw(x_m,y_m,z_m,HA,Dec) #meters
-        if verbose: print(x_m.shape,y_m.shape,z_m.shape)
-        if verbose: print(U.shape,V.shape,W.shape)
+        #get antenna positions coordinates
+        #x_m,y_m,z_m,antenna_names = get_all_coordinates(flagged_antennas,return_names=True) #meters
+        
+        #re-order based on antenna order from etcd
+        my_cnf = cnf.Conf(use_etcd=True)
+        corr_cnf = my_cnf.get('corr')
+        antenna_order = list(OrderedDict(sorted(corr_cnf['antenna_order'].items())).values())
+        mfs_cnf = my_cnf.get('fringe')
+        refmjd = mfs_cnf['refmjd']
+
+        #missing antenna 10...for now add it manually
+        antenna_order.insert(80,10)
+        
+        #antenna_order_idxs = [antenna_names.index(antenna_order[i]) for i in range(len(antenna_names))]
+        #x_m,y_m,z_m = x_m[antenna_order_idxs],y_m[antenna_order_idxs],z_m[antenna_order_idxs]
+
+        #get UVWs
+        #U,V,W = compute_uvw(x_m,y_m,z_m,HA,Dec) #meters
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, Dec*np.pi/180, refmjd, casa_order=False,autocorrs=False)
+        U = UVW[0,:,0]
+        V = UVW[0,:,1]
+        W = UVW[0,:,2]
+        if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
+        if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
+        if verbose: print(UVW)
         #if verbose: print("core idxs",len(core_idxs),core_idxs)
    
+        """
         #fringe stopping
         if args.fringestop:
             ra_ax,dec_ax = uv_to_pix(mjd,dat.shape[0],Lat=37.23,Lon=-118.2851)
@@ -145,6 +170,11 @@ def main(args):
                         print(phaseterms)
                         dat[i,:,j,k] *= phaseterms
     
+        """
+        #calibrating
+        #*** TO DO: INSERT NIKITA'S CALIBRATION CODE HERE***#
+
+
         #creating injection
         if args.inject and (gulp == inject_gulp):
             offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp)
@@ -192,8 +222,8 @@ def main(args):
                         dirty_img[:,:,i,j] += uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j])
         #save image to fits, numpy file
         if args.save:
-            np.save(args.outpath + "/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".npy",dirty_img)
-            numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + str("fringestopped" if args.fringestop else "") + ".fits")
+            np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
+            numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
 
         #send to proc server
         if args.search:
@@ -213,7 +243,7 @@ if __name__=="__main__":
     parser.add_argument('timestamp',help='Timestamp in ISOT format (e.g. 2024-06-12T21:35:49)')
     parser.add_argument('--num_gulps', type=int, help='Number of gulps, default -1 for all ',default=-1)
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
-    parser.add_argument('--fringestop', action='store_true', default=False, help='Fringe stop manually')
+    #parser.add_argument('--fringestop', action='store_true', default=False, help='Fringe stop manually')
     #parser.add_argument('--fringetable',type=str,help='Fringe stop manually with specified table in the dsa110-nsfrb-fast-visibilities dir',default='')
     parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=4)
     parser.add_argument('--path',type=str,help='Path to raw data files',default=vispath)
