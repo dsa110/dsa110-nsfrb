@@ -85,6 +85,10 @@ def main(args):
     if args.inject:
         inject_gulp = np.random.choice(np.arange(num_gulps,dtype=int))
 
+    #parameters from etcd
+    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+
+
     for gulp in range(num_gulps):
         #dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
         
@@ -130,7 +134,7 @@ def main(args):
 
         #get antenna positions coordinates
         #x_m,y_m,z_m,antenna_names = get_all_coordinates(flagged_antennas,return_names=True) #meters
-        
+        """
         #re-order based on antenna order from etcd
         my_cnf = cnf.Conf(use_etcd=True)
         corr_cnf = my_cnf.get('corr')
@@ -138,15 +142,16 @@ def main(args):
         mfs_cnf = my_cnf.get('fringe')
         refmjd = mfs_cnf['refmjd']
 
-        #missing antenna 10...for now add it manually
-        antenna_order.insert(80,10)
-        
-        #antenna_order_idxs = [antenna_names.index(antenna_order[i]) for i in range(len(antenna_names))]
-        #x_m,y_m,z_m = x_m[antenna_order_idxs],y_m[antenna_order_idxs],z_m[antenna_order_idxs]
 
         #get UVWs
         #U,V,W = compute_uvw(x_m,y_m,z_m,HA,Dec) #meters
-        bname, blen, UVW = pu.baseline_uvw(antenna_order, Dec*np.pi/180, refmjd, casa_order=False,autocorrs=False)
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, Dec*np.pi/180, refmjd, casa_order=False,autocorrs=True) #include autocorrelations
+        """
+        #get UVW from etcd
+        #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        pt_dec = Dec*np.pi/180.
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+
         U = UVW[0,:,0]
         V = UVW[0,:,1]
         W = UVW[0,:,2]
