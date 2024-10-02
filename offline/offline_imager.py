@@ -183,13 +183,20 @@ def main(args):
         #creating injection
         if args.inject and (gulp == inject_gulp):
             offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp)
+
+            if args.snr_inject > 0:
+                SNR = args.snr_inject
             print(offsetRA,offsetDEC,SNR,width,DM,maxshift)
-            #dat[:,:,:,:] = 0
+            if args.solo_inject:
+                noiseless=False
+                dat[:,:,:,:] = 0
+            else:
+                noiseless=True
             #DM = 0
             #SNR = 10000
             #width = 2
             #offsetRA = offsetDEC = 0
-            inject_img = injecting.generate_inject_image(HA=HA_axis[int(len(HA_axis)//2 + offsetRA)],DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=True)
+            inject_img = injecting.generate_inject_image(HA=HA_axis[int(len(HA_axis)//2 + offsetRA)],DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless)
 
 
             #report injection in log file
@@ -256,7 +263,9 @@ if __name__=="__main__":
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
     parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')
-    parser.add_argument('--inject',action='store_true',default=False,help='Inject a burst into the gridded visibilities')
+    parser.add_argument('--inject',action='store_true',default=False,help='Inject a burst into the gridded visibilities. Unless the --solo_inject flag is set, a noiseless injection will be integrated into the data.')
+    parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
+    parser.add_argument('--snr_inject',type=float,help='SNR of injection; default 0 which chooses a random SNR',default=0)
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     args = parser.parse_args()
     main(args)

@@ -165,10 +165,10 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1): #note, you shoul
 
     tdelays = -(((DM_trials[:,np.newaxis].repeat(nchans,axis=1))*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))).transpose())
 
-    tdelaysall = np.zeros((nDM,nchans*2),dtype=np.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
-    tdelaysall[:,1::2] = (np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
-    tdelaysall[:,0::2] = (np.array(np.floor(tdelays/tsamp),dtype=np.int8))
-    tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[:,0::2],1 - (tdelays/tsamp - tdelaysall[:,0::2])],axis=1)
+    tdelaysall = np.zeros((nchans*2,nDM),dtype=np.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
+    tdelaysall[1::2,:] = (np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
+    tdelaysall[0::2,:] = (np.array(np.floor(tdelays/tsamp),dtype=np.int8))
+    tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[0::2,:],1 - (tdelays/tsamp - tdelaysall[0::2,:])],axis=0).transpose()
 
     #rearrange shift idxs and expand axes
 
@@ -176,13 +176,15 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1): #note, you shoul
     tDM_max = (4.15)*np.max(DM_trials)*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
     maxshift = int(np.ceil(tDM_max/tsamp))
     idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
-    corr_shifts_all_append = np.array(np.clip(((tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+    #print(idxs_all.shape,tdelays_frac.shape)
+    #print(tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0).shape, idxs_all.shape)
+    corr_shifts_all_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
     tdelays_frac_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
 
     #--case 2: not appending previous frame
     maxshift = 0#int(np.ceil(tDM_max/sl.tsamp))
     idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
-    corr_shifts_all_no_append = np.array(np.clip(((tdelaysall[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+    corr_shifts_all_no_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
     tdelays_frac_no_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
     return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append
 

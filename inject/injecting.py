@@ -36,6 +36,17 @@ sys.path.append(cwd + "/")
 from nsfrb.outputlogging import printlog
 from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.config import *
+from nsfrb.searching import gen_dm_shifts,DM_trials
+
+"""
+minDM = 171
+maxDM = 4000
+DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
+nDMtrials = len(DM_trials)
+"""
+freq_axis = np.linspace(fmin,fmax,nchans)
+corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps)
+
 error_file = cwd + "-logfiles/inject_error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
 inject_file = cwd + "-injections/injections.csv"
@@ -97,21 +108,30 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
 
     #if DM is given, disperse before adding noise
     if DM != 0:
-        sourceimg_dm = np.zeros(sourceimg.shape)
-        freq_axis = np.linspace(fmin,fmax,nchans)
-        for i in range(gridsize):
-            for j in range(gridsize):
-                tdelays = DM*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
-                tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
-                tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
-                tdelays_frac = tdelays/tsamp - tdelays_idx_low
+        if False:#DM in DM_trials:
+            #dedispersion
+            #nsamps = sourceimg.shape[-2]
+            DM_idx = list(DM_trials).index(DM)
+            nDM = tdelays_frac.shape[3]
 
-                for k in range(nchans):
-                    #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
-                    arrlow =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
-                    arrhi =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+            sourceimg_dm = ((((np.take_along_axis(sourceimg[:,:,:,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_no_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]).reshape(tuple(list(sourcimg.shape) + [2])).sum(4)
+        else:
 
-                    sourceimg_dm[i,j,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
+            sourceimg_dm = np.zeros(sourceimg.shape)
+            freq_axis = np.linspace(fmin,fmax,nchans)
+            for i in range(gridsize):
+                for j in range(gridsize):
+                    tdelays = DM*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
+                    tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
+                    tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
+                    tdelays_frac = tdelays/tsamp - tdelays_idx_low
+
+                    for k in range(nchans):
+                        #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
+                        arrlow =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+                        arrhi =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
+
+                        sourceimg_dm[i,j,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
 
  
 
