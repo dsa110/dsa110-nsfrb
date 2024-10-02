@@ -157,7 +157,7 @@ def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
     #print('DM trials:',ndms)
     return dms
 
-def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1): #note, you shouldn't need to set gridsize
+def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False): #note, you shouldn't need to set gridsize
     nDM = len(DM_trials)
     nchans = len(freq_axis)
     fmin =np.nanmin(freq_axis)
@@ -186,6 +186,9 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1): #note, you shoul
     idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
     corr_shifts_all_no_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
     tdelays_frac_no_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
+    if outputwraps:
+        return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1)>=maxshift
+    
     return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append
 
 

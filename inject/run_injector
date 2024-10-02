@@ -4,9 +4,11 @@
 #This script runs a 'solo injector', i.e. it doesn't inject into data but creates a new visibility set. Specify the number of 
 #seconds between each injection. Output will go to the injection log file
 
+>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt"
 while true
 do
-	>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt"
-	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 $(date --iso-8601='seconds') --verbose --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
+	date +%FT%I:%M:%S >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
+	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 $(date +%FT%I:%M:%S) --verbose --snr_inject 20 --dm_inject 0 --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
+	break
 	sleep $1
 done
