@@ -27,7 +27,7 @@ final_cand_dir = cand_dir + "final_cands/"
 
 #initialize Web API client
 client = WebClient(os.environ["SLACK_TOKEN_DSA"])
-candidates_channel_ID = "C01NUV2M0HM"
+candidates_channel_ID = "C07PVF82FQX"
 def send_candidate_slack(filename,filedir=final_cand_dir,error_file=error_file):
     #upload file to bot
     try:
