@@ -176,18 +176,19 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False)
     tDM_max = (4.15)*np.max(DM_trials)*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
     maxshift = int(np.ceil(tDM_max/tsamp))
     idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
-    #print(idxs_all.shape,tdelays_frac.shape)
-    #print(tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0).shape, idxs_all.shape)
-    corr_shifts_all_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+    corr_shifts_all_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,-nsamps:,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
     tdelays_frac_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
+    if outputwraps:
+        wraps_append = ((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))[np.newaxis,np.newaxis,-nsamps:,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1)<0#>=maxshift+nsamps
 
     #--case 2: not appending previous frame
     maxshift = 0#int(np.ceil(tDM_max/sl.tsamp))
     idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
-    corr_shifts_all_no_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
+    corr_shifts_all_no_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,-nsamps:,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
     tdelays_frac_no_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
     if outputwraps:
-        return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))[np.newaxis,np.newaxis,:nsamps,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1)>=maxshift
+        wraps_no_append = ((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))[np.newaxis,np.newaxis,-nsamps:,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1)<0
+        return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append
     
     return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append
 

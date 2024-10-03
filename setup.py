@@ -29,6 +29,8 @@ for i in range(len(logfiles)):
     os.system("touch ../dsa110-nsfrb-logfiles/" + l)
     os.system("> ../dsa110-nsfrb-logfiles/" + l)
 
+
+
 #create file to store trials for candcutter
 os.system("touch ../dsa110-nsfrb-candidates/DMtrials.npy")
 os.system("touch ../dsa110-nsfrb-candidates/widthtrials.npy")
@@ -50,15 +52,16 @@ os.system("mkdir ../dsa110-nsfrb-injections/")
 os.system("mkdir ../dsa110-nsfrb-PSF/")
 
 import csv
+"""
 with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')
     wr.writerow(['ISOT','DM','WIDTH','SNR'])
 csvfile.close()    
 with open("../dsa110-nsfrb-injections/recoveries.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')
-    wr.writerow(['ISOT','DM','WIDTH','SNR'])
+    wr.writerow(['ISOT','DM','WIDTH','SNR','PREDICT','PROB'])
 csvfile.close()
-
+"""
 
 
 

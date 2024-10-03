@@ -118,11 +118,20 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     centroid_snrs = []
     for k in classnames:
         if k != -1:
+            centroid_ras.append(np.average(raidxs[classes==k],weights=snridxs[classes==k]))
+            centroid_decs.append(np.average(decidxs[classes==k],weights=snridxs[classes==k]))
+            centroid_dms.append(np.average(dmidxs[classes==k],weights=snridxs[classes==k]))
+            centroid_widths.append(np.average(widthidxs[classes==k],weights=snridxs[classes==k]))
+            centroid_snrs.append(np.average(snridxs[classes==k],weights=snridxs[classes==k]))
+
+            """
             centroid_ras.append((np.nansum((snridxs*raidxs)[classes==k])/np.nansum(snridxs[classes==k])))
             centroid_decs.append((np.nansum((snridxs*decidxs)[classes==k])/np.nansum(snridxs[classes==k])))
             centroid_dms.append((np.nansum((snridxs*dmidxs)[classes==k])/np.nansum(snridxs[classes==k])))
             centroid_widths.append((np.nansum((snridxs*widthidxs)[classes==k])/np.nansum(snridxs[classes==k])))
             centroid_snrs.append(np.nansum((snridxs*snridxs)[classes==k])/np.nansum(snridxs[classes==k]))
+            """
+            
             #csvwriter.writerow([centroid_ras[-1],centroid_decs[-1],centroid_widths[-1],centroid_dms[-1],centroid_snrs[-1]])
     #fcsv.close()
     centroid_ras = np.array(centroid_ras)
@@ -309,6 +318,15 @@ def candcutter_task(fname,args):
     cand_mjd = Time(cand_isot,format='isot').mjd
     #read cand file
     raw_cand_names,finalcands = read_candfile(fname)
+
+    #confirm number of cands less than max
+    if len(finalcands) >args['maxcands']: 
+        printlog(cand_isot + "has too many candidates to process (" + str(len(finalcands)) + ">" + str(args['maxcands']) + "), please adjust S/N threshold",output_file=cutterfile)
+        return
+    
+        
+
+
     """
     finalcands = []
     raw_cand_names = []
@@ -345,6 +363,16 @@ def candcutter_task(fname,args):
         for fcand in finalcands:
             if not np.isinf(fcand[-1]): cands_noninf.append(fcand)
 
+        #take out low S/N percentile if specified
+        if args['percentile'] > 0:
+            candsnrs = np.array([fcand[-1] for fcand in finalcands])
+            snrp = np.nanpercentile(candsnrs,args['percentile'])
+
+            cands_perc = []
+            for fcand in cands_noninf:
+                if fcand[-1] > snrp: cands_perc.append(fcand)
+            cands_noninf = cands_perc
+            printlog(str(len(cands_noninf)) + " candidates remaining after " + str(args['percentile']) + "th percentile cutoff",output_file=cutterfile)
 
         #clustering with hdbscan
         classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],dmt=DMtrials,wt=widthtrials,plot=True,show=False,SNRthresh=SNRthresh)
@@ -384,7 +412,7 @@ def candcutter_task(fname,args):
         with open(recover_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             for j in finalidxs:
-                wr.writerow([cand_isot,DMtrials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][4]])
+                wr.writerow([cand_isot,DMtrials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][4],(None if not args['classify'] else predictions[j]),(None if not args['classify'] else probabilities[j])])
         csvfile.close()
 
 

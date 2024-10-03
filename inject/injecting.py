@@ -45,7 +45,7 @@ DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 nDMtrials = len(DM_trials)
 """
 freq_axis = np.linspace(fmin,fmax,nchans)
-corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
+corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
 
 error_file = cwd + "-logfiles/inject_error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
@@ -66,7 +66,7 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
     
     #for proper normalization need to scale snr
     #snr = snr*100*1000*0.75*75/15#40.625#*100/3
-    snr = snr*1000 
+    snr = snr*1000/2 
     
     
     #create a noiseless image
@@ -116,7 +116,7 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
             sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,::-1,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_no_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_no_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
             
             #zero out anywhere that was wrapped
-            sourceimg_dm[wraps[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
+            sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
 
             #now average the low and high shifts 
             sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape) + [2])).sum(4))[:,:,::-1,:]

@@ -38,8 +38,12 @@ NCORR = len(CORRLIST)
 CALTIME = CAL_CONF['caltime_minutes']*u.min
 FILELENGTH = MFS_CONF['filelength_minutes']*u.min
 HDF5DIR = CAL_CONF['hdf5_dir']
-NSFRBHDF5DIR = "/home/ubuntu/msherman_nsfrb/dsa110-nsfrb-fast-visibilities/"
 
+f = open("../metadata.txt","r")
+cwd = f.read()[:-1]
+f.close()
+NSFRBHDF5DIR = cwd +"-fast-visibilities/"
+NSFRBVISFILE = NSFRBHDF5DIR+"vis_files.csv"
 # Logger
 LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
@@ -87,6 +91,11 @@ def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=NSFRBHDF5DIR):
             f"{hdf5dir}/{val['hostname']}/"
         )
         queue.put(rsync_string)
+
+    #also write to file
+    with open(NSFRBVISFILE,"a") as f:
+        f.write(Time.now().isot + "," + f"{hdf5dir}/{val['hostname']}/")
+
 
 def task_handler(task_fn, inqueue, outqueue=None):
     """Handles in and out queues of preprocessing tasks.

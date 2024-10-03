@@ -165,6 +165,8 @@ def main(args):
             #look for candidate files in raw cands dir
             rawfiles = glob.glob(raw_cand_dir + "candidates_*.csv")
             if len(rawfiles) == 0: continue
+            
+            
 
             #for each candidate get the isot and find the corresponding image
             for i in range(len(rawfiles)):
@@ -324,6 +326,8 @@ if __name__=="__main__":
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of threads for thread pool; default=5',default=5)
     parser.add_argument('--archive',action='store_true',help='Archive candidates on dsastorage')
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
+    parser.add_argument('--maxcands',type=int,help='Maximum number of candidates searchable in one iteration. Default is full image, 300x300x5x16=7.2e6',default=int(7.2e6 +1))
+    parser.add_argument('--percentile',type=int,help='Percentile above which to take candidates, e.g. if 90, candidates with s/n in 90th percentile will be clustered. Default 0',default=0)
 
     args = parser.parse_args()
     main(args)

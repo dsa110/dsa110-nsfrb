@@ -3,4 +3,6 @@
 #run this script to start background candidate post-processor
 #> $PWD-logfiles/candcutter_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt 
 #dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 1 --name cand_cutter_WRKR > $PWD/.cand_cutter_WRKR_log.txt 2>&1 &
-python run.py --cutout --cluster --toslack --etcd "$@" 
+
+#python run.py --cutout --cluster --classify --toslack --etcd "$@"  #normal operation
+python run.py --cluster --toslack --classify --etcd --percentile 90 "$@"

@@ -188,7 +188,8 @@ def main(args):
                 SNR = args.snr_inject
             if args.dm_inject != -1 and args.dm_inject >= 0:
                 DM = args.dm_inject
-            DM = sl.DM_trials[-1]
+            if args.width_inject > 0:
+                width = args.width_inject
             print(offsetRA,offsetDEC,SNR,width,DM,maxshift)
             if args.solo_inject:
                 noiseless=False
@@ -270,6 +271,7 @@ if __name__=="__main__":
     parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
     parser.add_argument('--snr_inject',type=float,help='SNR of injection; default 0 which chooses a random SNR',default=0)
     parser.add_argument('--dm_inject',type=float,help='DM of injection; default -1 which chooses a random DM',default=-1)
+    parser.add_argument('--width_inject',type=int,help='Width of injection in samples; default 0 which chooses a random width',default=0)
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     args = parser.parse_args()
     main(args)
