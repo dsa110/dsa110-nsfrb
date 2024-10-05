@@ -520,7 +520,7 @@ def main(args):
     #initialize last_frame 
     if args.initframes:
         printlog("Initializing previous frames...",output_file=processfile)
-        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps,args.nchans)
+        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps-sl.maxshift,args.nchans)
 
     #initialize noise stats
     if args.initnoise:

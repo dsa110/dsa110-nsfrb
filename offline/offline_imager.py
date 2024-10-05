@@ -20,7 +20,7 @@ f.close()
 
 sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,tsamp,pixsize
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize
 from nsfrb.imaging import inverse_uniform_image,uniform_image, uv_to_pix
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
@@ -117,7 +117,7 @@ def main(args):
         print("Gulp size:",dat.shape)
 
         #use MJD to get pointing
-        mjd = Time(args.timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp*1e-3/86400)
+        mjd = Time(args.timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp/86400)
         time_start_isot = Time(mjd,format='mjd').isot
         LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=-118.2851).to(u.hourangle).value
         print("Time:",time_start_isot)
@@ -182,7 +182,7 @@ def main(args):
 
         #creating injection
         if args.inject and (gulp == inject_gulp):
-            offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp)
+            offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp*1000)
 
             if args.snr_inject > 0:
                 SNR = args.snr_inject
@@ -190,7 +190,7 @@ def main(args):
                 DM = args.dm_inject
             if args.width_inject > 0:
                 width = args.width_inject
-            print(offsetRA,offsetDEC,SNR,width,DM,maxshift)
+            print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
             if args.solo_inject:
                 noiseless=False
                 dat[:,:,:,:] = 0

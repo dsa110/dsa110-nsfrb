@@ -71,7 +71,7 @@ def get_noise_dict(gridsize_RA,gridsize_DEC):
         noise_dict = dict()
     return noise_dict
 
-def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file,writeonly=False,readonly=False):
+def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file,writeonly=False,readonly=False,suff=""):
     """
     This function retrieves and updates the running mean standard deviation 
     noise for a given DM and pulse width.
@@ -82,7 +82,8 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         fout = sys.stdout
 
     #find noise pkl file
-    fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) +".pkl"
+    print(suff)
+    fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + str(suff) +".pkl"
     try:
         f = open(fname,"rb")
         noise_dict = pkl.load(f)
@@ -133,6 +134,32 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
     return noise_final 
 
 def init_noise(noise_dir=noise_dir):
-    if len(glob.glob(noise_dir + "/*pkl")) > 0:
-        os.system("rm " + noise_dir + "/*pkl")
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+    #remove non-initialization files
+    noisefiles = glob.glob(noise_dir + "/*pkl")
+    for n in noisefiles:
+        if '_sim' not in n:
+            os.system("rm " + n)
+    
+    #initialize
+    noisefiles = glob.glob(noise_dir + "/*pkl")
+    for n in noisefiles:
+        if '_sim' in n:
+            print("initializing with " + n,file=fout)
+            os.system("cp " + n + " " + n[:n.index("_sim")] + ".pkl")
+
+
+    """
+    if init_file == "":
+        if len(glob.glob(noise_dir + "/*pkl")) > 0:
+            os.system("rm " + noise_dir + "/*pkl")
+    else:
+        #initialize from previous sim
+        os.system("cp " + noise_dir + init_file + 
+    """
+    if output_file != "":
+        fout.close()
     return

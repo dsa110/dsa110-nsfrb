@@ -42,3 +42,27 @@ def numpy_to_fits(img,fname):
     hdu = fits.PrimaryHDU(img)
     hdu.writeto(fname,overwrite=True)
     return
+
+
+# GRAFANA FUNCTIONS
+"""
+/mon/nsfrb/outputs
+
+
+tag? -- number in payload -- e.g. different key per cor node
+
+payload: {'time' -- float
+          'processed' -- bool
+          'detected' -- bool
+          'injected' -- bool
+          'injected_params' -- list
+          'recovered_params' -- list
+          'ncands' -- int}
+
+
+/mon/nsfrb/imagers/1-16
+
+
+-- issue to request key/dashboard
+"""
+

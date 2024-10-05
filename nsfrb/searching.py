@@ -1737,6 +1737,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #get data from previous timeframe
         if append_frame:
             global last_frame
+            print("OLD SHAPE:",image_tesseract_filtered.shape)
 
             truensamps = image_tesseract_filtered.shape[2]
             image_tesseract_filtered_cut = np.concatenate([last_frame[:,RA_cutoff:,:,:],image_tesseract_filtered[:,:-RA_cutoff,:,:]],axis=2)
@@ -1744,7 +1745,8 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             nsamps = image_tesseract_filtered.shape[2]
             corr_shifts_all = corr_shifts_all_append
             tdelays_frac = tdelays_frac_append
-            
+            print("NEW SHAPE:",image_tesseract_filtered_cut.shape)
+            print("MAXSHIFT:",maxshift)
             print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered_cut.shape),file=fout)
         
             #save frame

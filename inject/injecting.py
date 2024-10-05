@@ -166,6 +166,7 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
                                                             axes=(0,1),s=(gridsize,gridsize))
                                                     ,axes=(0,1),s=(gridsize,gridsize))
                                                 ,axes=(0,1))) 
+        print("OFFLINE CASE MAXSHIFT:",maxshift,file=fout)
         f = open(frame_dir + "last_frame.npy","wb")
         np.save(f,noise_frame[:,:,-maxshift:,:])
         f.close()
