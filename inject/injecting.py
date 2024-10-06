@@ -55,7 +55,7 @@ psf_dir = cwd + "-PSF/"
 frame_dir = cwd + "-frames/"
 noise_dir = cwd + "-noise/"
 
-def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file,maxshift=0,offline=False,noiseless=False):
+def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True):
     """
     Uses functions from simulations_and_classifications to make injections
     """
@@ -66,24 +66,27 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
     
     #for proper normalization need to scale snr
     #snr = snr*100*1000*0.75*75/15#40.625#*100/3
-    snr = snr*1000/2 
+    snr = snr#*1000/2 
     
     
     #create a noiseless image
-    PSFimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nsamps,dtype=np.float64,HA=HA*np.pi/180)
+    PSFimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nsamps,dtype=np.float64,HA=HA*np.pi/180)
     PSFimg -= np.nanmin(PSFimg)
+    print("PSF MIN: " + str(np.nanmin(PSFimg)),file=fout)
     print("PSF shape:" + str(PSFimg.shape),file=fout)
     sourceimg=copy.deepcopy(PSFimg)
 
     #shift based on offsets
     if offsetRA > 0:
-        sourceimg = np.pad(sourceimg,((0,0),(offsetRA,0),(0,0),(0,0)))[:,:gridsize,:,:]
+        sourceimg = np.pad(sourceimg,((0,0),(offsetRA,0),(0,0),(0,0)))[:,:gridsize*2,:,:]
     elif offsetRA < 0:
-        sourceimg = np.pad(sourceimg,((0,0),(0,-offsetRA),(0,0),(0,0)))[:,-gridsize:,:,:]
+        sourceimg = np.pad(sourceimg,((0,0),(0,-offsetRA),(0,0),(0,0)))[:,-gridsize*2:,:,:]
     if offsetDEC > 0:
-        sourceimg = np.pad(sourceimg,((offsetDEC,0),(0,0),(0,0),(0,0)))[:gridsize,:,:,:]
+        sourceimg = np.pad(sourceimg,((offsetDEC,0),(0,0),(0,0),(0,0)))[:gridsize*2,:,:,:]
     elif offsetDEC < 0:
-        sourceimg = np.pad(sourceimg,((0,-offsetDEC),(0,0),(0,0),(0,0)))[-gridsize:,:,:,:]
+        sourceimg = np.pad(sourceimg,((0,-offsetDEC),(0,0),(0,0),(0,0)))[-gridsize*2:,:,:,:]
+    sourceimg = sourceimg[gridsize//2:gridsize + (gridsize//2),gridsize//2:gridsize + (gridsize//2),:,:]
+    PSFimg = PSFimg[gridsize//2:gridsize + (gridsize//2),gridsize//2:gridsize + (gridsize//2),:,:]
     print("IMG shape:"+str(sourceimg.shape),file=fout)
     
     

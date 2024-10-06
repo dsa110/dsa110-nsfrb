@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 from simulations_and_classifications.generate_source_images import generate_src_images
 import os
-from nsfrb.config import gridsize,pixsize
+from nsfrb.config import gridsize,pixsize,IMAGE_SIZE
 """
 Generate PSF images for declinations spaced by the instantaneous FOV (3 degrees)
 """
@@ -18,9 +18,9 @@ def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float
     tonumpy = True
     Dec_low = Dec_high = dec
     if nsamps == 1:
-        return np.array(generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy),dtype=dtype)
+        return np.array(generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2),dtype=dtype)
     else:
-        return np.array(generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy)[:,:,np.newaxis,:].repeat(nsamps,axis=2),dtype=dtype)
+        return np.array(generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy, inflate=zoom_pix>IMAGE_SIZE//2)[:,:,np.newaxis,:].repeat(nsamps,axis=2),dtype=dtype)
 
 #average FOV
 FOV = gridsize*(36/3600) #~3 degrees

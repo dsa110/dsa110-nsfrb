@@ -80,29 +80,11 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
 
     #matched filter
     truensamps = boxcar.shape[3]
-    gridsize_DEC,gridsize_RA = image_tesseract.shape[:2]
+    
+    """gridsize_DEC,gridsize_RA = image_tesseract.shape[:2]
     padby_DEC = (gridsize_DEC - PSFimg.shape[0])//2
     padby_RA = (gridsize_RA - PSFimg.shape[1])//2
-    """
-    gridsize = image_tesseract.shape[0]
-    padby = (gridsize - PSFimg.shape[0])//2
-    """
-    #image_tesseract_point = jnp.concatenate([image_tesseract[:,:,:-truensamps,:],jnp.pad(jnp.real(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract[:,:,-truensamps:,:],axes=(0,1),s=image_tesseract.shape[:2])*jnp.fft.fft2(PSFimg,axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1),s=image_tesseract.shape[:2])),((0,padby),(0,padby),(0,0),(0,0)))[-gridsize:,-gridsize:,:,:]],axis=2)
-    #image_tesseract_point = jnp.concatenate([image_tesseract[:,:,:-truensamps,:],jnp.real(jnp.fft.fftshift(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract[:,:,-truensamps:,:],axes=(0,1),s=image_tesseract.shape[:2])*jnp.fft.fft2(jnp.pad(PSFimg,((padby,padby),(padby,padby),(0,0),(0,0))),axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1),s=image_tesseract.shape[:2]),axes=(0,1)))],axis=2)
-
-
-    #since we combined matched filtering, etc, we need to filter the full combined image
-    """
-    image_tesseract_point = jnp.real(jnp.fft.fftshift(
-                                                jnp.fft.ifft2(
-                                                    jnp.fft.fft2(jnp.fft.ifftshift(image_tesseract,axes=(0,1)),
-                                                        axes=(0,1),s=(gridsize,gridsize))*jnp.fft.fft2(jnp.pad(
-                                                            (jnp.fft.ifftshift(PSFimg.repeat(image_tesseract.shape[2],axis=2),axes=(0,1))),
-                                                            ((padby,padby),(padby,padby),(0,0),(0,0))),
-                                                            axes=(0,1),s=(gridsize,gridsize))
-                                                    ,axes=(0,1),s=(gridsize,gridsize))
-                                                ,axes=(0,1)))
-    """
+    image_tesseract_point = image_tesseract
     image_tesseract_point = jnp.real(jnp.fft.fftshift(
                                                 jnp.fft.ifft2(
                                                     jnp.fft.fft2(jnp.fft.ifftshift(image_tesseract,axes=(0,1)),
@@ -113,28 +95,37 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
                                                     ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
                                                 ,axes=(0,1)))
     """
-    image_tesseract_point = jnp.concatenate([image_tesseract[:,:,:-truensamps,:],
-                                            jnp.real(jnp.fft.fftshift(
-                                                jnp.fft.ifft2(
-                                                    jnp.fft.fft2(jnp.fft.ifftshift(image_tesseract[:,:,-truensamps:,:],axes=(0,1)),
-                                                        axes=(0,1),s=(gridsize,gridsize))*jnp.fft.fft2(jnp.pad((jnp.fft.ifftshift(PSFimg,axes=(0,1))),
-                                                            ((padby,padby),(padby,padby),(0,0),(0,0))),
-                                                            axes=(0,1),s=(gridsize,gridsize))
-                                                    ,axes=(0,1),s=(gridsize,gridsize))
-                                                ,axes=(0,1)))
-                                            ],axis=2)
-    """
-    
-    #image_tesseract_point.at[:,:,-PSFimg.shape[2]:,:].set(jnp.real(jnp.fft.ifftshift(jnp.fft.ifft2(jnp.fft.fft2(image_tesseract_point[:,:,-PSFimg.shape[2]:,:],axes=(0,1),s=image_tesseract_point.shape[:2])*jnp.fft.fft2(PSFimg,axes=(0,1),s=image_tesseract_point.shape[:2]),axes=(0,1),s=image_tesseract_point.shape[:2]),axes=(0,1))))
+    gridsize_DEC,gridsize_RA = image_tesseract.shape[:2]
+    gridsize_DEC*=2
+    gridsize_RA*=2
+    padby_DEC = (gridsize_DEC - PSFimg.shape[0])//2
+    padby_RA = (gridsize_RA - PSFimg.shape[1])//2
+    padby_DEC_img = (gridsize_DEC - PSFimg.shape[0])//2
+    padby_RA_img = (gridsize_RA - PSFimg.shape[1])//2
+
+
+    #image_tesseract_point 
+    image_tesseract_point = jnp.real(
+                                jnp.fft.fftshift(jnp.fft.ifft2(
+                                    jnp.fft.fft2(jnp.pad(image_tesseract,
+                                            ((padby_DEC_img,padby_DEC_img),(padby_RA_img,padby_RA_img),(0,0),(0,0))),
+                                        axes=(0,1),s=(gridsize_DEC,gridsize_RA))*jnp.fft.fft2(jnp.pad(
+                                            (PSFimg.repeat(image_tesseract.shape[2],axis=2)),
+                                            ((padby_DEC,padby_DEC),(padby_RA,padby_RA),(0,0),(0,0))),
+                                            axes=(0,1),s=(gridsize_DEC,gridsize_RA))
+                                    ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
+                                ,axes=(0,1)))[gridsize_DEC//4:(gridsize_DEC//4) + gridsize_DEC//2,gridsize_RA//4:(gridsize_RA//4) + gridsize_RA//2,:,:]
+    gridsize_DEC,gridsize_RA = image_tesseract_point.shape[:2]
     
     #del image_tesseract
     del PSFimg
+    #del image_tesseract
 
     #dedispersion
     nsamps = image_tesseract_point.shape[-2]
     nDM = tdelays_frac.shape[3]
     
-    image_tesseract_filtered_dm = (((jnp.take_along_axis(image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4),indices=corr_shifts_all,axis=2))*tdelays_frac).sum(4))[:,:,-truensamps:,:]
+    image_tesseract_filtered_dm = ((((jnp.take_along_axis(image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4),indices=corr_shifts_all,axis=2))*tdelays_frac).sum(4))[:,:,-truensamps:,:])
 
     del tdelays_frac
     del corr_shifts_all
@@ -149,7 +140,7 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
                                                         n=image_tesseract_filtered_dm.shape[2],
                                                         axis=3,norm='backward'),axes=3)).transpose((0,1,2,4,3)),
                                             nan=0,posinf=0,neginf=0)##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
-
+    
     del image_tesseract_filtered_dm
     #del boxcar
 
@@ -177,7 +168,7 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
                                         ))))/(past_noise_N+1))
     """
     #compute SNR
-    image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set( ((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise,(1,2)))))[:,:,:,:,0].transpose(1,2,0,3)
+    image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(jnp.sqrt(jnp.abs( ((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise[:,0:1].repeat(nDM,1),(1,2)))))))[:,:,:,:,0].transpose(1,2,0,3)
 
 
     del mask

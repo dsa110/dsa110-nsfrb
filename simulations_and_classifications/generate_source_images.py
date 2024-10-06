@@ -12,7 +12,7 @@ from nsfrb.imaging import uniform_image
 from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
 
 
-def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy):
+def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -34,6 +34,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
     - spectral_index_high (float): Upper bound for spectral index.
     - zoom_pix (int): Number of pixels to zoom in.
     - tonumpy (bool): If set, save to .npy file
+    - inflate (bool): If set and zoom_pix > IMAGE_SIZE//2, generates image of size 2*zoom_pix x 2*zoom_pix
 
     Returns:
     - None
@@ -103,8 +104,10 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
 
             # Apply the phase shift to chunk_V
             #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
-
-            dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
+            if inflate:
+                dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2)
+            else:
+                dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
             dirty_images.append(dirty_img)
 
         # Creating necessary directories
@@ -122,7 +125,8 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
             filepath = os.path.join(observation_dir, filename)
             im_zoom = np.array(np.fliplr(np.abs(dirty_img.T)))
-            im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix), (IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix)]
+            if not inflate:
+                im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix), (IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix)]
             plt.imsave(filepath, im_zoom, cmap='gray')
             if tonumpy:
                 dirty_img_all[:,:,i] = im_zoom
@@ -161,6 +165,7 @@ if __name__ == "__main__":
     parser.add_argument('--spectral_index_high', type=float, default=2, help='Upper bound for spectral index')
     parser.add_argument('--zoom_pix', type=int, default=25, help='Number of pixels to zoom in')
     parser.add_argument('--tonumpy',action='store_true',help='Save image to a numpy file')
+    parser.add_argument('--inflate',action='store_true',help='Inflates image to size zoom_pix x zoom_pix')
     args = parser.parse_args()
 
-    generate_src_images(args.dataset_dir, args.num_observations, args.noise_std_low, args.noise_std_high, args.exclude_antenna_percentage, args.HA_low, args.HA_high, args.Dec_low, args.Dec_high, args.spectral_index_low, args.spectral_index_high, args.zoom_pix,args.tonumpy)
+    generate_src_images(args.dataset_dir, args.num_observations, args.noise_std_low, args.noise_std_high, args.exclude_antenna_percentage, args.HA_low, args.HA_high, args.Dec_low, args.Dec_high, args.spectral_index_low, args.spectral_index_high, args.zoom_pix,args.tonumpy,args.inflate)
