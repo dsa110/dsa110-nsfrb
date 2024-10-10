@@ -42,7 +42,8 @@ HDF5DIR = CAL_CONF['hdf5_dir']
 f = open("../metadata.txt","r")
 cwd = f.read()[:-1]
 f.close()
-NSFRBHDF5DIR = cwd +"-fast-visibilities/"
+import os
+NSFRBHDF5DIR = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/" #cwd +"-fast-visibilities/"
 NSFRBVISFILE = NSFRBHDF5DIR+"vis_files.csv"
 # Logger
 LOGGER = dsl.DsaSyslogger()

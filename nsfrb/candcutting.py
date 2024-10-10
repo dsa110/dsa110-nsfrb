@@ -1,4 +1,5 @@
 import numpy as np
+from nsfrb.outputlogging import numpy_to_fits
 import os
 import jax
 import socket
@@ -33,7 +34,8 @@ import numpy as np
 import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
-from nsfrb.config import tsamp,fmin,fmax,nchans
+from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps
+from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
 from nsfrb.imaging import uv_to_pix
@@ -53,6 +55,7 @@ searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubunt
 output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
 processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
 cutterfile = cwd + "-logfiles/candcutter_log.txt"
+cuttertaskfile = cwd + "-logfiles/candcuttertask_log.txt"
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
 cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 raw_cand_dir = cwd + "-candidates/raw_cands/"
@@ -63,8 +66,12 @@ inject_file = cwd + "-injections/injections.csv"
 recover_file = cwd + "-injections/recoveries.csv"
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 
+freq_axis = np.linspace(fmin,fmax,nchans)
+corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
+full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
+
 #hdbscan clustering function; clusters in DM, width, RA, DEC space
-def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cutterfile):
+def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile):
     f = open(output_file,"a")
     print(str(len(cands)) + " candidates",file=f)
 
@@ -188,7 +195,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
 
 #code to cutout subimages
 freq_axis = np.linspace(fmin,fmax,nchans)
-def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=cutterfile,output_dir=cand_dir,corr_shift=None,tdelay_frac=None,dm=None,tsamp=tsamp,freq_axis=freq_axis):
+def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=cutterfile,output_dir=cand_dir,corr_shifts=corr_shifts_all_no_append,tdelays_frac=tdelays_frac_no_append,dm=None,dmidx=None,tsamp=tsamp,freq_axis=freq_axis):
     if output_file != "":
         fout = open(output_file,"a")
     else:
@@ -203,8 +210,8 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
 
 
     #dedisperse if given a dm
-    if (corr_shift is not None) and (tdelay_frac is not None): 
-        image_tesseract_dm = quick_dedisp(image_tesseract,corr_shift,tdelay_frac)
+    if dmidx is not None: #(corr_shift is not None) and (tdelay_frac is not None) and (dmidx is not None): 
+        image_tesseract_dm = quick_dedisp(image_tesseract,corr_shifts,tdelays_frac,DM_idx=dmidx)
     elif dm is not None:
         fname = fname + "_dedisp" + str(dm) + ".npy"
         image_tesseract_dm = copy.deepcopy(image_tesseract)
@@ -244,7 +251,7 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
     print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)
 
-    image_cutout = image_tesseract_dm[minraidx:maxraidx,mindecidx:maxdecidx,:,:]
+    image_cutout = image_tesseract_dm[mindecidx:maxdecidx,minraidx:maxraidx,:,:]
 
     if save:
         np.save(fname,image_cutout)
@@ -259,8 +266,22 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
 
 
 #this is a quick implementation of dedispersion meant only for cutouts, classification, and injection
-def quick_dedisp(image_pixel,corr_shift,tdelay_frac):
-    return (((np.take_along_axis(image_pixel.repeat(2,axis=3),indices=corr_shift,axis=2))*tdelay_frac).reshape((image_pixel.shape[0],image_pixel.shape[1],image_pixel.shape[2],image_pixel.shape[3],2))).mean(4)
+def quick_dedisp(sourceimg,corr_shifts=corr_shifts_all_no_append,tdelays_frac=tdelays_frac_no_append,wraps=wraps_no_append,DM_idx=0):
+    #return (((np.take_along_axis(image_pixel.repeat(2,axis=3),indices=corr_shifts,axis=2))*tdelay_frac).reshape((image_pixel.shape[0],image_pixel.shape[1],image_pixel.shape[2],image_pixel.shape[3],2))).mean(4)
+    print("quick dedisp start:",sourceimg.shape)
+    
+    gridsize_DEC,gridsize_RA = sourceimg.shape[:2]
+    print("gsizes:",gridsize_DEC,gridsize_RA )
+    sourceimg_dm = ((np.take_along_axis(sourceimg[:,:,:,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts[:gridsize_DEC,:gridsize_RA,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac[:gridsize_DEC,:gridsize_RA,:,DM_idx:DM_idx+1,:])[:,:,:,0,:]
+    print("dedipsed",sourceimg_dm.shape)
+    #zero out anywhere that was wrapped
+    sourceimg_dm[wraps[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
+    print("zeroed")
+    #now average the low and high shifts 
+    sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape) + [2])).sum(4))[:,:,::-1,:]
+    return sourceimg_dm
+
+
 
 #this is a copy of the jax binning function which runs on a single pixel on the CPU. it does not normalize by off-pulse noise and is
 #only meant for classification purposes
@@ -349,11 +370,13 @@ def candcutter_task(fname,args):
         return
 
     #get DM trials from file
+    """
     DMtrials = np.load(cand_dir + "DMtrials.npy")
     widthtrials = np.load(cand_dir + "widthtrials.npy")
     SNRthresh = float(np.load(cand_dir +"SNRthresh.npy"))
     corr_shifts = np.load(cand_dir+"DMcorr_shifts.npy")
     tdelays_frac = np.load(cand_dir+"DMdelays_frac.npy")
+    """
 
     #start clustering
     if args['cluster']:
@@ -372,11 +395,12 @@ def candcutter_task(fname,args):
             cands_perc = []
             for fcand in cands_noninf:
                 if fcand[-1] > snrp: cands_perc.append(fcand)
+                #if len(cands_perc) > 10: break
             cands_noninf = cands_perc
             printlog(str(len(cands_noninf)) + " candidates remaining after " + str(args['percentile']) + "th percentile cutoff",output_file=cutterfile)
 
         #clustering with hdbscan
-        classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],dmt=DMtrials,wt=widthtrials,plot=True,show=False,SNRthresh=SNRthresh)
+        classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'])
         printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
         printlog(classes,output_file=cutterfile)
         printlog(cluster_cands,output_file=cutterfile)
@@ -391,14 +415,20 @@ def candcutter_task(fname,args):
         data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[3]),dtype=image.dtype)
         for j in range(len(finalcands)):
             printlog(finalcands[j],output_file=cutterfile)
-            subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]),:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]),:]),widthtrials[int(finalcands[j][2])])
-            data_array[j,:,:,:] = subimg[:,:,np.argmin(subimg.sum((0,1,3))),:]
-
+            #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:]),widthtrials[int(finalcands[j][2])])
+            subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],dmidx=int(finalcands[j][3])),widthtrials[int(finalcands[j][2])])
+            data_array[j,:,:,:] = subimg.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
+            printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
+            plt.figure(figsize=(12,12));plt.imshow(data_array[j,:,:,:].mean(2),aspect='auto');plt.savefig(final_cand_dir+"classifyplot_" + str(j)+"_testing.png");plt.close()
+            np.save(final_cand_dir+"classifyplot_" + str(j)+"_testing.npy",data_array[j,:,:,:])
+            #numpy_to_fits(data_array[j,:,:,:].mean(2),final_cand_dir+"classifyplot_" + str(j)+".fits")
+        
         #reformat for classifier
         transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
         new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
         merged_array = transposed_array.reshape(new_shape)
 
+        printlog("shape input to classifier:" + str(merged_array.shape),output_file=cutterfile)
         #run classifier
         predictions, probabilities = classify_images(merged_array, args['model_weights'], verbose=args['verbose'])
         printlog(predictions,output_file=cutterfile)
@@ -413,7 +443,7 @@ def candcutter_task(fname,args):
         with open(recover_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             for j in finalidxs:
-                wr.writerow([cand_isot,DMtrials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][4],(None if not args['classify'] else predictions[j]),(None if not args['classify'] else probabilities[j])])
+                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][4],(None if not args['classify'] else predictions[j]),(None if not args['classify'] else probabilities[j])])
         csvfile.close()
 
 
@@ -455,10 +485,13 @@ def candcutter_task(fname,args):
         canddict['wid_idxs'] = [finalcands[j][2] for j in finalidxs]
         canddict['dm_idxs'] = [finalcands[j][3] for j in finalidxs]
         canddict['snrs'] = [finalcands[j][-1] for j in finalidxs]
+        if args['classify']:
+            canddict['probs'] = probabilities
+            canddict['predicts'] = predictions
         RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
-                                            DM_trials=DMtrials,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir,show=False,s100=SNRthresh/2,injection=injection_flag,vmax=SNRthresh+2,vmin=SNRthresh,searched_image=searched_image)
+                                            DM_trials=DM_trials,widthtrials=widthtrials,
+                                            output_dir=final_cand_dir,show=False,s100=args['SNRthresh']/2,injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],searched_image=searched_image)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:

@@ -30,7 +30,8 @@ from scipy.stats import norm
 import nsfrb.searching as sl
 from nsfrb.outputlogging import numpy_to_fits
 from nsfrb import calibration as cal
-vispath = cwd + "-fast-visibilities"
+import os
+vispath = os.environ["NSFRBDATA"] + "dsa110-nsfrb-fast-visibilities" #cwd + "-fast-visibilities"
 imgpath = cwd + "-images"
 inject_file = cwd + "-injections/injections.csv"
 """

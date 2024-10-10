@@ -2,6 +2,7 @@
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
+import sys
 import os
 from astropy.io import fits
 cwd = os.environ['NSFRBDIR']

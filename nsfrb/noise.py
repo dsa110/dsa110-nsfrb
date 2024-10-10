@@ -103,7 +103,9 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         for j in range(len(widthtrials)):
             
             width = widthtrials[j]
-            if (DM not in noise_dict.keys()) or (width not in noise_dict[DM].keys()):
+            if not readonly and noise is not None and np.isnan(noise[j,i]):
+                print("NOISE UPDATE IS NAN",file=fout)
+            elif (DM not in noise_dict.keys()) or (width not in noise_dict[DM].keys()):
                 if DM not in noise_dict.keys():
                     noise_dict[DM] = dict()
                 if not readonly:

@@ -173,11 +173,15 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         fig.patch.set_facecolor('red')
     ax = plt.subplot(1,2,1)
 
-    ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    if 'predicts' in canddict.keys():
+        ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+        ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+    else:
+        ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     #plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
     ax.imshow((img.mean((2,3)))[::-1,:],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
     if searched_image is not None:
-        ax.contour(searched_image.mean((2,3))[::-1,:],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)])
+        ax.contour(searched_image.max((2,3))[::-1,:],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
     ax.axvline(RA_axis[gridsize//2],color='grey')
     ax.axhline(DEC_axis[gridsize//2],color='grey')
     ax.set_xlabel(r"RA ($^\circ$)")
@@ -185,7 +189,13 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.invert_xaxis()
 
     ax=plt.subplot(1,2,2)
-    c=ax.scatter(widthtrials[wids],
+    if 'predicts' in canddict.keys():
+        c=ax.scatter(widthtrials[wids][canddict['predicts']==0],
+                DM_trials[dms][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+        c=ax.scatter(widthtrials[wids][canddict['predicts']==1],
+                DM_trials[dms][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    else:
+        c=ax.scatter(widthtrials[wids],
                 DM_trials[dms],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.colorbar(mappable=c,ax=ax,label='S/N')
     for i in widthtrials:

@@ -160,6 +160,7 @@ def main(args):
             fname = raw_cand_dir + str(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
             future = executor.submit(cc.candcutter_task,fname,vars(args))
+            #printlog(future.result(),output_file=cutterfile)
             #fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
         else:
             #look for candidate files in raw cands dir
@@ -328,7 +329,7 @@ if __name__=="__main__":
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
     parser.add_argument('--maxcands',type=int,help='Maximum number of candidates searchable in one iteration. Default is full image, 300x300x5x16=7.2e6',default=int(7.2e6 +1))
     parser.add_argument('--percentile',type=int,help='Percentile above which to take candidates, e.g. if 90, candidates with s/n in 90th percentile will be clustered. Default 0',default=0)
-
+    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
     args = parser.parse_args()
     main(args)
     """

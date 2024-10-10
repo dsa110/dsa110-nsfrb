@@ -847,7 +847,7 @@ def main(args):
 if __name__=="__main__":
     #argument parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
+    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
     parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)

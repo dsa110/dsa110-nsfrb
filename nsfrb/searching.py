@@ -72,6 +72,7 @@ coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-s
 output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
 cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 processfile = cwd + "-logfiles/process_log.txt"
+timelogfile = cwd + "-logfiles/time_log.txt"
 frame_dir = cwd + "-frames/"
 psf_dir = cwd + "-PSF/"
 f=open(output_file,"w")
@@ -2162,6 +2163,9 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
+    ftime = open(timelogfile,"a")
+    ftime.write(str(time.time()-timing1)+"\n")
+    ftime.close()
 
     if len(fullimg.candidxs)==0:
         printlog("No candidates found",output_file=processfile)

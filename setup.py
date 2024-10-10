@@ -23,8 +23,10 @@ logfiles = ["error_log.txt",
             "search_log.txt",
             "process_log.txt",
             "candcutter_log.txt",
-            "inject_log.txt"]
-for i in range(len(logfiles)):
+            "candcuttertask_log.txt",
+            "inject_log.txt",
+            "time_log.txt"]
+for i in range(len(logfiles))[:-1]:
     l = logfiles[i]
     os.system("touch ../dsa110-nsfrb-logfiles/" + l)
     os.system("> ../dsa110-nsfrb-logfiles/" + l)
@@ -52,7 +54,7 @@ os.system("mkdir ../dsa110-nsfrb-injections/")
 os.system("mkdir ../dsa110-nsfrb-PSF/")
 
 import csv
-"""
+
 with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')
     wr.writerow(['ISOT','DM','WIDTH','SNR'])
@@ -61,17 +63,19 @@ with open("../dsa110-nsfrb-injections/recoveries.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')
     wr.writerow(['ISOT','DM','WIDTH','SNR','PREDICT','PROB'])
 csvfile.close()
-"""
+
 
 
 
 #create directory to store most recent time frame
 os.system("mkdir ../dsa110-nsfrb-frames/")
 
+"""
 #create directories for fast visibilities if not created already
 os.system("mkdir ../dsa110-nsfrb-fast-visibilities/")
 for s in ["lxd110h03","lxd110h04","lxd110h05","lxd110h06","lxd110h07","lxd110h08","lxd110h10","lxd110h11","lxd110h12","lxd110h14","lxd110h15","lxd110h16","lxd110h18","lxd110h19","lxd110h21","lxd110h22"]:
     os.system("mkdir ../dsa110-nsfrb-fast-visibilities/" + s)
+"""
 
 #create ddirectories for images
 os.system("mkdir ../dsa110-nsfrb-images/")
