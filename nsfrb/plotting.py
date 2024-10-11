@@ -202,8 +202,8 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         ax.axvline(i,color='grey',linestyle='--')
     for i in DM_trials:
         ax.axhline(i,color='grey',linestyle='--')
-    ax.set_xlim(0,np.max(widthtrials)*2)
-    ax.set_ylim(0,np.max(DM_trials)*10)
+    ax.set_xlim(0,np.max(widthtrials) + 1)
+    ax.set_ylim(0,np.max(DM_trials) + 1)
     ax.set_xlabel("Width (Samples)")
     ax.set_ylabel(r"DM (pc/cc)")
     t = "NSFRB" + isot

@@ -184,6 +184,7 @@ def main(args):
         #creating injection
         if args.inject and (gulp == inject_gulp):
             offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp*1000)
+            #offsetRA = offsetDEC = 0
 
             if args.snr_inject > 0:
                 SNR = args.snr_inject

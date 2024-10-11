@@ -70,7 +70,7 @@ from nsfrb import jax_funcs
 #output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
-cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/" #cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 processfile = cwd + "-logfiles/process_log.txt"
 timelogfile = cwd + "-logfiles/time_log.txt"
 frame_dir = cwd + "-frames/"

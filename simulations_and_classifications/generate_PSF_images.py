@@ -11,7 +11,7 @@ Generate PSF images for declinations spaced by the instantaneous FOV (3 degrees)
 #simple wrapper function to make single PSF
 def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float32,HA=0):
     num_observations = 1
-    noise_std_low = noise_std_high = 0 #noiseless
+    noise_std_low = 0 #noiseless
     exclude_antenna_percentage = (0,0) #ideally have all antennas
     HA_low = HA_high = HA #shouldn't vary with HA
     spectral_index_low = spectral_index_high = 0

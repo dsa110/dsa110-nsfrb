@@ -23,7 +23,7 @@ def printlog(txt,output_file=output_file,end='\n'):
 import logging, os
 from slack_sdk import WebClient
 error_file = cwd + "-logfiles/error_log.txt"
-cand_dir = cwd + "-candidates/"
+cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/"
 final_cand_dir = cand_dir + "final_cands/"
 
 #initialize Web API client

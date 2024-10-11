@@ -34,7 +34,7 @@ import numpy as np
 import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
-from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps
+from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
 from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
@@ -47,7 +47,7 @@ from nsfrb import plotting as pl
 import os
 import sys
 cwd = os.environ['NSFRBDIR']
-cand_dir = cwd + "-candidates/"
+cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/" #cwd + "-candidates/"
 cutterfile = cwd + "-logfiles/candcutter_log.txt"
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
@@ -57,13 +57,13 @@ processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell
 cutterfile = cwd + "-logfiles/candcutter_log.txt"
 cuttertaskfile = cwd + "-logfiles/candcuttertask_log.txt"
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
-cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
-raw_cand_dir = cwd + "-candidates/raw_cands/"
-backup_cand_dir = cwd + "-candidates/backup_raw_cands/"
-final_cand_dir = cwd + "-candidates/final_cands/"
+raw_cand_dir = cand_dir + "raw_cands/"#cwd + "-candidates/raw_cands/"
+backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
+final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
 error_file = cwd + "-logfiles/error_log.txt"
 inject_file = cwd + "-injections/injections.csv"
 recover_file = cwd + "-injections/recoveries.csv"
+training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 
 freq_axis = np.linspace(fmin,fmax,nchans)
@@ -337,6 +337,8 @@ def candcutter_task(fname,args):
     #for each candidate get the isot and find the corresponding image
     cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
     cand_mjd = Time(cand_isot,format='isot').mjd
+    injection_flag = is_injection(cand_isot)
+    
     #read cand file
     raw_cand_names,finalcands = read_candfile(fname)
 
@@ -411,18 +413,22 @@ def candcutter_task(fname,args):
 
 
     if args['classify']:
-        #make a binned copy for each candidate
-        data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[3]),dtype=image.dtype)
-        for j in range(len(finalcands)):
-            printlog(finalcands[j],output_file=cutterfile)
-            #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:]),widthtrials[int(finalcands[j][2])])
-            subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],dmidx=int(finalcands[j][3])),widthtrials[int(finalcands[j][2])])
-            data_array[j,:,:,:] = subimg.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
-            printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
-            plt.figure(figsize=(12,12));plt.imshow(data_array[j,:,:,:].mean(2),aspect='auto');plt.savefig(final_cand_dir+"classifyplot_" + str(j)+"_testing.png");plt.close()
-            np.save(final_cand_dir+"classifyplot_" + str(j)+"_testing.npy",data_array[j,:,:,:])
-            #numpy_to_fits(data_array[j,:,:,:].mean(2),final_cand_dir+"classifyplot_" + str(j)+".fits")
-        
+        if args['subimgpix'] == image.shape[0]:
+            printlog("Using full image for classification and cutouts",output_file=cutterfile)
+            data_array = (image.mean(2)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
+        else:
+            #make a binned copy for each candidate
+            data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[3]),dtype=image.dtype)
+            for j in range(len(finalcands)):
+                printlog(finalcands[j],output_file=cutterfile)
+                #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:]),widthtrials[int(finalcands[j][2])])
+                #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],dmidx=int(finalcands[j][3])),widthtrials[int(finalcands[j][2])])
+
+                #don't need to dedisperse(?)
+                subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])
+                data_array[j,:,:,:] = subimg.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
+                printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
+            
         #reformat for classifier
         transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
         new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
@@ -438,7 +444,6 @@ def candcutter_task(fname,args):
         #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
 
     #if its an injection write the highest SNR candidate to the injection tracker
-    injection_flag = is_injection(cand_isot)
     if injection_flag:
         with open(recover_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
@@ -470,10 +475,26 @@ def candcutter_task(fname,args):
     csvfile.close()
 
     #get image cutouts and write to file
-    if args['cutout']:
+    if args['cutout'] or args['train']:
         for j in finalidxs:#range(len(finalidxs)):
-            subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])#[:,:,int(finalcands[j][2]),:]
+            if args['subimgpix'] != image.shape[0]:
+                subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])#[:,:,int(finalcands[j][2]),:]
+            else:
+                subimg = image
             lastname = allcandnames[j]
+
+            if args['train']:
+                printlog(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j),output_file=cutterfile)
+                for k in range(subimg.shape[3]):
+                    filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
+                    printlog(filepath,output_file=cutterfile)
+                    plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
+                f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.txt","a")
+                f.write("\n" + cand_isot + "_" + str(j) + ",-1,end\n")
+                f.close()
+
+
+
             np.save(final_cand_dir + prefix + lastname + ".npy",subimg)
     #send candidates to slack
     if len(finalidxs) > 0:

@@ -67,6 +67,7 @@ includes clustering, classifying, and cutting out sub-images. It will run in the
 """s
 Directory for output data
 """
+import os
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
@@ -74,10 +75,10 @@ output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa
 processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
 cutterfile = cwd + "-logfiles/candcutter_log.txt"
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
-cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
-raw_cand_dir = cwd + "-candidates/raw_cands/"
-backup_cand_dir = cwd + "-candidates/backup_raw_cands/"
-final_cand_dir = cwd + "-candidates/final_cands/"
+cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+raw_cand_dir = cand_dir + "raw_cands/"
+backup_cand_dir = cand_dir + "backup_raw_cands/"
+final_cand_dir = cand_dir + "final_cands/"
 error_file = cwd + "-logfiles/error_log.txt"
 
 """
@@ -330,6 +331,7 @@ if __name__=="__main__":
     parser.add_argument('--maxcands',type=int,help='Maximum number of candidates searchable in one iteration. Default is full image, 300x300x5x16=7.2e6',default=int(7.2e6 +1))
     parser.add_argument('--percentile',type=int,help='Percentile above which to take candidates, e.g. if 90, candidates with s/n in 90th percentile will be clustered. Default 0',default=0)
     parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
+    parser.add_argument('--train',action='store_true',help='Save candidate cutouts to the training set for the ML classifier')
     args = parser.parse_args()
     main(args)
     """

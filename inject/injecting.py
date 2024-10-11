@@ -35,6 +35,7 @@ cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 from nsfrb.outputlogging import printlog
 from simulations_and_classifications import generate_PSF_images as scPSF
+from simulations_and_classifications import generate_source_images as scSRC
 from nsfrb.config import *
 from nsfrb.searching import gen_dm_shifts,DM_trials
 
@@ -50,10 +51,11 @@ corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_fra
 error_file = cwd + "-logfiles/inject_error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
 inject_file = cwd + "-injections/injections.csv"
-cand_dir = cwd + "-candidates/"
+cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/"
 psf_dir = cwd + "-PSF/"
 frame_dir = cwd + "-frames/"
 noise_dir = cwd + "-noise/"
+inject_dir = cwd + "-injections/"
 
 def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True):
     """
@@ -87,12 +89,16 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
         sourceimg = np.pad(sourceimg,((0,-offsetDEC),(0,0),(0,0),(0,0)))[-gridsize*2:,:,:,:]
     sourceimg = sourceimg[gridsize//2:gridsize + (gridsize//2),gridsize//2:gridsize + (gridsize//2),:,:]
     PSFimg = PSFimg[gridsize//2:gridsize + (gridsize//2),gridsize//2:gridsize + (gridsize//2),:,:]
+    
+    
     print("IMG shape:"+str(sourceimg.shape),file=fout)
     
     
     #normalize based on snr
+    noisemean = 1
     if len(glob.glob(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")) > 0:
         noise_per_chan = np.load(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")
+        noisemean = np.nanmean(noise_per_chan)#maxchan = np.argmax(noise_per_chan)
     else:
         noise_per_chan = np.ones(nchans)
     for i in range(nchans):
@@ -103,7 +109,7 @@ def generate_inject_image(HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc
 
 
         #img[16,16,500:500+wid,:] = snr/wid
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr*noise_per_chan[i]#/np.sum(PSFimg[:,:,0,i])
+        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]*snr*noisemean#noise_per_chan[maxchan]# S/N is referenced to channel w/ highest noise
 
         sourceimg[:,:,:int(loc*nsamps),:] = 0
         sourceimg[:,:,int(loc*nsamps) + width:,:] = 0
@@ -207,7 +213,7 @@ def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width
     if np.isnan(width):
         width = np.random.choice(widthtrials)
     if np.isnan(SNR):
-        SNR = uniform.rvs(loc=10,scale=10)
+        SNR = uniform.rvs(loc=10,scale=50)
 
     printlog("Injecting burst " + str(time_start_isot) + " with DM = " + str(DM) + ", width = " + str(width) + ", S/N = " + str(SNR),output_file=log_file)
     printlog("RA=" + str(RA_axis[int(len(RA_axis)//2 + offsetRA)]),output_file=log_file)
