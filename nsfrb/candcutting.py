@@ -489,8 +489,10 @@ def candcutter_task(fname,args):
                     filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
                     printlog(filepath,output_file=cutterfile)
                     plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
+                np.save(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + ".npy",subimg)
+
                 f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.txt","a")
-                f.write("\n" + cand_isot + "_" + str(j) + ",-1,end\n")
+                f.write(cand_isot + "_" + str(j) + ",-1,end\n")
                 f.close()
 
 

@@ -1,3 +1,5 @@
 #!/bin/bash
 
-rm /home/ubuntu/msherman_nsfrb/dsa110-nsfrb-candidates/*npy
+rm $NSFRBDATA/dsa110-nsfrb-candidates/raw_cands/*
+rm $NSFRBDATA/dsa110-nsfrb-candidates/final_cands/*
+rm $NSFRBDATA/dsa110-nsfrb-candidates/backup_raw_cands/*
