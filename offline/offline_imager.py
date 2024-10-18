@@ -115,14 +115,14 @@ def main(args):
         
         
         
-        print("Gulp size:",dat.shape)
+        if verbose: print("Gulp size:",dat.shape)
 
         #use MJD to get pointing
         mjd = Time(args.timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp/86400)
         time_start_isot = Time(mjd,format='mjd').isot
         LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=-118.2851).to(u.hourangle).value
-        print("Time:",time_start_isot)
-        print("LST (hr):",LST)
+        if verbose: print("Time:",time_start_isot)
+        if verbose: print("LST (hr):",LST)
         RA_axis,Dec_axis = uv_to_pix(mjd,IMAGE_SIZE,Lat=37.23,Lon=-118.2851)
         HA_axis = (LST*15) - RA_axis
         #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
@@ -192,17 +192,21 @@ def main(args):
                 DM = args.dm_inject
             if args.width_inject > 0:
                 width = args.width_inject
+            offsetRA = args.offsetRA_inject
+            offsetDEC = args.offsetDEC_inject
             print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
+            print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
             if args.solo_inject:
                 noiseless=False
                 dat[:,:,:,:] = 0
             else:
                 noiseless=True
+            #noiseless = True
             #DM = 0
             #SNR = 10000
             #width = 2
             #offsetRA = offsetDEC = 0
-            inject_img = injecting.generate_inject_image(HA=HA_axis[int(len(HA_axis)//2 + offsetRA)],DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless)
+            inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis)
 
 
             #report injection in log file
@@ -274,6 +278,8 @@ if __name__=="__main__":
     parser.add_argument('--snr_inject',type=float,help='SNR of injection; default 0 which chooses a random SNR',default=0)
     parser.add_argument('--dm_inject',type=float,help='DM of injection; default -1 which chooses a random DM',default=-1)
     parser.add_argument('--width_inject',type=int,help='Width of injection in samples; default 0 which chooses a random width',default=0)
+    parser.add_argument('--offsetRA_inject',type=int,help='Offset RA of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
+    parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     args = parser.parse_args()
     main(args)

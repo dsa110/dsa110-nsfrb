@@ -35,11 +35,13 @@ import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
 from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
-from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter
+from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter,default_PSF
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
 from nsfrb.imaging import uv_to_pix
 from nsfrb import plotting as pl
+from simulations_and_classifications import generate_PSF_images as scPSF
+from sklearn.metrics.pairwise import euclidean_distances
 
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
@@ -60,20 +62,37 @@ flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-
 raw_cand_dir = cand_dir + "raw_cands/"#cwd + "-candidates/raw_cands/"
 backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
 final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
+inject_dir = inject_file = cwd + "-injections/"
 error_file = cwd + "-logfiles/error_log.txt"
 inject_file = cwd + "-injections/injections.csv"
 recover_file = cwd + "-injections/recoveries.csv"
 training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
+psf_dir = cwd + "-PSF/"
+img_dir = cwd + "-images/"
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 
 freq_axis = np.linspace(fmin,fmax,nchans)
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
 full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
 
+#PSF-weighted distance measure
+"""
+def PSF_dist_metric(*test_points,PSF=default_PSF.mean((2,3))):
+    cntr_x,cntr_y = PSF.shape[0]//2,PSF.shape[1]//2
+    offset_x,offset_y = test_points[0][1] - test_points[1][1], test_points[0][0] - test_points[1][0]
+    weight = PSF[int(cntr_x + offset_x),int(cntr_y + offset_y)]
+    return weight*np.sqrt(np.sum((test_points[1]-test_points[0])**2))
+"""
+
+def PSF_dist_metric(p1,p2,PSFfunc):
+    return PSFfunc(p2[0]-p1[0],p2[1]-p2[1])*euclidean_distances(p1,p2)
+
+
 #hdbscan clustering function; clusters in DM, width, RA, DEC space
-def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile):
-    f = open(output_file,"a")
-    print(str(len(cands)) + " candidates",file=f)
+def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2):
+    printlog("WHY ISN'T IT STARTING?",output_file=output_file)
+    #f = open(output_file,"a")
+    printlog(str(len(cands)) + " candidates",output_file=output_file)
 
     #make list for each param
     raidxs = []
@@ -97,15 +116,19 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
 
 
     #create clusterer
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, gen_min_span_tree=True)
-
+    if PSF is None:
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, gen_min_span_tree=True, min_samples=min_samples)
+    else:
+        printlog("Using PSF weighted distance measure",output_file=output_file)
+        psfinterp = interp2d(np.arange(PSF.shape[0]) - (PSF.shape[0]//2),np.arange(PSF.shape[1]) - (PSF.shape[1]//2),PSF,fill_value='extrapolate')
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, gen_min_span_tree=True, min_samples=min_samples,metric=lambda p1,p2:PSF_dist_metric(p1,p2,psfinterp))
     #cluster data
     clusterer.fit(test_data)
 
 
     #print number of noise points
     noisepoints = np.sum(clusterer.labels_==-1)
-    print(str(noisepoints) + " noise points",file=f)
+    printlog(str(noisepoints) + " noise points",output_file)
 
     nclasses = len(np.unique(clusterer.labels_))
     classnames = np.unique(clusterer.labels_)
@@ -113,7 +136,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     if -1 in clusterer.labels_:
         nclasses -= 1
 
-    print(str(nclasses) + " unique classes",file=f)
+    printlog(str(nclasses) + " unique classes",output_file)
 
     #get centroids
     #fcsv = open(cand_dir + "hdbscan_cluster_cands.csv","w")
@@ -188,7 +211,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
             plt.show()
         else:
             plt.close()
-    f.close()
+    #f.close()
     return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
 
 
@@ -329,6 +352,23 @@ def read_candfile(fname):
     csvfile.close()
     return raw_cand_names,finalcands
 
+
+
+#classifier format
+from torchvision import transforms
+from PIL import Image
+def img_to_classifier_format(img,candname,output_dir):
+    img_class_format = np.zeros_like(img,dtype=np.float64)
+    gridsize_DEC,gridsize_RA,nchans = img.shape
+    for i in range(nchans):
+        avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
+        filename = f'{candname}_{avg_freq:.2f}_MHz.png'
+        plt.imsave(output_dir + filename,img[:,:,i],cmap='gray')
+        newimg = Image.open(output_dir + filename).convert('L')
+
+        img_class_format[:,:,i] = transforms.ToTensor()(newimg)[0] 
+    return img_class_format
+
 #main cand cutter task function
 def candcutter_task(fname,args):
     """
@@ -370,6 +410,8 @@ def candcutter_task(fname,args):
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         return
+    RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
+    #PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps)
 
     #get DM trials from file
     """
@@ -402,7 +444,8 @@ def candcutter_task(fname,args):
             printlog(str(len(cands_noninf)) + " candidates remaining after " + str(args['percentile']) + "th percentile cutoff",output_file=cutterfile)
 
         #clustering with hdbscan
-        classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'])
+        PSF = None#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps).mean((2,3))
+        classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'],PSF=PSF)
         printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
         printlog(classes,output_file=cutterfile)
         printlog(cluster_cands,output_file=cutterfile)
@@ -415,10 +458,10 @@ def candcutter_task(fname,args):
     if args['classify']:
         if args['subimgpix'] == image.shape[0]:
             printlog("Using full image for classification and cutouts",output_file=cutterfile)
-            data_array = (image.mean(2)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
+            data_array = (img_to_classifier_format(image.mean(2),cand_isot,img_dir)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
         else:
             #make a binned copy for each candidate
-            data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[3]),dtype=image.dtype)
+            data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[3]),dtype=np.float64)
             for j in range(len(finalcands)):
                 printlog(finalcands[j],output_file=cutterfile)
                 #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:]),widthtrials[int(finalcands[j][2])])
@@ -426,13 +469,13 @@ def candcutter_task(fname,args):
 
                 #don't need to dedisperse(?)
                 subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])
-                data_array[j,:,:,:] = subimg.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
+                data_array[j,:,:,:] = img_to_classifier_format(subimg[:,:,12,:],cand_isot+"_"+str(j),img_dir)  #.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
                 printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
             
         #reformat for classifier
-        transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
-        new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
-        merged_array = transposed_array.reshape(new_shape)
+        #transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
+        #new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
+        merged_array = np.transpose(data_array, (0,3,1,2)) #transposed_array.reshape(new_shape)
 
         printlog("shape input to classifier:" + str(merged_array.shape),output_file=cutterfile)
         #run classifier

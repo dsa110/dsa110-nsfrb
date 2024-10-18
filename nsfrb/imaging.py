@@ -75,7 +75,8 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
 
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (i_indices, j_indices), V_avg)
+    #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
 
@@ -105,7 +106,8 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
 
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
     if inject_img is not None:
         visibility_grid += inverse_uniform_image(inject_img,u,v) 
@@ -233,7 +235,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtrie
     pixel_resolution = (0.20 / uv_diag) / 3 #radians
     offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
 
-    print(offset_grid)
+    #print(offset_grid)
     assert(len(offset_grid) == image_size)
 
     #add offset from image center

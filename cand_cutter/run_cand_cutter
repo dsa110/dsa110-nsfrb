@@ -5,4 +5,4 @@
 #dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 1 --name cand_cutter_WRKR > $PWD/.cand_cutter_WRKR_log.txt 2>&1 &
 
 #python run.py --cutout --cluster --classify --toslack --etcd "$@"  #normal operation
-python run.py --toslack --etcd --cluster --classify --cutout --subimgpix 101 --percentile 90 --SNRthresh 20 --train "$@"
+python run.py --toslack --etcd --cluster --classify --subimgpix 101 --percentile 90 --SNRthresh 20 "$@"

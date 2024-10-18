@@ -319,6 +319,7 @@ if __name__=="__main__":
     parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
     parser.add_argument('--plotclusters',action='store_true',help='Plot intermediate plots from HDBSCAN clustering')
     parser.add_argument('--mincluster',type=int,help='Minimum number of candidates required to be made a separate HDBSCAN cluster,default=5',default=5)
+    parser.add_argument('--minsamples',type=int,help='Minimum number of candidates to be core point,default=2',default=2)
     parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")

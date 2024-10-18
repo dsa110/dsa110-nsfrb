@@ -12,7 +12,7 @@ from nsfrb.imaging import uniform_image
 from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
 
 
-def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False):
+def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_low, HA_high, Dec_low, Dec_high, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -35,6 +35,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
     - zoom_pix (int): Number of pixels to zoom in.
     - tonumpy (bool): If set, save to .npy file
     - inflate (bool): If set and zoom_pix > IMAGE_SIZE//2, generates image of size 2*zoom_pix x 2*zoom_pix
+    - noise_only (bool): If set, only generates noise in visibilities and images
 
     Returns:
     - None
@@ -91,7 +92,10 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             V[i] = apply_spectral_index(V[i], frequency_MHz, reference_frequency_MHz, spectral_index)
 
         noise = np.random.uniform(noise_std_low, noise_std_high)
-        V_noisy = [add_complex_gaussian_noise(v, std_dev=noise) for v in V]
+        if noise_only:
+            V_noisy = [add_complex_gaussian_noise(np.zeros_like(v), std_dev=noise) for v in V]
+        else:
+            V_noisy = [add_complex_gaussian_noise(v, std_dev=noise) for v in V]
 
         dirty_images = []
         for i in range(0, NUM_CHANNELS, AVERAGING_FACTOR):
