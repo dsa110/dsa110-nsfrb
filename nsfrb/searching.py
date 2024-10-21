@@ -133,7 +133,7 @@ time_axis = np.linspace(0,T,nsamps) #ms
 freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 #DM trials
-def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
+def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B,ZERO=True):
     #tol = 1.25 # S/N loss tolerance
     #nu = 1.405 # center frequency (GHz)
     #nchan = 1024 # number of channels
@@ -156,9 +156,10 @@ def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B):
         dms.append(dm)
 
     #print('DM trials:',ndms)
-    return dms
+    if ZERO: return [0] + dms
+    else: return dms
 
-def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False): #note, you shouldn't need to set gridsize
+def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False,maxshift=None): #note, you shouldn't need to set gridsize
     nDM = len(DM_trials)
     nchans = len(freq_axis)
     fmin =np.nanmin(freq_axis)
@@ -175,7 +176,8 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False)
 
     #--case 1: appending previous frame
     tDM_max = (4.15)*np.max(DM_trials)*((1/fmin/1e-3)**2 - (1/fmax/1e-3)**2) #ms
-    maxshift = int(np.ceil(tDM_max/tsamp))
+    if maxshift is None:
+        maxshift = int(np.ceil(tDM_max/tsamp))
     idxs_all = (np.arange(nsamps + maxshift)[:,np.newaxis,np.newaxis]).repeat(nDM,axis=1).repeat(2*nchans,axis=2)
     corr_shifts_all_append = np.array(np.clip(((tdelaysall.transpose()[np.newaxis,:,:].repeat(nsamps + maxshift,axis=0) + idxs_all))%(nsamps+maxshift),a_min=0,a_max=maxshift + nsamps-1)[np.newaxis,np.newaxis,-nsamps:,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1),dtype=np.int8)
     tdelays_frac_append = tdelays_frac[np.newaxis,np.newaxis,np.newaxis,:,:].repeat(gridsize,axis=0).repeat(gridsize,axis=1).repeat(nsamps,axis=2)
@@ -196,7 +198,7 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False)
 
 minDM = 171
 maxDM = 4000
-DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
+DM_trials = np.array(gen_dm(minDM,maxDM,1.6,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 nDMtrials = len(DM_trials)
 
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps)
@@ -1802,9 +1804,9 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                                                  jax.device_put(corr_shifts_all,jax.devices()[jaxdev]),
                                                                  jax.device_put(tdelays_frac,jax.devices()[jaxdev]),
                                                                  jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[jaxdev]),
-                                                                 jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[jaxdev]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[jaxdev]),
                                                                  prev_noise_N,noiseth)
-            image_tesseract_binned,total_noise = np.array(outtup[0]),np.array(outtup[1])
+            image_tesseract_binned,total_noise = np.array(outtup[0]),np.array(outtup[1])[:,np.newaxis].repeat(len(DM_trials),1)
             
             jaxdev += 1 
             jaxdev %= 2 

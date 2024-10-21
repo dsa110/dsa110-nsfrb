@@ -24,6 +24,11 @@ def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float
 
     spectral_index_low = spectral_index_high = 0
     tonumpy = True
+    print("generating PSF with ",nsamps,"samples")
+    PSF = np.array(generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only,N_NOISE=nsamps),dtype=dtype)
+    print("newshape:",PSF.shape)
+    return PSF
+"""
     allPSFs = []
     for i in range(nsamps):
         print("generating PSF",i)
@@ -34,7 +39,7 @@ def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float
     for i in range(nsamps):
         PSF[:,:,i,:] = allPSFs[i]
     return PSF
-
+"""
 """
     if nsamps == 1:
         return np.array(generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only),dtype=dtype)

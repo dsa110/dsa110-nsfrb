@@ -79,7 +79,7 @@ cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidat
 raw_cand_dir = cand_dir + "raw_cands/"
 backup_cand_dir = cand_dir + "backup_raw_cands/"
 final_cand_dir = cand_dir + "final_cands/"
-error_file = cwd + "-logfiles/error_log.txt"
+error_file = cwd + "-logfiles/candcutter_error_log.txt"
 
 """
 Arguments: data file

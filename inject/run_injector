@@ -9,7 +9,7 @@ while true
 do
 	date +%FT%I:%M:%S >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
 	#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --snr_inject 15 --dm_inject 208.394800799837 --width_inject 2 --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
-	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --snr_inject 20 --dm_inject 0 --width_inject 1 --offsetRA_inject 0 --offsetDEC_inject 0 --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
+	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --snr_inject 10 --dm_inject 0 --width_inject 1 --offsetRA_inject 0 --offsetDEC_inject 0 --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
 	break	
 	sleep $1
 done

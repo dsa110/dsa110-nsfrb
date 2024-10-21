@@ -24,6 +24,7 @@ logfiles = ["error_log.txt",
             "process_log.txt",
             "candcutter_log.txt",
             "candcuttertask_log.txt",
+            "candcutter_error_log.txt",
             "inject_log.txt",
             "time_log.txt"]
 for i in range(len(logfiles))[:-1]:

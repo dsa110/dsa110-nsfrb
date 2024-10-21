@@ -12,7 +12,7 @@ from nsfrb.imaging import uniform_image
 from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
 
 
-def generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False):
+def generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -36,6 +36,7 @@ def generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noi
     - tonumpy (bool): If set, save to .npy file
     - inflate (bool): If set and zoom_pix > IMAGE_SIZE//2, generates image of size 2*zoom_pix x 2*zoom_pix
     - noise_only (bool): If set, only generates noise in visibilities and images
+    - N_NOISE (int): number of noise realizations to generate; only 1 is saved as observation dataset
 
     Returns:
     - None
@@ -100,74 +101,81 @@ def generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noi
             frequency_MHz = CH0 + i * CH_WIDTH  # Calculating the frequency for each channel
             V[i] = apply_spectral_index(V[i], frequency_MHz, reference_frequency_MHz, spectral_index)
 
-        noise = np.random.uniform(noise_std_low, noise_std_high)
-        if noise_only:
-            V_noisy = [add_complex_gaussian_noise(np.zeros_like(v), std_dev=noise) for v in V]
-        else:
-            V_noisy = [add_complex_gaussian_noise(v, std_dev=noise) for v in V]
-
-        dirty_images = []
-        for i in range(0, NUM_CHANNELS, AVERAGING_FACTOR):
-            chunk_V = V_noisy[i:i+AVERAGING_FACTOR]
-            avg_freq = CH0 + CH_WIDTH * i + AVERAGING_FACTOR/2 * CH_WIDTH
-
-            wavelength = c / (avg_freq * 1e6)
-            chunk_u_core = u_core / wavelength
-            chunk_v_core = v_core / wavelength
-            chunk_u_s_core = u_core_s / wavelength
-            chunk_v_s_core = v_core_s / wavelength
-
-            # Apply the phase shift to chunk_V
-            print("PHASE SHIFT APPLIED:",HA_source-HA_point,Dec_source-Dec_point)
-            chunk_V = [apply_phase_shift(v, chunk_u_core, chunk_v_core, HA_source-HA_point, Dec_source-Dec_point) for v in chunk_V]
-            
-            
-            #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
-            if inflate:
-                dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2)
+        if tonumpy and N_NOISE > 1:
+            dirty_img_all_noise = np.zeros((zoom_pix*2,zoom_pix*2,N_NOISE,int(NUM_CHANNELS//AVERAGING_FACTOR)))
+        for k_n in range(N_NOISE):
+            noise = np.random.uniform(noise_std_low, noise_std_high)
+            if noise_only:
+                V_noisy = [add_complex_gaussian_noise(np.zeros_like(v), std_dev=noise) for v in V]
             else:
-                dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
-            dirty_images.append(dirty_img)
+                V_noisy = [add_complex_gaussian_noise(v, std_dev=noise) for v in V]
 
-        # Creating necessary directories
-        observation_dir = os.path.join(dataset_dir, f'observation_{obs+1}/images')
-        os.makedirs(observation_dir, exist_ok=True)
+            dirty_images = []
+            for i in range(0, NUM_CHANNELS, AVERAGING_FACTOR):
+                chunk_V = V_noisy[i:i+AVERAGING_FACTOR]
+                avg_freq = CH0 + CH_WIDTH * i + AVERAGING_FACTOR/2 * CH_WIDTH
 
-        # Metadata
-        metadata = []
+                wavelength = c / (avg_freq * 1e6)
+                chunk_u_core = u_core / wavelength
+                chunk_v_core = v_core / wavelength
+                chunk_u_s_core = u_core_s / wavelength
+                chunk_v_s_core = v_core_s / wavelength
 
-        # Saving the images and collecting metadata
-        if tonumpy:
-            dirty_img_all = np.zeros((zoom_pix*2,zoom_pix*2,int(NUM_CHANNELS//AVERAGING_FACTOR)))
-        for i, dirty_img in enumerate(dirty_images):
-            avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
-            filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
-            filepath = os.path.join(observation_dir, filename)
-            im_zoom = np.array(np.fliplr(np.abs(dirty_img.T)))
-            if not inflate:
-                im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix), (IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix)]
-            plt.imsave(filepath, im_zoom, cmap='gray')
+                # Apply the phase shift to chunk_V
+                #print("PHASE SHIFT APPLIED:",HA_source-HA_point,Dec_source-Dec_point)
+                chunk_V = [apply_phase_shift(v, chunk_u_core, chunk_v_core, HA_source-HA_point, Dec_source-Dec_point) for v in chunk_V]
+            
+            
+                #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
+                if inflate:
+                    dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2)
+                else:
+                    dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
+                dirty_images.append(dirty_img)
+
+            # Creating necessary directories
+            observation_dir = os.path.join(dataset_dir, f'observation_{obs+1}/images')
+            os.makedirs(observation_dir, exist_ok=True)
+
+            # Metadata
+            metadata = []
+
+            # Saving the images and collecting metadata
             if tonumpy:
-                dirty_img_all[:,:,i] = im_zoom
-        if tonumpy:
-            np.save(os.path.join(observation_dir,f'final_img_{HA_point:.2f}_hr_{Dec_point:.2f}_deg.npy'),dirty_img_all)
-        metadata.append({
-            #'filename': filename,
-            'desired_shift_pixels_x': desired_shift_pixels_x,
-            'desired_shift_pixels_y': desired_shift_pixels_y,
-            'HA': HA_point,
-            'Dec': Dec_point,
-            'Noise': noise,
-            'Spectral index': spectral_index,
-        })
+                dirty_img_all = np.zeros((zoom_pix*2,zoom_pix*2,int(NUM_CHANNELS//AVERAGING_FACTOR)))
+            for i, dirty_img in enumerate(dirty_images):
+                avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
+                filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
+                filepath = os.path.join(observation_dir, filename)
+                im_zoom = np.array(np.fliplr(np.abs(dirty_img.T)))
+                if not inflate:
+                    im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix), (IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix)]
+                plt.imsave(filepath, im_zoom, cmap='gray')
+                if tonumpy:
+                    dirty_img_all[:,:,i] = im_zoom
+            if tonumpy and N_NOISE > 1:
+                dirty_img_all_noise[:,:,k_n,:] = dirty_img_all
+            if tonumpy:
+                np.save(os.path.join(observation_dir,f'final_img_{HA_point:.2f}_hr_{Dec_point:.2f}_deg.npy'),dirty_img_all)
+            metadata.append({
+                #'filename': filename,
+                'desired_shift_pixels_x': desired_shift_pixels_x,
+                'desired_shift_pixels_y': desired_shift_pixels_y,
+                'HA': HA_point,
+                'Dec': Dec_point,
+                'Noise': noise,
+                'Spectral index': spectral_index,
+            })
 
-        # Saving metadata to a CSV file
-        metadata_df = pd.DataFrame(metadata)
-        metadata_df.to_csv(os.path.join(dataset_dir, f'observation_{obs+1}/metadata.csv'), index=False)
+            # Saving metadata to a CSV file
+            metadata_df = pd.DataFrame(metadata)
+            metadata_df.to_csv(os.path.join(dataset_dir, f'observation_{obs+1}/metadata.csv'), index=False)
 
     print("All observations saved.")
-    if tonumpy:
+    if tonumpy and N_NOISE == 1:
         return dirty_img_all
+    elif tonumpy and N_NOISE > 1:
+        return dirty_img_all_noise
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate images of sources observed with DSA-110 core antennas.')
@@ -185,6 +193,7 @@ if __name__ == "__main__":
     parser.add_argument('--zoom_pix', type=int, default=25, help='Number of pixels to zoom in')
     parser.add_argument('--tonumpy',action='store_true',help='Save image to a numpy file')
     parser.add_argument('--inflate',action='store_true',help='Inflates image to size zoom_pix x zoom_pix')
+    parser.add_argument('--NNOISE',type=int,default=1,help='Number of noise realizations to generate; only 1 is saved as observation dataset')
     args = parser.parse_args()
 
-    generate_src_images(args.dataset_dir, args.num_observations, args.noise_std_low, args.noise_std_high, args.exclude_antenna_percentage, args.HA_point, args.HA_source, args.Dec_point, args.Dec_source, args.spectral_index_low, args.spectral_index_high, args.zoom_pix,args.tonumpy,args.inflate)
+    generate_src_images(args.dataset_dir, args.num_observations, args.noise_std_low, args.noise_std_high, args.exclude_antenna_percentage, args.HA_point, args.HA_source, args.Dec_point, args.Dec_source, args.spectral_index_low, args.spectral_index_high, args.zoom_pix,args.tonumpy,args.inflate,args.NNOISE)

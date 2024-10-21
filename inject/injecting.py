@@ -58,7 +58,6 @@ noise_dir = cwd + "-noise/"
 inject_dir = cwd + "-injections/"
 PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
-vis_to_img_slope = 6.374693752163694e-05 #slope relating noise in visibilities to std noise in image estimated from simulation
 
 
 def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None):
@@ -72,7 +71,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     
     #for proper normalization need to scale snr
     #snr = snr*100*1000*0.75*75/15#40.625#*100/3
-    snr = snr*15000000/26#*1000/2 
+    snr = snr*(1000/20)*16*((10/28)**2)#*1000/2 
     
    
     #estimate noise to inject from raw data
@@ -102,13 +101,16 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     PSFimg = scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize//2,True,nsamps=width,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
                                     srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
                                     srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180)
-
+    if width == 1:
+        PSFimg = PSFimg[:,:,np.newaxis,:]
 
 
     if not noiseless:
         PSFimg *= visnoise/injectnoise
         if offline:
             noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nsamps-width+maxshift+maxshift,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
+            if nsamps-width+maxshift+maxshift == 1:
+                noiseimg = noiseimg[:,:,np.newaxis,:]
             last_frame = noiseimg[:,:,:maxshift,:]
             noiseimg = noiseimg[:,:,maxshift:,:]
             print("OFFLINE CASE MAXSHIFT:",maxshift,file=fout)
@@ -117,14 +119,18 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
             f.close()
         else:
             noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nsamps-width+maxshift,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
-
+            if nsamps-width+maxshift == 1:
+                noiseimg = noiseimg[:,:,np.newaxis,:]
         
         noiseimg1 = noiseimg[:,:,:int(loc*nsamps)+maxshift,:]
         noiseimg2 = noiseimg[:,:,int(loc*nsamps)+maxshift:,:]
 
-        PSFimg = np.concatenate([noiseimg1,PSFimg,noiseimg2],axis=2)
+        print(noiseimg1.shape,noiseimg2.shape,noiseimg.shape,PSFimg.shape,file=fout)
+        PSFimg = np.concatenate([noiseimg2,PSFimg,noiseimg1],axis=2)
     else:
-        PSFimg = np.concatenate([np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps-int(loc*nsamps),nchans))],axis=2)
+        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans))],axis=2)
+        PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans))])
+        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (maxshift-int(loc*nsamps)),nchans)),PSFimg,np.zeros((gridsize,gridsize,(-int(loc*nsamps)+maxshift),nchans))],axis=2)
 
     print("PSF MEAN:" + str(np.nanmean(PSFimg)),file=fout)
     print("PSF MEDIAN:" + str(np.nanmedian(PSFimg)),file=fout)
@@ -183,35 +189,42 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
 
     #if DM is given, disperse before adding noise
     if DM != 0:
+        print("COMPUTING SHIFTS FOR DM=",DM,"pc/cc",file=fout)
+        freq_axis = np.linspace(fmin,fmax,nchans)
+        corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps,outputwraps=True,maxshift=maxshift)
+
+        #nsamps = sourceimg.shape[-2]
+        DM_idx = 0#list(DM_trials).index(DM)
+        print("PRE-DM SHAPE:",sourceimg.shape,file=fout)
+        sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,::-1,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
+        print("POST-DM SHAPE:",sourceimg_dm.shape,file=fout)
+        #zero out anywhere that was wrapped
+        #sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
+
+        #now average the low and high shifts 
+        sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps,nchans] + [2])).sum(4))[:,:,::-1,:]
+    else:
+        sourceimg_dm = sourceimg
+
+
+    """
         if DM in DM_trials:
             #dedispersion
             
             #nsamps = sourceimg.shape[-2]
             DM_idx = list(DM_trials).index(DM)
-
+            print("PRE-DM SHAPE:",sourceimg.shape,file=fout)
             sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,::-1,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
-
+            print("POST-DM SHAPE:",sourceimg_dm.shape,file=fout)
             #zero out anywhere that was wrapped
             #sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
 
             #now average the low and high shifts 
-            sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape) + [2])).sum(4))[:,:,::-1,:]
+            sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps,nchans] + [2])).sum(4))[:,:,::-1,:]
             
             
             
             
-            """
-            #nsamps = sourceimg.shape[-2]
-            DM_idx = list(DM_trials).index(DM)
-
-            sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,::-1,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_no_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_no_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
-            
-            #zero out anywhere that was wrapped
-            sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
-
-            #now average the low and high shifts 
-            sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape) + [2])).sum(4))[:,:,::-1,:]
-            """
         else:
 
             sourceimg_dm = np.zeros(sourceimg.shape)
@@ -229,14 +242,14 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
                         arrhi =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
 
                         sourceimg_dm[i,j,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
-
+    
  
 
     else:
         sourceimg_dm = sourceimg
-
+    """
     np.save(inject_dir + "testimg",sourceimg_dm)
-    sourceimg_dm = sourceimg_dm[:,:,-nsamps:,:]
+    sourceimg_dm = sourceimg_dm[:,:,:nsamps,:]
     print("FINAL IMG SHAPE:" + str(sourceimg_dm.shape),file=fout)
 
 

@@ -135,7 +135,7 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         return noise_final, prevN
     return noise_final 
 
-def init_noise(noise_dir=noise_dir):
+def init_noise(DM_trials,widthtrials,gridsize_RA,gridsize_DEC,noise_dir=noise_dir,img=False,suff=""):
     if output_file != "":
         fout = open(output_file,"a")
     else:
@@ -147,21 +147,27 @@ def init_noise(noise_dir=noise_dir):
             os.system("rm " + n)
     
     #initialize
-    noisefiles = glob.glob(noise_dir + "/*pkl")
-    for n in noisefiles:
-        if '_sim' in n:
-            print("initializing with " + n,file=fout)
-            os.system("cp " + n + " " + n[:n.index("_sim")] + ".pkl")
-
-
-    """
-    if init_file == "":
-        if len(glob.glob(noise_dir + "/*pkl")) > 0:
-            os.system("rm " + noise_dir + "/*pkl")
+    if img:
+        noisefiles = glob.glob(noise_dir + "/*pkl")
+        for n in noisefiles:
+            if '_sim' in n:
+                print("initializing with " + n,file=fout)
+                os.system("cp " + n + " " + n[:n.index("_sim")] + ".pkl")
     else:
-        #initialize from previous sim
-        os.system("cp " + noise_dir + init_file + 
-    """
+        #initialize based on fit relation
+        vis_noise = np.mean(np.load(noise_dir + "raw_vis_noise_real.npy"))
+        all_noise = dict()
+        for i in range(len(DM_trials)):
+            all_noise[DM_trials[i]] = dict()
+            for j in range(len(widthtrials)):
+                all_noise[DM_trials[i]][widthtrials[j]] = [10,vis_to_img_slope*vis_noise*np.sqrt(widthtrials[j])]
+        fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + str(suff) +".pkl"
+        noisefile = open(fname,"wb")
+        pkl.dump(all_noise,noisefile)
+        noisefile.close()
+        
     if output_file != "":
         fout.close()
     return
+
+

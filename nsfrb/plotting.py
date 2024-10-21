@@ -1,4 +1,5 @@
 import matplotlib
+from nsfrb.config import tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 fsize=45
@@ -146,7 +147,7 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[]):
     """
     Makes updated diagnostic plots for search system
     """
@@ -168,10 +169,11 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
             i += 1
     csvfile.close()
     """
-    fig=plt.figure(figsize=(40,12))
+    fig=plt.figure(figsize=(40,32))
     if injection:
         fig.patch.set_facecolor('red')
-    ax = plt.subplot(1,2,1)
+    gs = fig.add_gridspec(3,2,height_ratios=[0.5,0.25,0.5])
+    ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
     if 'predicts' in canddict.keys():
         ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
@@ -188,7 +190,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.set_ylabel(r"DEC ($^\circ$)")
     ax.invert_xaxis()
 
-    ax=plt.subplot(1,2,2)
+    ax = fig.add_subplot(gs[0,1])#ax=plt.subplot(3,2,2)
     if 'predicts' in canddict.keys():
         c=ax.scatter(widthtrials[wids][canddict['predicts']==0],
                 DM_trials[dms][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
@@ -206,6 +208,19 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.set_ylim(0,np.max(DM_trials) + 1)
     ax.set_xlabel("Width (Samples)")
     ax.set_ylabel(r"DM (pc/cc)")
+
+
+    #timeseries
+    ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
+    for i in range(len(timeseries)):
+        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),color='blue',where='post',linewidth=4)
+    ax.set_xlim(0,tsamp*img.shape[2]/1000)
+    ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,5)
+    ax.imshow(img.mean((0,1)).transpose(),origin="lower",extent=[0,tsamp*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto')
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Frequency (MHz)")
+
+
     t = "NSFRB" + isot
     if injection: t = t + " (injection)"
     plt.suptitle(t)

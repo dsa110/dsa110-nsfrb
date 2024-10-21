@@ -61,6 +61,11 @@ do
         echo ">>>>>>>>>>>>>>>"
 
 	echo ""
+        echo ">>>>>>>>>>>>>>> candcutter_error_log.txt"
+        tail -$2 ${cwd}-logfiles/candcutter_error_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
+        echo ">>>>>>>>>>>>>>>"
+
+	echo ""
         echo ">>>>>>>>>>>>>>> time_log.txt"
         tail -$2 ${cwd}-logfiles/time_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
         echo ">>>>>>>>>>>>>>>"

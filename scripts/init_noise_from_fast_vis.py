@@ -28,6 +28,8 @@ import time
 from scipy.stats import norm
 import nsfrb.searching as sl
 from nsfrb import jax_funcs
+import os
+vis_dir = os.environ["NSFRBDATA"] + "dsa110-nsfrb-fast-visibilities/"
 
 def process_data_sb(fname, num_gulp, num_time_samples=25, verbose_flag=False, plot_uv_analysis_flag=False, plot_dirty_images_flag=False, num_channels=NUM_CHANNELS,averaging_factor=AVERAGING_FACTOR,image_size=IMAGE_SIZE,num_batches=1):
     """
@@ -245,7 +247,7 @@ def main():
 
     dirty_images_all_concat = np.zeros((IMAGE_SIZE,IMAGE_SIZE,args.num_time_samples*args.num_gulp,NUM_CHANNELS//AVERAGING_FACTOR))
     for i in range(NUM_CHANNELS//AVERAGING_FACTOR):
-        dirty_images_all_concat[:,:,:,i:i+1] = process_data_sb(fnames[i],args.num_gulp, args.num_time_samples, args.verbose, args.plot_uv_analysis, args.plot_dirty_images,num_channels=2,averaging_factor=2,num_batches=args.num_batches)
+        dirty_images_all_concat[:,:,:,i:i+1] = process_data_sb(vis_dir +"test_files/"+ fnames[i],args.num_gulp, args.num_time_samples, args.verbose, args.plot_uv_analysis, args.plot_dirty_images,num_channels=2,averaging_factor=2,num_batches=args.num_batches)
 
     get_noise_sb(dirty_images_all_concat,args.num_gulp, args.num_time_samples, args.verbose, args.plot_uv_analysis, args.plot_dirty_images,num_channels=2,averaging_factor=2,num_batches=args.num_batches)
 

@@ -74,6 +74,9 @@ sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 freq_axis = np.linspace(fmin,fmax,nchans)
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
 full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
+tDM_max = (4.15)*np.max(DM_trials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
+maxshift = int(np.ceil(tDM_max/tsamp))
+
 
 #PSF-weighted distance measure
 """
@@ -381,6 +384,8 @@ def candcutter_task(fname,args):
     
     #read cand file
     raw_cand_names,finalcands = read_candfile(fname)
+    #raw_cand_names = raw_cand_names[:100]
+    #finalcands = finalcands[:100]
 
     #confirm number of cands less than max
     if len(finalcands) >args['maxcands']: 
@@ -468,8 +473,8 @@ def candcutter_task(fname,args):
                 #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],dmidx=int(finalcands[j][3])),widthtrials[int(finalcands[j][2])])
 
                 #don't need to dedisperse(?)
-                subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])
-                data_array[j,:,:,:] = img_to_classifier_format(subimg[:,:,12,:],cand_isot+"_"+str(j),img_dir)  #.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
+                subimg = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args['subimgpix'])
+                data_array[j,:,:,:] = img_to_classifier_format(subimg.mean(2),cand_isot+"_"+str(j),img_dir)  #.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
                 printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
             
         #reformat for classifier
@@ -555,9 +560,38 @@ def candcutter_task(fname,args):
             canddict['probs'] = probabilities
             canddict['predicts'] = predictions
         RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
+
+        # dedisperse to each unique dm candidate
+        timeseries = []
+        sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[maxshift]+[image.shape[3]])),image],axis=2)
+        for i in range(len(finalidxs)):
+            DM = DM_trials[int(canddict['dm_idxs'][i])]
+
+            sourceimg = sourceimg_all[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
+                                    int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
+            printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc",output_file=cutterfile)
+            freq_axis = np.linspace(fmin,fmax,nchans)
+            corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps,outputwraps=True,maxshift=maxshift)
+
+            printlog("corr shifts shape:" + str(corr_shifts_all_append.shape),output_file=cutterfile)
+
+            DM_idx = 0#list(DM_trials).index(DM)
+            printlog("PRE-DM SHAPE:"+str(sourceimg.shape),output_file=cutterfile)
+            sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,:,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
+            printlog("POST-DM SHAPE:"+str(sourceimg_dm.shape),output_file=cutterfile)
+            #zero out anywhere that was wrapped
+            #sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
+
+            #now average the low and high shifts 
+            sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps,nchans] + [2])).sum(4))
+
+            timeseries.append(sourceimg_dm.mean((0,1,3)))
+        
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir,show=False,s100=args['SNRthresh']/2,injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],searched_image=searched_image)
+                                            output_dir=final_cand_dir,show=False,s100=args['SNRthresh']/2,
+                                            injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],
+                                            searched_image=searched_image,timeseries=timeseries)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:
