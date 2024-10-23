@@ -154,7 +154,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     gridsize = len(RA_axis)
     decs,ras,wids,dms=np.array(canddict['dec_idxs'],dtype=int),np.array(canddict['ra_idxs'],dtype=int),np.array(canddict['wid_idxs'],dtype=int),np.array(canddict['dm_idxs'],dtype=int)#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
     snrs = np.array(canddict['snrs'])#imgsearched.flatten()[(imgsearched>2500).flatten()]
-
+    names = np.array(canddict['names'])
     """
     #check if the candidate is an injection
     injection = False
@@ -169,10 +169,10 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
             i += 1
     csvfile.close()
     """
-    fig=plt.figure(figsize=(40,32))
+    fig=plt.figure(figsize=(40,40))
     if injection:
         fig.patch.set_facecolor('red')
-    gs = fig.add_gridspec(3,2,height_ratios=[0.5,0.25,0.5])
+    gs = fig.add_gridspec(3,2)
     ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
     if 'predicts' in canddict.keys():
@@ -213,10 +213,14 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     #timeseries
     ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
-        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),color='blue',where='post',linewidth=4)
+        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label="NSFRB"+names[i])
+    ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
     ax.set_xlim(0,tsamp*img.shape[2]/1000)
     ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,5)
-    ax.imshow(img.mean((0,1)).transpose(),origin="lower",extent=[0,tsamp*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto')
+    #show dynamic spectrum for highest S/N burst
+    showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
+    ax.set_title("NSFRB"+showname)
+    ax.imshow(img[int(showy),int(showx)].transpose(),origin="lower",extent=[0,tsamp*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto')
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (MHz)")
 

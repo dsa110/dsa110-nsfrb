@@ -556,6 +556,7 @@ def candcutter_task(fname,args):
         canddict['wid_idxs'] = [finalcands[j][2] for j in finalidxs]
         canddict['dm_idxs'] = [finalcands[j][3] for j in finalidxs]
         canddict['snrs'] = [finalcands[j][-1] for j in finalidxs]
+        canddict['names'] = allcandnames
         if args['classify']:
             canddict['probs'] = probabilities
             canddict['predicts'] = predictions

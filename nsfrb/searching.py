@@ -2071,7 +2071,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
 #CONTEXTSETUP = False
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,fprtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff):
     #global CONTEXTSETUP
     #if not QSETUP and not CONTEXTSETUP:
     #    CONTEXTSETUP = True
@@ -2133,31 +2133,37 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         save_last_frame(last_frame,full=True)
         printlog("Writing to last_frame.npy",output_file=processfile)
 
-    if savesearch or len(fullimg.candidxs)>0:
-        #write raw candidates to csv
-        csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
-        wr = csv.writer(csvfile,delimiter=',')
-        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
-        for i in range(len(fullimg.candidxs)):
-            wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i][:-1],dtype=int),[fullimg.candidxs[i][-1]]]))
-        csvfile.close()
+    if savesearch or len(fullimg.candidxs)>0 or fprtest:
+        if not fprtest:
+            #write raw candidates to csv
+            csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
+            wr = csv.writer(csvfile,delimiter=',')
+            wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+            for i in range(len(fullimg.candidxs)):
+                wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i][:-1],dtype=int),[fullimg.candidxs[i][-1]]]))
+            csvfile.close()
 
-        #save image
-        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
-        np.save(f,fullimg.image_tesseract_binned)
-        f.close()
+            #save image
+            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
+            np.save(f,fullimg.image_tesseract_binned)
+            f.close()
 
-        #save fits
-        numpy_to_fits(fullimg.image_tesseract_binned.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ".fits")
+            #save fits
+            numpy_to_fits(fullimg.image_tesseract_binned.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ".fits")
+            
+            #save fits
+            numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.fits")
+
 
         #save image
         f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.npy","wb")
         np.save(f,fullimg.image_tesseract_searched)
         f.close()
         
-        #save fits
-        numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.fits")
-
+        if fprtest:
+            f = open(cand_dir + "fpr_test.csv","a")
+            f.write("\n"+fullimg.img_id_isot + "," + str(np.nanmax(fullimg.image_tesseract_searched)))
+            f.close()
 
         #if the dask scheduler is set up, put the cand file name in the queue
         #if 'DASKPORT' in os.environ.keys() and QSETUP:

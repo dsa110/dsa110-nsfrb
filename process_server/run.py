@@ -827,9 +827,17 @@ def main(args):
             
             else:   
             """
+            #initialize noise stats
+            if args.fprtest:
+                printlog("FPR Test, Re-Initializing noise statistics...",output_file=processfile)
+                init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
+                sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
+
+
+
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
@@ -882,6 +890,7 @@ if __name__=="__main__":
     parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
     parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
     parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
+    parser.add_argument('--fprtest',action='store_true',help='Saves only searched data and writes peak SNR to file')
     parser.add_argument('--appendframe',action='store_true',help='Use the previous image to fill in dedispersion search')
     parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
     parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
