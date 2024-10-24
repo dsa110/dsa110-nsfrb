@@ -69,12 +69,13 @@ csvfile.close()
     csvfile.write("ISOT,SNR")
     #wr = csv.writer(csvfile,delimiter=',')
     #wr.writerow(['ISOT','SNR'])
-csvfile.close()"""
+csvfile.close()
 with open(os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/fnr_test.csv","w") as csvfile:
     csvfile.write("ISOT,SNR")
     #wr = csv.writer(csvfile,delimiter=',')
     #wr.writerow(['ISOT','SNR'])
 csvfile.close()
+"""
 
 
 
