@@ -828,7 +828,7 @@ def main(args):
             else:   
             """
             #initialize noise stats
-            if args.fprtest:
+            if args.fprtest or args.fnrtest:
                 printlog("FPR Test, Re-Initializing noise statistics...",output_file=processfile)
                 init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
                 sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)

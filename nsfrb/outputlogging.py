@@ -32,7 +32,7 @@ candidates_channel_ID = "C07PVF82FQX"
 def send_candidate_slack(filename,filedir=final_cand_dir,error_file=error_file):
     #upload file to bot
     try:
-        client.files_upload_v2(channel=candidates_channel_ID,title=filename[:-4],file=final_cand_dir + filename,initial_comment=filename,)
+        client.files_upload_v2(channel=candidates_channel_ID,title=filename[:-4],file=filedir + filename,initial_comment=filename,)
         return 0
     except Exception as e:
         printlog(e,output_file=error_file)

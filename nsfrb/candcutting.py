@@ -50,6 +50,7 @@ import os
 import sys
 cwd = os.environ['NSFRBDIR']
 cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/" #cwd + "-candidates/"
+vis_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/"
 cutterfile = cwd + "-logfiles/candcutter_log.txt"
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
@@ -500,11 +501,14 @@ def candcutter_task(fname,args):
         csvfile.close()
 
 
+    #make final directory for candidates
+    os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot)
+
     #write final candidates to csv
     prefix = "NSFRB"
     lastname = None     #once we have etcd, change to 'names.get_lastname()'
     allcandnames = []
-    csvfile = open(final_cand_dir + "final_candidates_" + cand_isot + ".csv","w")
+    csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
     if args['classify']:
         wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR","PROB"])
@@ -544,8 +548,11 @@ def candcutter_task(fname,args):
                 f.close()
 
 
+            #make folder for each candidate
+            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname)
+            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
+            np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + ".npy",subimg)
 
-            np.save(final_cand_dir + prefix + lastname + ".npy",subimg)
     #send candidates to slack
     if len(finalidxs) > 0:
         #make diagnostic plot
@@ -590,23 +597,28 @@ def candcutter_task(fname,args):
         
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir,show=False,s100=args['SNRthresh']/2,
+                                            output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/",show=False,s100=args['SNRthresh']/2,
                                             injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],
                                             searched_image=searched_image,timeseries=timeseries)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:
             printlog("sending plot to slack...",output_file=cutterfile,end='')
-            send_candidate_slack(candplot,filedir=final_cand_dir)
+            send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
             printlog("done!",output_file=cutterfile)
+    
+    #move fast visibilities, should be labelled with ISOT timestamp
+    if not injection_flag:
+        os.system("mv " + vis_dir + "lxd110*/*" + cand_isot + "*.out " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
 
 
+    """
     #once finished, move raw data to backup directory if there are remaining candidates, otherwise, delete (at some point, make this an scp to dsastorage)
     if len(finalidxs) > 0:
         os.system("mv " + raw_cand_dir + "*" + cand_isot + "* " + backup_cand_dir)
     else:
         os.system("rm " + raw_cand_dir + "*" + cand_isot + "*")
-    
+    """
     #send final candidates to T4 because they will be removed from h24 when it runs out of space
     if args['archive'] and len(finalidxs) > 0 and 'NSFRBT4' in os.environ.keys():
         #make a new directory for timestamp on T4
@@ -637,7 +649,10 @@ def candcutter_task(fname,args):
             
             #once we figure out etcd, also copy voltage files
         #once we figure out etcd, also copy visibility files if offline
-
+        
+        #copy fast visibilities
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
     return
 
