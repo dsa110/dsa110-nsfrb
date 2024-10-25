@@ -7,7 +7,7 @@ setup(name='dsa110-nsfrb',
       url='http://github.com/dsa110/dsa110-nsfrb',
       python_requires='>3.8',
 #      requirements=['seaborn', 'astropy', 'hdbscan', 'progress'],
-      packages=['nsfrb','simulations_and_classifications','inject'],
+      packages=['nsfrb','simulations_and_classifications','inject','dsaT4'],
       zip_safe=False)
 
 #get local nsfrb directory

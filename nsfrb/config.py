@@ -14,6 +14,7 @@ CH_WIDTH = 0.244141  # MHz
 
 # Time parameters
 tsamp = 0.1342182159423828*1000 #130 #ms
+baseband_tsamp = 256e-3 #ms
 nsamps = 25
 T = tsamp*nsamps #3250 #ms
 #nsamps = int(T/tsamp)

@@ -1,4 +1,5 @@
 import numpy as np
+from dsaT4 import T4_manager as T4m
 from nsfrb.outputlogging import numpy_to_fits
 import os
 import jax
@@ -523,8 +524,17 @@ def candcutter_task(fname,args):
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
         else:
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
-        allcandnames.append(lastname)
+        allcandnames.append(prefix + lastname)
     csvfile.close()
+
+
+    #make subdirectories for candidates
+    for j in finalidxs:
+
+        lastname = allcandnames[j]
+        #make folder for each candidate
+        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname)
+        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
 
     #get image cutouts and write to file
     if args['cutout'] or args['train']:
@@ -551,7 +561,7 @@ def candcutter_task(fname,args):
             #make folder for each candidate
             os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname)
             os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
-            np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + ".npy",subimg)
+            np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/" + lastname + ".npy",subimg)
 
     #send candidates to slack
     if len(finalidxs) > 0:
@@ -595,6 +605,22 @@ def candcutter_task(fname,args):
 
             timeseries.append(sourceimg_dm.mean((0,1,3)))
         
+            if not injection_flag:
+                #create json file
+                snr=canddict['snrs'][i]
+                width=int(widthtrials[int(canddict['wid_idxs'][i])])
+                dm=int(DM_trials[int(canddict['dm_idxs'][i])])
+                ra=RA_axis[int(canddict['ra_idxs'][i])]
+                dec=DEC_axis[int(canddict['dec_idxs'][i])]
+                trigname = canddict['names'][i]
+                printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
+                fl = T4m.nsfrb_to_json(cand_isot,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + trigname + "/")
+                printlog(fl,output_file=cutterfile)
+                if args.trigger:
+                    T4m.submit_cand_nsfrb(fl, logfile=cutterfile)
+
+
+
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials,widthtrials=widthtrials,
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/",show=False,s100=args['SNRthresh']/2,
@@ -632,10 +658,10 @@ def candcutter_task(fname,args):
         
 
         #copy csv and cand plot
-        printlog("scp " + final_cand_dir + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
-        printlog("scp " + final_cand_dir + "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
 
         #make folder for each candidate
         printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname for lastname in allcandnames]) + "\"",output_file=cutterfile)
@@ -644,8 +670,8 @@ def candcutter_task(fname,args):
         os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
         for lastname in allcandnames:
             #copy numpy files
-            printlog("scp " + final_cand_dir + prefix + lastname + ".npy user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
-            os.system("scp " + final_cand_dir + prefix + lastname + ".npy user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
+            printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
+            os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
             
             #once we figure out etcd, also copy voltage files
         #once we figure out etcd, also copy visibility files if offline
@@ -653,6 +679,7 @@ def candcutter_task(fname,args):
         #copy fast visibilities
         printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
         os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
     return
 
