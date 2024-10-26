@@ -212,7 +212,7 @@ def gen_boxcar_filter(widthtrials,truensamps,gridsize=1,nDMtrials=1): #note, you
     loc = int(truensamps//2)
     for i in range(nwidths):
         wid = widthtrials[i]
-        boxcar[i,:,:,loc-wid//2-2:loc+wid-wid//2-2,:] = 1
+        boxcar[i,:,:,loc-wid//2:loc+wid-wid//2,:] = 1
 
     return boxcar
 full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
@@ -1806,7 +1806,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                                                  jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[jaxdev]),
                                                                  jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[jaxdev]),
                                                                  prev_noise_N,noiseth)
-            image_tesseract_binned,total_noise = np.array(outtup[0]),np.array(outtup[1])[:,np.newaxis].repeat(len(DM_trials),1)
+            image_tesseract_binned,total_noise,TOAs = np.array(outtup[0]),np.array(outtup[1])[:,np.newaxis].repeat(len(DM_trials),1),np.array(outtup[2])
             
             jaxdev += 1 
             jaxdev %= 2 
@@ -1832,9 +1832,12 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         candwids = widthtrials[candwid_idxs]
         canddms = DM_trials[canddm_idxs]
         candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
-
-        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
-        cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
+        if DMbatches==1:
+            candTOAs = TOAs[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
+        else:
+            candTOAs = -np.ones(ncands)
+        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+        cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
 
         #make a dictionary for easy plotting of results
         canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
@@ -1846,6 +1849,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         canddict['wids'] = copy.deepcopy(candwids)
         canddict['dms'] = copy.deepcopy(canddms)
         canddict['snrs'] = copy.deepcopy(candsnrs)
+        canddict['TOAs'] = copy.deepcopy(candTOAs)
         print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
 
 
@@ -2138,7 +2142,11 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
             #write raw candidates to csv
             csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
             wr = csv.writer(csvfile,delimiter=',')
-            wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+            if 'TOAs' not in canddict.keys():
+                wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+            else:
+                wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "TOA", "SNR"])
+            
             for i in range(len(fullimg.candidxs)):
                 wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i][:-1],dtype=int),[fullimg.candidxs[i][-1]]]))
             csvfile.close()

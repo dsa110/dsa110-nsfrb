@@ -170,10 +170,11 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
     #compute SNR
     #image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(jnp.sqrt(jnp.abs( ((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise[:,0:1].repeat(nDM,1),(1,2)))))))[:,:,:,:,0].transpose(1,2,0,3)
     image_tesseract_binned_new = (image_tesseract_binned.at[:,:,:,:,0].set(jnp.sqrt(jnp.abs( ((image_tesseract_binned.max(4) - jnp.nanmedian(image_tesseract_binned*mask,axis=4))/jnp.expand_dims(noise[:,np.newaxis].repeat(nDM,1),(1,2)))))))[:,:,:,:,0].transpose(1,2,0,3)
+    #image_tesseract_TOAs = image_tesseract_binned.at[:,:,:,:,1].set(image_tesseract_binned.argmax(4)).astype(jnp.uint8).transpose(1,2,0,3)
 
     del mask
     del boxcar
-    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0])
+    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]),jax.device_put((image_tesseract_binned.argmax(4)).astype(jnp.uint8).transpose(1,2,0,3),jax.devices("cpu")[0])
 
 """
 matched filter

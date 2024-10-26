@@ -94,7 +94,7 @@ def PSF_dist_metric(p1,p2,PSFfunc):
 
 
 #hdbscan clustering function; clusters in DM, width, RA, DEC space
-def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2):
+def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2,useTOA=False):
     printlog("WHY ISN'T IT STARTING?",output_file=output_file)
     #f = open(output_file,"a")
     printlog(str(len(cands)) + " candidates",output_file=output_file)
@@ -105,19 +105,30 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     dmidxs = []
     widthidxs = []
     snridxs = []
+    TOAflag = (len(cands[0]) == 6) and useTOA
+    if TOAflag:
+        printlog("Using TOA info for clustering",output_file=output_file)
+        TOAs = []
     for i in range(len(cands)):
         raidxs.append(cands[i][0])
         decidxs.append(cands[i][1])
         dmidxs.append(cands[i][3])
         widthidxs.append(cands[i][2])
-        snridxs.append(cands[i][4])
+        if TOAflag:
+            TOAs.append(cands[i][4])
+        snridxs.append(cands[i][-1])
     raidxs = np.array(raidxs)
     decidxs = np.array(decidxs)
     dmidxs = np.array(dmidxs)
     widthidxs = np.array(widthidxs)
     snridxs = np.array(snridxs)
+    if TOAflag:
+        TOAs = np.array(TOAs)
 
-    test_data=np.array([raidxs,decidxs,dmidxs,widthidxs]).transpose()
+    if TOAflag:
+        test_data=np.array([raidxs,decidxs,dmidxs,widthidxs,TOAs]).transpose()
+    else:
+        test_data=np.array([raidxs,decidxs,dmidxs,widthidxs]).transpose()
 
 
     #create clusterer
@@ -151,6 +162,8 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     centroid_dms = []
     centroid_widths = []
     centroid_snrs = []
+    if TOAflag:
+        centroid_TOAs = []
     for k in classnames:
         if k != -1:
             centroid_ras.append(np.average(raidxs[classes==k],weights=snridxs[classes==k]))
@@ -158,7 +171,8 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
             centroid_dms.append(np.average(dmidxs[classes==k],weights=snridxs[classes==k]))
             centroid_widths.append(np.average(widthidxs[classes==k],weights=snridxs[classes==k]))
             centroid_snrs.append(np.average(snridxs[classes==k],weights=snridxs[classes==k]))
-
+            if TOAflag:
+                centroid_TOAs.append(np.average(TOAs[classes==k],weights=snridxs[classes==k]))
             """
             centroid_ras.append((np.nansum((snridxs*raidxs)[classes==k])/np.nansum(snridxs[classes==k])))
             centroid_decs.append((np.nansum((snridxs*decidxs)[classes==k])/np.nansum(snridxs[classes==k])))
@@ -174,8 +188,13 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     centroid_dms = np.array(centroid_dms)
     centroid_widths = np.array(centroid_widths)
     centroid_snrs = np.array(centroid_snrs)
+    if TOAflag:
+        centroid_TOAs = np.array(centroid_TOAs)
 
-    centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
+    if TOAflag:
+        centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i],centroid_TOAs[i]) for i in range(len(centroid_ras))]
+    else:
+        centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
 
     if plot:
         cands_noninf = []
@@ -217,7 +236,11 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
         else:
             plt.close()
     #f.close()
-    return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
+    printlog("finished clustering",output_file)
+    if TOAflag:
+        return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs
+    else:
+        return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
 
 
 
@@ -452,7 +475,11 @@ def candcutter_task(fname,args):
 
         #clustering with hdbscan
         PSF = None#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps).mean((2,3))
-        classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'],PSF=PSF)
+        useTOA=args['useTOA'] and len(finalcands[0])==6
+        if useTOA:
+            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,useTOA=True)
+        else:
+            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'],PSF=PSF)
         printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
         printlog(classes,output_file=cutterfile)
         printlog(cluster_cands,output_file=cutterfile)
@@ -476,7 +503,12 @@ def candcutter_task(fname,args):
 
                 #don't need to dedisperse(?)
                 subimg = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args['subimgpix'])
-                data_array[j,:,:,:] = img_to_classifier_format(subimg.mean(2),cand_isot+"_"+str(j),img_dir)  #.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
+                if useTOA:
+                    loc = int(finalcands[j][4])
+                    wid = widthtrials[int(finalcands[j][2])]
+                    data_array[j,:,:,:] = img_to_classifier_format(subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),:].mean(2),cand_isot+"_"+str(j),img_dir)
+                else:
+                    data_array[j,:,:,:] = img_to_classifier_format(subimg.mean(2),cand_isot+"_"+str(j),img_dir)  #.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
                 printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
             
         #reformat for classifier
@@ -498,7 +530,7 @@ def candcutter_task(fname,args):
         with open(recover_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             for j in finalidxs:
-                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][4],(None if not args['classify'] else predictions[j]),(None if not args['classify'] else probabilities[j])])
+                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not args['classify'] else predictions[j]),(None if not args['classify'] else probabilities[j])])
         csvfile.close()
 
 
@@ -511,10 +543,10 @@ def candcutter_task(fname,args):
     allcandnames = []
     csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
-    if args['classify']:
-        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR","PROB"])
-    else:
-        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
+    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"]
+    if useTOA: hdr += ["TOA"]
+    if args['classify']: hdr += ["PROB"]
+    wr.writerow(hdr)
     sysstdout = sys.stdout
     for j in finalidxs:#range(len(finalidxs)):
         with open(cutterfile,"a") as sys.stdout:
@@ -550,7 +582,12 @@ def candcutter_task(fname,args):
                 for k in range(subimg.shape[3]):
                     filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
                     printlog(filepath,output_file=cutterfile)
-                    plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
+                    if useTOA:
+                        loc = int(finalcands[j][4])
+                        wid = widthtrials[int(finalcands[j][2])]
+                        plt.imsave(filepath, subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),k].mean(2), cmap='gray')
+                    else:
+                        plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
                 np.save(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + ".npy",subimg)
 
                 f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.txt","a")
@@ -577,6 +614,8 @@ def candcutter_task(fname,args):
         if args['classify']:
             canddict['probs'] = probabilities
             canddict['predicts'] = predictions
+        if useTOA: 
+            canddict['TOAs'] = [finalcands[j][4] for j in finalidxs]
         RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
 
         # dedisperse to each unique dm candidate
@@ -605,7 +644,7 @@ def candcutter_task(fname,args):
 
             timeseries.append(sourceimg_dm.mean((0,1,3)))
         
-            if not injection_flag:
+            if True:#not injection_flag:
                 #create json file
                 snr=canddict['snrs'][i]
                 width=int(widthtrials[int(canddict['wid_idxs'][i])])
@@ -614,9 +653,15 @@ def candcutter_task(fname,args):
                 dec=DEC_axis[int(canddict['dec_idxs'][i])]
                 trigname = canddict['names'][i]
                 printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
-                fl = T4m.nsfrb_to_json(cand_isot,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + trigname + "/")
+                if useTOA:
+                    toa = canddict['TOAs'][i]
+                    cand_mjd = Time(Time(cand_isot,format='isot').mjd + (canddict['TOAs'][i]*tsamp/1000/86400),format='mjd').mjd
+                else:
+                    cand_mjd = Time(cand_isot,format='isot').mjd
+                
+                fl = T4m.nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + trigname + "/")
                 printlog(fl,output_file=cutterfile)
-                if args.trigger:
+                if args['trigger']:
                     T4m.submit_cand_nsfrb(fl, logfile=cutterfile)
 
 

@@ -1,3 +1,4 @@
+from dsautils import dsa_store
 import json
 import os
 import sys
@@ -8,19 +9,34 @@ from nsfrb.outputlogging import printlog
 from event import event
 from dsaT4 import data_manager
 from dask.distributed import Client, Lock
+from copy import deepcopy
+from itertools import chain
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import time
+from types import MappingProxyType
+from typing import Union
+
+from astropy.time import Time
+import astropy.units as u
+from dsautils import cnf
+from dsautils import dsa_syslog as dsl
 """
 Functions for converting cand cutter output into T4 triggers and json files
 compatible with DSA-110 event scheduler
 """
 
 #client = Client('10.41.0.254:8781')
+client = Client('10.42.0.232:8786')
 LOCK = Lock('update_json')
 ds = dsa_store.DsaStore()
 LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsaT4")
 LOGGER.function("T4_manager")
-dc = alert_client.AlertClient('dsa')
+#dc = alert_client.AlertClient('dsa')
 
 TIMEOUT_FIL = 600
 FILPATH = os.environ["DSA110DIR"] + "operations/T1/"
@@ -28,7 +44,7 @@ OUTPUT_PATH = os.environ["DSA110DIR"] + "operations/T4/"
 IP_GUANO = '3.13.26.235'
 
 final_cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/final_cands/candidates/"
-def nsfrb_to_json(cand_isot,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir):
+def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir):
     """
     Takes the following arguments and saves to a json file in the specified cand dir
     cand_isot: str
@@ -39,7 +55,7 @@ def nsfrb_to_json(cand_isot,snr,width,dm,ra,dec,trigname,final_cand_dir=final_ca
     dec: float
     trigname: str
     """
-    mjds = Time(cand_isot,format='isot').mjd
+    #mjds = Time(cand_isot,format='isot').mjd
     ibox = int(np.ceil(width*tsamp/baseband_tsamp))
     f = open(final_cand_dir + "/" + trigname + ".json","w")
     json.dump({"mjds":mjds,

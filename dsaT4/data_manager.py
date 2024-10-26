@@ -8,7 +8,7 @@ import subprocess
 import time
 from types import MappingProxyType
 from typing import Union
-
+import os
 from astropy.time import Time
 import astropy.units as u
 from dsautils import cnf
