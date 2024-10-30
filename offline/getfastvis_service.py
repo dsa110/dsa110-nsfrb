@@ -95,7 +95,8 @@ def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=NSFRBHDF5DIR):
 
     #also write to file
     with open(NSFRBVISFILE,"a") as f:
-        f.write(Time.now().isot + "," + f"{hdf5dir}/{val['hostname']}/")
+        basename = os.path.basename(f"{val['filename']}")
+        f.write(Time.now().isot + "," + f"{hdf5dir}/{val['hostname']}/{basename}" + ",0")
 
 
 def task_handler(task_fn, inqueue, outqueue=None):
