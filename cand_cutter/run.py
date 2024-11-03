@@ -330,11 +330,12 @@ if __name__=="__main__":
     parser.add_argument('--archive',action='store_true',help='Archive candidates on dsastorage')
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
     parser.add_argument('--maxcands',type=int,help='Maximum number of candidates searchable in one iteration. Default is full image, 300x300x5x16=7.2e6',default=int(7.2e6 +1))
-    parser.add_argument('--percentile',type=int,help='Percentile above which to take candidates, e.g. if 90, candidates with s/n in 90th percentile will be clustered. Default 0',default=0)
+    parser.add_argument('--percentile',type=float,help='Percentile above which to take candidates, e.g. if 90, candidates with s/n in 90th percentile will be clustered. Default 0',default=0.0)
     parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
     parser.add_argument('--train',action='store_true',help='Save candidate cutouts to the training set for the ML classifier')
     parser.add_argument('--trigger',action='store_true',help='Send T4 trigger to copy visibility buffer and voltages for each candidate event')
     parser.add_argument('--useTOA',action='store_true',help='Include TOAs in clustering algorithm')
+    parser.add_argument('--psfcluster',action='store_true',help='PSF-based spatial clustering')
     args = parser.parse_args()
     main(args)
     """

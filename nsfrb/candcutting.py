@@ -92,11 +92,8 @@ def PSF_dist_metric(*test_points,PSF=default_PSF.mean((2,3))):
 def PSF_dist_metric(p1,p2,PSFfunc):
     return PSFfunc(p2[0]-p1[0],p2[1]-p2[1])*euclidean_distances(p1,p2)
 
-
-#hdbscan clustering function; clusters in DM, width, RA, DEC space
-def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2,useTOA=False):
-    printlog("WHY ISN'T IT STARTING?",output_file=output_file)
-    #f = open(output_file,"a")
+#initial spatial clustering based on psf shape
+def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     printlog(str(len(cands)) + " candidates",output_file=output_file)
 
     #make list for each param
@@ -130,26 +127,161 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     else:
         test_data=np.array([raidxs,decidxs,dmidxs,widthidxs]).transpose()
 
+    #create psf binary map
+    PSFbin = PSF>np.nanpercentile(PSF,perc)
 
-    #create clusterer
-    if PSF is None:
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, gen_min_span_tree=True, min_samples=min_samples)
+    #for each candidate, see what other candidates included in psf 
+    binned_dmidxs = []
+    binned_widthidxs = []
+    binned_snridxs = []
+    binned_raidxs = []
+    binned_decidxs = []
+    if TOAflag:
+        binned_TOAs = []
+    for i in range(len(cands)):
+        inc_idxs = np.arange(len(cands))[PSFbin[int(PSF.shape[0]//2)+np.array(decidxs-decidxs[i],int),int(PSF.shape[1]//2)+np.array(raidxs-raidxs[i],int)]]
+        #take the unique widths, dms, and TOAs and sum the snrs
+        if TOAflag:
+            unique_cands,unique_idxs = np.unique(np.array([dmidxs[inc_idxs],widthidxs[inc_idxs],TOAs[inc_idxs]]),axis=1,return_index=True)
+        else:
+            unique_cands,unique_idxs = np.unique(np.array([dmidxs[inc_idxs],widthidxs[inc_idxs]]),axis=1,return_index=True)
+        binned_raidxs = np.concatenate([binned_raidxs,[raidxs[i]]*unique_cands.shape[1]])
+        binned_decidxs = np.concatenate([binned_decidxs,[decidxs[i]]*unique_cands.shape[1]])
+        binned_dmidxs = np.concatenate([binned_dmidxs,unique_cands[0,:]])
+        binned_widthidxs = np.concatenate([binned_widthidxs,unique_cands[1,:]])
+        if TOAflag:
+            binned_TOAs = np.concatenate([binned_TOAs,unique_cands[2,:]])
+
+
+
+        snrs_i = np.zeros(unique_cands.shape[1])
+        for j in range(unique_cands.shape[1]):
+            condition = np.logical_and(dmidxs[inc_idxs]==unique_cands[0,j],widthidxs[inc_idxs]==unique_cands[1,j])
+            if TOAflag:
+                condition = np.logical_and(condition,TOAs[inc_idxs]==unique_cands[2,j])
+            snrs_i[j] += np.sum(snridxs[inc_idxs][condition])
+        binned_snridxs = np.concatenate([binned_snridxs,snrs_i])
+        """
+        if TOAflag:
+            condition = np.array([(dmidxs[j] in unique_cands[0,:]) and 
+                              (widthidxs[j] in unique_cands[1,:]) and 
+                              (TOAs[j] in unique_cands[2,:]) and
+                              (list(binned_dmidxs).index(dmidxs[j])==
+                                  list(binned_widthidxs).index(widthidxs[j])==
+                                  np.argmin(np.abs(unique_cands[2,:]-TOAs[j]))) for j in inc_idxs])
+        else:
+            condition = np.array([(dmidxs[j] in unique_cands[0,:]) and
+                              (widthidxs[j] in unique_cands[1,:]) and
+                              (list(binned_dmidxs).index(dmidxs[j])==
+                                  list(binned_widthidxs).index(widthidxs[j])) for j in inc_idxs])
+        binned_snridxs= np.concatenate([binned_snridxs,snridxs[inc_idxs][condition]])
+        """
+    binned_raidxs = np.array(binned_raidxs)
+    binned_decidxs = np.array(binned_decidxs)
+    binned_dmidxs = np.array(binned_dmidxs)
+    binned_widthidxs = np.array(binned_widthidxs)
+    binned_snridxs = np.array(binned_snridxs)
+
+    if TOAflag:
+        binned_TOAs = np.array(binned_TOAs)
+    
+    if TOAflag:
+        return binned_raidxs,binned_decidxs,binned_dmidxs,binned_widthidxs,binned_snridxs,binned_TOAs
     else:
-        printlog("Using PSF weighted distance measure",output_file=output_file)
-        psfinterp = interp2d(np.arange(PSF.shape[0]) - (PSF.shape[0]//2),np.arange(PSF.shape[1]) - (PSF.shape[1]//2),PSF,fill_value='extrapolate')
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, gen_min_span_tree=True, min_samples=min_samples,metric=lambda p1,p2:PSF_dist_metric(p1,p2,psfinterp))
+        return binned_raidxs,binned_decidxs,binned_dmidxs,binned_widthidxs,binned_snridxs
+
+#hdbscan clustering function; clusters in DM, width, RA, DEC space
+def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2,useTOA=False,perc=90):
+    printlog("WHY ISN'T IT STARTING?",output_file=output_file)
+    #f = open(output_file,"a")
+    printlog(str(len(cands)) + " candidates",output_file=output_file)
+    TOAflag = (len(cands[0]) == 6) and useTOA
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, gen_min_span_tree=True, min_samples=min_samples)
+
+    #cluster in space first if PSF specified
+    if PSF is not None:
+        printlog("Clustering in space with PSF...",output_file=output_file)
+        if TOAflag:
+            raidxs,decidxs,dmidxs,widthidxs,snridxs,TOAs = psf_cluster(cands,PSF,output_file=output_file,useTOA=TOAflag,perc=perc)
+        else:
+            raidxs,decidxs,dmidxs,widthidxs,snridxs = psf_cluster(cands,PSF,output_file=output_file,useTOA=TOAflag,perc=perc)
+        printlog((len(raidxs),len(decidxs),len(dmidxs),len(snridxs)),output_file)
+        printlog(str(len(raidxs)) + " candidates remain after PSF clustering",output_file=output_file)
+        """
+        #cluster each unique position separately
+        unique_cands,unique_idxs = np.unique(np.array([raidxs,decidxs]),axis=1,return_index=True)
+        classes = np.zeros(len(raidxs),dtype=int)
+        nclasses = 0
+        printlog("Clustering in DM/Width/TOA...",output_file=output_file)
+        for i in range(unique_cands.shape[1]):
+            condition = np.logical_and(raidxs==unique_cands[0,i],decidxs==unique_cands[1,i])
+            #printlog(str(i) + "," + str(np.sum(condition)),output_file=output_file)
+            if sum(condition) >= 2:
+                dmidxs_i = dmidxs[condition]
+                widthidxs_i = widthidxs[condition]
+                if TOAflag:
+                    TOAs_i = TOAs[condition]
+                
+                if TOAflag:
+                    test_data=np.array([dmidxs_i,widthidxs_i,TOAs_i]).transpose()
+                else:
+                    test_data=np.array([dmidxs_i,widthidxs_i]).transpose()
+
+                #cluster data
+                clusterer.fit(test_data)
+                classes_i = clusterer.labels_
+                classes_i[classes_i!=-1] += nclasses
+                classes[condition] = classes_i
+                nclasses += len(np.unique(classes_i))-(1 if -1 in classes_i else 0)
+            else:
+                classes[condition] = nclasses
+                nclasses += 1
+        """
+    else:
+
+        #make list for each param
+        raidxs = []
+        decidxs = []
+        dmidxs = []
+        widthidxs = []
+        snridxs = []
+        if TOAflag:
+            printlog("Using TOA info for clustering",output_file=output_file)
+            TOAs = []
+        for i in range(len(cands)):
+            raidxs.append(cands[i][0])
+            decidxs.append(cands[i][1])
+            dmidxs.append(cands[i][3])
+            widthidxs.append(cands[i][2])
+            if TOAflag:
+                TOAs.append(cands[i][4])
+            snridxs.append(cands[i][-1])
+        raidxs = np.array(raidxs)
+        decidxs = np.array(decidxs)
+        dmidxs = np.array(dmidxs)
+        widthidxs = np.array(widthidxs)
+        snridxs = np.array(snridxs)
+        if TOAflag:
+            TOAs = np.array(TOAs)
+
+    if TOAflag:
+        test_data=np.array([raidxs,decidxs,dmidxs,widthidxs,TOAs]).transpose()
+    else:
+        test_data=np.array([raidxs,decidxs,dmidxs,widthidxs]).transpose()
+
+
     #cluster data
     clusterer.fit(test_data)
-
-
+    classes = clusterer.labels_
+        
     #print number of noise points
-    noisepoints = np.sum(clusterer.labels_==-1)
+    noisepoints = np.sum(classes==-1)#clusterer.labels_==-1)
     printlog(str(noisepoints) + " noise points",output_file)
 
-    nclasses = len(np.unique(clusterer.labels_))
-    classnames = np.unique(clusterer.labels_)
-    classes = clusterer.labels_
-    if -1 in clusterer.labels_:
+    nclasses = len(np.unique(classes))#clusterer.labels_))
+    classnames = np.unique(classes)#clusterer.labels_)
+    #classes = clusterer.labels_
+    if -1 in classes:#clusterer.labels_:
         nclasses -= 1
 
     printlog(str(nclasses) + " unique classes",output_file)
@@ -190,11 +322,13 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     centroid_snrs = np.array(centroid_snrs)
     if TOAflag:
         centroid_TOAs = np.array(centroid_TOAs)
+    printlog("Done gathering centroids",output_file)
 
     if TOAflag:
         centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i],centroid_TOAs[i]) for i in range(len(centroid_ras))]
     else:
         centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
+    printlog("Done gathering centroid cands",output_file)
 
     if plot:
         cands_noninf = []
@@ -412,11 +546,36 @@ def candcutter_task(fname,args):
     #raw_cand_names = raw_cand_names[:100]
     #finalcands = finalcands[:100]
 
+    #prune candidates with infinite signal-to-noise for clustering
+    cands_noninf = []
+    for fcand in finalcands:
+        if not np.isinf(fcand[-1]): cands_noninf.append(fcand)
+
+    #take out low S/N percentile if specified
+    if args['percentile'] > 0:
+        candsnrs = np.array([fcand[-1] for fcand in cands_noninf])
+        snrp = np.nanpercentile(candsnrs,args['percentile'])
+
+        cands_perc = []
+        for fcand in cands_noninf:
+            if fcand[-1] > snrp: cands_perc.append(fcand)
+            #if len(cands_perc) > 10: break            
+            
+        cands_noninf = cands_perc
+        printlog(str(len(cands_noninf)) + " candidates remaining after " + str(args['percentile']) + "th percentile cutoff",output_file=cutterfile)
+
+    #cut by S/N if still too many
+    if len(cands_noninf) >args['maxcands']:
+        printlog(cand_isot + "has too many candidates to process (" + str(len(cands_noninf)) + ">" + str(args['maxcands']) + ") limit...",output_file=cutterfile)
+        sortedcands = list(np.array(cands_noninf)[np.argsort(np.array(cands_noninf)[:,-1])[::-1],:])
+        cands_noninf = sortedcands[:int(args['maxcands'])]
+        printlog("done, cut to " + str(len(cands_noninf)) + " candidates",output_file=cutterfile)
+    """
     #confirm number of cands less than max
     if len(finalcands) >args['maxcands']: 
         printlog(cand_isot + "has too many candidates to process (" + str(len(finalcands)) + ">" + str(args['maxcands']) + "), please adjust S/N threshold",output_file=cutterfile)
         return
-    
+    """
         
 
 
@@ -431,6 +590,7 @@ def candcutter_task(fname,args):
                 raw_cand_names.append(r[0])
     csvfile.close()
     """
+    finalcands = copy.deepcopy(cands_noninf)
     finalidxs = np.arange(len(finalcands),dtype=int)
 
     #if getting cutouts, read image
@@ -455,7 +615,7 @@ def candcutter_task(fname,args):
     #start clustering
     if args['cluster']:
         printlog("clustering with HDBSCAN...",output_file=cutterfile)
-
+        """
         #prune candidates with infinite signal-to-noise for clustering
         cands_noninf = []
         for fcand in finalcands:
@@ -472,14 +632,18 @@ def candcutter_task(fname,args):
                 #if len(cands_perc) > 10: break
             cands_noninf = cands_perc
             printlog(str(len(cands_noninf)) + " candidates remaining after " + str(args['percentile']) + "th percentile cutoff",output_file=cutterfile)
-
+        """
         #clustering with hdbscan
-        PSF = None#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps).mean((2,3))
+        if args['psfcluster']:
+            PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+            printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
+        else:
+            PSF = None
         useTOA=args['useTOA'] and len(finalcands[0])==6
         if useTOA:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,useTOA=True)
+            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,useTOA=True)
         else:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=True,show=False,SNRthresh=args['SNRthresh'],PSF=PSF)
+            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF)
         printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
         printlog(classes,output_file=cutterfile)
         printlog(cluster_cands,output_file=cutterfile)
@@ -644,7 +808,7 @@ def candcutter_task(fname,args):
 
             timeseries.append(sourceimg_dm.mean((0,1,3)))
         
-            if True:#not injection_flag:
+            if not injection_flag:
                 #create json file
                 snr=canddict['snrs'][i]
                 width=int(widthtrials[int(canddict['wid_idxs'][i])])
