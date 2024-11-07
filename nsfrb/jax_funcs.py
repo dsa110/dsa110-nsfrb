@@ -8,6 +8,8 @@ This file defines jit compiled functions to accelerate GPU compilation and compu
 
 
 
+
+
 """
 no matched filter
 """
@@ -73,7 +75,7 @@ def matched_filter_dedisp_snr_fft_jit_init(image_tesseract_point,corr_shifts_all
 matched filter + DM + SNR combined
 """
 @jax.jit
-def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth):
+def matched_filter_dedisp_snr_fft_jit(image_tesseract_point,PSFimg,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth):
     """
     This function replaces pytorch with JAX so that JIT computation can be invoked
     """
@@ -82,20 +84,6 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
     truensamps = boxcar.shape[3]
     
     """gridsize_DEC,gridsize_RA = image_tesseract.shape[:2]
-    padby_DEC = (gridsize_DEC - PSFimg.shape[0])//2
-    padby_RA = (gridsize_RA - PSFimg.shape[1])//2
-    image_tesseract_point = image_tesseract
-    image_tesseract_point = jnp.real(jnp.fft.fftshift(
-                                                jnp.fft.ifft2(
-                                                    jnp.fft.fft2(jnp.fft.ifftshift(image_tesseract,axes=(0,1)),
-                                                        axes=(0,1),s=(gridsize_DEC,gridsize_RA))*jnp.fft.fft2(jnp.pad(
-                                                            (jnp.fft.ifftshift(PSFimg.repeat(image_tesseract.shape[2],axis=2),axes=(0,1))),
-                                                            ((padby_DEC,padby_DEC),(padby_RA,padby_RA),(0,0),(0,0))),
-                                                            axes=(0,1),s=(gridsize_DEC,gridsize_RA))
-                                                    ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
-                                                ,axes=(0,1)))
-    """
-    gridsize_DEC,gridsize_RA = image_tesseract.shape[:2]
     gridsize_DEC*=2
     gridsize_RA*=2
     padby_DEC = (gridsize_DEC - PSFimg.shape[0])//2
@@ -115,10 +103,11 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
                                             axes=(0,1),s=(gridsize_DEC,gridsize_RA))
                                     ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
                                 ,axes=(0,1)))[gridsize_DEC//4:(gridsize_DEC//4) + gridsize_DEC//2,gridsize_RA//4:(gridsize_RA//4) + gridsize_RA//2,:,:]
+    """
     gridsize_DEC,gridsize_RA = image_tesseract_point.shape[:2]
     
     #del image_tesseract
-    del PSFimg
+    #del PSFimg
     #del image_tesseract
 
     #dedispersion
@@ -174,7 +163,32 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract,PSFimg,corr_shifts_all,tde
 
     del mask
     del boxcar
-    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]),jax.device_put((image_tesseract_binned.argmax(4)).astype(jnp.uint8).transpose(1,2,0,3),jax.devices("cpu")[0])
+    
+    
+    #mmatched filter
+    gridsize_DEC,gridsize_RA = image_tesseract_binned_new.shape[:2]
+    gridsize_DEC*=2
+    gridsize_RA*=2
+    padby_DEC = (gridsize_DEC - PSFimg.shape[0])//2
+    padby_RA = (gridsize_RA - PSFimg.shape[1])//2
+    padby_DEC_img = (gridsize_DEC - PSFimg.shape[0])//2
+    padby_RA_img = (gridsize_RA - PSFimg.shape[1])//2
+
+
+    #image_tesseract_point
+    image_tesseract_final = jnp.real(
+                                jnp.fft.fftshift(jnp.fft.ifft2(
+                                    jnp.fft.fft2(jnp.pad(image_tesseract_binned_new,
+                                            ((padby_DEC_img,padby_DEC_img),(padby_RA_img,padby_RA_img),(0,0),(0,0))),
+                                        axes=(0,1),s=(gridsize_DEC,gridsize_RA))*jnp.fft.fft2(jnp.pad(
+                                            (PSFimg.repeat(image_tesseract_binned_new.shape[2],axis=2).repeat(image_tesseract_binned_new.shape[3],axis=3)),
+                                            ((padby_DEC,padby_DEC),(padby_RA,padby_RA),(0,0),(0,0))),
+                                            axes=(0,1),s=(gridsize_DEC,gridsize_RA))
+                                    ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
+                                ,axes=(0,1)))[gridsize_DEC//4:(gridsize_DEC//4) + gridsize_DEC//2,gridsize_RA//4:(gridsize_RA//4) + gridsize_RA//2,:,:]
+    
+    del PSFimg
+    return jax.device_put(image_tesseract_final,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]),jax.device_put((image_tesseract_binned.argmax(4)).astype(jnp.uint8).transpose(1,2,0,3),jax.devices("cpu")[0])
 
 """
 matched filter

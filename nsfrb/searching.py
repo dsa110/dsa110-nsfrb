@@ -1800,7 +1800,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
             global jaxdev
             outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[jaxdev]),
-                                                                 jax.device_put(np.array(PSF[:,:,0:1,:],dtype=np.float32),jax.devices()[jaxdev]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[jaxdev]),
                                                                  jax.device_put(corr_shifts_all,jax.devices()[jaxdev]),
                                                                  jax.device_put(tdelays_frac,jax.devices()[jaxdev]),
                                                                  jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[jaxdev]),
