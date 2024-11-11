@@ -289,7 +289,7 @@ freq_axis = np.linspace(fmin,fmax,nchans)
 tDM_max = (4.15)*np.max(default_DMtrials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
 maxshift = int(np.ceil(tDM_max/tsamp))
 
-def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width=np.nan,SNR=np.nan,gridsize=gridsize,DMtrials=default_DMtrials,widthtrials=default_widthtrials,freq_axis=freq_axis,nsamps=nsamps,nchans=nchans,tsamp=tsamp,SNRmin=0,SNRmax=100):
+def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width=np.nan,SNR=np.nan,gridsize=gridsize,DMtrials=default_DMtrials,widthtrials=default_widthtrials,freq_axis=freq_axis,nsamps=nsamps,nchans=nchans,tsamp=tsamp,SNRmin=0,SNRmax=10000):
     """
     Randomly draws injected burst parameters from set of trial DMs, widths and RA/DEC grid
     """

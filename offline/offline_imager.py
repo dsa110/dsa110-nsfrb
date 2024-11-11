@@ -41,6 +41,7 @@ applies calibration, and images. If specified, the resulting image is transmitte
 
 #corr node names and frequencies
 corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+sbs = ["sb00","sb01","sb02","sb03","sb04","sb05","sb06","sb07","sb08","sb09","sb10","sb11","sb12","sb13","sb14","sb15"]
 freqs = np.linspace(fmin,fmax,len(corrs))
 wavs = c/(freqs*1e6) #m
 
@@ -80,7 +81,7 @@ def main(args):
     num_gulps = 1#int(dat_all.shape[0]//args.num_time_samples)
     if args.num_gulps != -1:
         num_gulps = args.num_gulps#np.min([args.num_gulps,num_gulps])
-    num_chans = int(NUM_CHANNELS//AVERAGING_FACTOR)
+    #num_chans = int(NUM_CHANNELS//AVERAGING_FACTOR)
 
     #randomly choose which gulp to inject burst in
     if args.inject:
@@ -89,6 +90,29 @@ def main(args):
     #parameters from etcd
     test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
 
+    #get timestamp
+    if len(args.timestamp) != 0:
+        timestamp = args.timestamp
+    """
+    else:
+        timestamp = ""
+        i = 0
+        while timestamp == "":
+            if len(args.filedir) == 0:
+                fname = args.path + "/lxd110"+ corrs[i] + "/" + ("nsfrb_" + sbs[i] if args.sb else corrs[i]) + args.filelabel + ".out"
+            else:
+                fname = args.path + "/" + args.filedir + "/" + ("nsfrb_" + sbs[i] if args.sb else corrs[i]) + args.filelabel + ".out"
+
+            try:
+                timestamp = Time(os.path.getctime(fname),format='unix').isot
+            except Exception as exc:
+                i += 1
+                if verbose: print("No data for " + corrs[i])
+                if verbose: print(exc)
+        if timestamp == "":
+            print("No data available")
+            return 1
+    """
 
     for gulp in range(num_gulps):
         #dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
@@ -97,12 +121,24 @@ def main(args):
         dat = None
         for i in range(len(corrs)):
             corr = corrs[i]
-            fname = args.path + "/lxd110"+ corr + "/" + corr + args.filelabel + ".out"
-            fname = args.path + "/3C286_vis/" + corr + args.filelabel + ".out"
+            sb = sbs[i]
+
+            if len(args.filedir) == 0:
+                fname = args.path + "/lxd110"+ corr + "/" + ("nsfrb_" + sb if args.sb else corr) + args.filelabel + ".out"
+            else:
+                fname =  args.path + "/" + args.filedir + "/" + ("nsfrb_" + sb if args.sb else corr) + args.filelabel + ".out"
+
+            #fname = args.path + "/lxd110"+ corr + "/" + corr + args.filelabel + ".out"
+            #fname = args.path + "/3C286_vis/" + corr + args.filelabel + ".out"
             try:
                 #tmp = cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples)
                 #print("tmp",tmp)
-                dat_corr = np.nanmean(cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=gulp),axis=2,keepdims=True)
+
+                dat_corr,sbnum,tstamp_mjd = cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=gulp,nchan=int(args.nchans_per_node),headersize=8)
+                if len(args.timestamp) == 0: 
+                    timestamp = Time(tstamp_mjd,format='mjd').isot
+            
+                dat_corr = np.nanmean(dat_corr,axis=2,keepdims=True)
                 if verbose: print(dat_corr.shape)
                 if dat is None:
                     dat = np.nan*np.ones(dat_corr.shape,dtype=dat_corr.dtype).repeat(len(corrs),axis=2)
@@ -118,7 +154,7 @@ def main(args):
         if verbose: print("Gulp size:",dat.shape)
 
         #use MJD to get pointing
-        mjd = Time(args.timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp/86400)
+        mjd = Time(timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp/86400)
         time_start_isot = Time(mjd,format='mjd').isot
         LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=-118.2851).to(u.hourangle).value
         if verbose: print("Time:",time_start_isot)
@@ -183,7 +219,7 @@ def main(args):
 
         #creating injection
         if args.inject and (gulp == inject_gulp):
-            offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=num_chans,tsamp=tsamp*1000)
+            offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000)
             #offsetRA = offsetDEC = 0
 
             if args.snr_inject > 0:
@@ -206,7 +242,7 @@ def main(args):
             #SNR = 10000
             #width = 2
             #offsetRA = offsetDEC = 0
-            inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
+            inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
 
 
             #report injection in log file
@@ -217,12 +253,12 @@ def main(args):
 
 
         else:
-            inject_img = np.zeros((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],num_chans))
+            inject_img = np.zeros((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
         
         #imaging
-        dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],num_chans))
+        dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
         for i in range(dat.shape[0]):
-            for j in range(num_chans):
+            for j in range(args.num_chans):
                 for k in range(dat.shape[-1]):
                     
                     """
@@ -249,7 +285,7 @@ def main(args):
 
         #send to proc server
         if args.search:
-            for i in range(num_chans):
+            for i in range(args.num_chans):
                 #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
                 msg=send_data(time_start_isot, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
                 if args.verbose: print(msg)
@@ -262,7 +298,8 @@ def main(args):
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Form and send dirty images extracting visibilities from raw data (.out) file.')
     parser.add_argument('filelabel')           # positional argument
-    parser.add_argument('timestamp',help='Timestamp in ISOT format (e.g. 2024-06-12T21:35:49)')
+    parser.add_argument('--timestamp',type=str,help='Timestamp in ISOT format (e.g. 2024-06-12T21:35:49); if not given, timestamp is retrieved from sb00 file with os.path.getctime() or from time of rsync',default='')
+    parser.add_argument('--filedir',type=str,help='Path to fast visibilities; if not given, the /dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/lxd110h**/ paths are used',default='')
     parser.add_argument('--num_gulps', type=int, help='Number of gulps, default -1 for all ',default=-1)
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
     #parser.add_argument('--fringestop', action='store_true', default=False, help='Fringe stop manually')
@@ -282,6 +319,9 @@ if __name__=="__main__":
     parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     parser.add_argument('--inject_noiseonly',action='store_true',default=False,help='Only inject noise; for use with false positive testing')
+    parser.add_argument('--sb',action='store_true',default=False,help='Use nsfrb_sbxx names')
+    parser.add_argument('--num_chans',type=int,help='Number of channels',default=int(NUM_CHANNELS//AVERAGING_FACTOR))
+    parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)
     args = parser.parse_args()
     main(args)
 

@@ -1,4 +1,5 @@
 import csv
+import struct
 from matplotlib import pyplot as plt
 import numpy as np
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
@@ -99,11 +100,12 @@ def make_phase_table(U,V,W,ra_center,dec_center,ra_point,dec_point,verbose=False
                                 w*(((1 - l**2 - m**2)**0.5-1) - 
                                     ((1 - l0**2 - m0**2)**0.5-1))))"""
 
-def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0):
+def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,headersize=8):
     """
     Read raw visibility data from given file.
     fname: file name
     datasize: size of data in bytes
+    headersize: size of header in bytes (1/2 headersize is sub-band number, 1/2 headersize is mjd as float)
     """
     if datasize==4:
         dtype = np.float32
@@ -123,6 +125,12 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0):
 
 
     f = open(fname,"rb")
+
+    #first read header
+    if headersize != 0:
+        sbnum = int.from_bytes(f.read(headersize//2),sys.byteorder,signed=False)
+        mjd = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'f', f.read(headersize//2))[0]
+    
     if nsamps == -1:
         raw_data = np.frombuffer(f.read(),dtype=dtype) #default reads all time samples
     else:
@@ -138,8 +146,10 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0):
     #real and imaginary
     dat_complex = np.zeros(dat.shape[:-1],dtype=dtypecomplex)
     dat_complex[:,:,:,:] = dat[:,:,:,:,0] + 1j*dat[:,:,:,:,1]
-    return dat_complex
-
+    if headersize == 0:
+        return dat_complex
+    else:
+        return dat_complex,sbnum,mjd
 
 #21 22 23 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 
 EX_ANTENNAS = ['DSA-021',
