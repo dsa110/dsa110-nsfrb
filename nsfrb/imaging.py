@@ -223,10 +223,10 @@ def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtrie
 
         if elev > 90:
             alt = 180 - elev
-            az = 180 - az_offset
+            az = az_offset
         else:
             alt = elev
-            az = az_offset
+            az = 180 - az_offset
 
         print("Retrieved elevation: " + str(elev) + "deg",file=fout)
 

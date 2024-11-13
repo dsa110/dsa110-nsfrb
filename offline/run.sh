@@ -22,7 +22,7 @@ do
 		prerun=0
 		for dfile in "${donefiles[@]}"
 		do
-			echo $dfile $label
+			#echo $dfile $label
 			if [[ "$dfile" == "$label" ]]; then
 				prerun=1
 				count=$((count + 1))
@@ -32,7 +32,7 @@ do
 		if (( $prerun==0 )); then
 
 			#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _0 --verbose --offline --num_gulps 1 --save --num_time_samples 25 --search --sb --num_chans 16
-			python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --save --num_time_samples 90 --sb --nchans_per_node 4 #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
+			python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --save --num_time_samples 25 --sb --nchans_per_node 2 #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label $tstamp --verbose --offline --num_gulps 1 --save --num_time_samples 25 --search >>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			donefiles+=($label)
 			count=$((count + 1))
