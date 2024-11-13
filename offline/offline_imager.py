@@ -21,12 +21,12 @@ f.close()
 sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize
-from nsfrb.imaging import inverse_uniform_image,uniform_image, uv_to_pix
+from nsfrb.imaging import inverse_uniform_image,uniform_image, uv_to_pix, robust_image
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
 import time
-from scipy.stats import norm
+from scipy.stats import norm,multivariate_normal
 import nsfrb.searching as sl
 from nsfrb.outputlogging import numpy_to_fits
 from nsfrb import calibration as cal
@@ -90,6 +90,7 @@ def main(args):
     #parameters from etcd
     test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
 
+    if verbose: print("TIMESTAMP:",tsamp)
     #get timestamp
     if len(args.timestamp) != 0:
         timestamp = args.timestamp
@@ -149,7 +150,7 @@ def main(args):
                 if verbose: print("No data for " + corr)
                 if verbose: print(exc)
         
-        
+
         
         if verbose: print("Gulp size:",dat.shape)
 
@@ -232,10 +233,11 @@ def main(args):
             offsetDEC = args.offsetDEC_inject
             print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
             print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
-            if args.solo_inject:
-                noiseless=False
+            noiseless=False
+            if args.solo_inject or args.flat_field or args.gauss_field:
+                #noiseless=False
                 dat[:,:,:,:] = 0
-            else:
+            if args.inject_noiseless:
                 noiseless=True
             #noiseless = True
             #DM = 0
@@ -244,7 +246,15 @@ def main(args):
             #offsetRA = offsetDEC = 0
             inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
 
-
+            if args.flat_field:
+                inject_img = np.ones_like(inject_img)
+            elif args.gauss_field:
+                xx,yy = np.meshgrid(np.linspace(-2,2,IMAGE_SIZE),np.linspace(-2,2,IMAGE_SIZE))
+                inject_img = multivariate_normal(mean=[0,0],cov=0.5).pdf(np.dstack((xx,yy)))
+                inject_img = inject_img[:,:,np.newaxis,np.newaxis].repeat(dat.shape[0],2).repeat(args.num_chans,3)
+            elif args.point_field:
+                inject_img = np.zeros_like(inject_img)
+                inject_img[int(IMAGE_SIZE//2)+offsetDEC,int(IMAGE_SIZE//2)+offsetRA] = 1
             #report injection in log file
             with open(inject_file,"a") as csvfile:
                 wr = csv.writer(csvfile,delimiter=',')
@@ -274,14 +284,24 @@ def main(args):
 
                         plt.close()
                     """
-                    if k == 0:
-                        dirty_img[:,:,i,j] = uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j]/dat.shape[-1])
+                    if args.briggs:
+                        if k == 0:
+                            dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                        else:
+                            dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                     else:
-                        dirty_img[:,:,i,j] += uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j]/dat.shape[-1])
+                        if k == 0:
+                            dirty_img[:,:,i,j] = uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                        else:
+                            dirty_img[:,:,i,j] += uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
         #save image to fits, numpy file
         if args.save:
             np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
             numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
+            
+            if args.inject:
+                np.save(args.outpath + "/" + time_start_isot + "_response.npy",dirty_img/inject_img)
+                numpy_to_fits(np.nanmean(dirty_img,(2,3))/np.nanmean(inject_img,(2,3)),args.outpath + "/" + time_start_isot + "_response.fits")        
 
         #send to proc server
         if args.search:
@@ -291,7 +311,7 @@ def main(args):
                 if args.verbose: print(msg)
                 time.sleep(1)
 
-
+        time.sleep(args.sleeptime)
     return
 
 
@@ -319,9 +339,16 @@ if __name__=="__main__":
     parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     parser.add_argument('--inject_noiseonly',action='store_true',default=False,help='Only inject noise; for use with false positive testing')
+    parser.add_argument('--inject_noiseless',action='store_true',default=False,help='Only inject signal')
     parser.add_argument('--sb',action='store_true',default=False,help='Use nsfrb_sbxx names')
     parser.add_argument('--num_chans',type=int,help='Number of channels',default=int(NUM_CHANNELS//AVERAGING_FACTOR))
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)
+    parser.add_argument('--flat_field',action='store_true',help='Illuminate all pixels uniformly')
+    parser.add_argument('--gauss_field',action='store_true',help='Illuminate a gaussian source')
+    parser.add_argument('--point_field',action='store_true',help='Illuminate a point source')
+    parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')
+    parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
+    parser.add_argument('--sleeptime',type=float,help='Time to sleep between processing gulps (seconds)',default=30)
     args = parser.parse_args()
     main(args)
 

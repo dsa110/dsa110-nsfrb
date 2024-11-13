@@ -128,8 +128,8 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,h
 
     #first read header
     if headersize != 0:
-        sbnum = int.from_bytes(f.read(headersize//2),sys.byteorder,signed=False)
         mjd = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'f', f.read(headersize//2))[0]
+        sbnum = 0#int.from_bytes(f.read(headersize//2),sys.byteorder,signed=False)
     
     if nsamps == -1:
         raw_data = np.frombuffer(f.read(),dtype=dtype) #default reads all time samples
@@ -147,7 +147,7 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,h
     dat_complex = np.zeros(dat.shape[:-1],dtype=dtypecomplex)
     dat_complex[:,:,:,:] = dat[:,:,:,:,0] + 1j*dat[:,:,:,:,1]
     if headersize == 0:
-        return dat_complex
+        return dat_complex#,0,Time.now().mjd()
     else:
         return dat_complex,sbnum,mjd
 

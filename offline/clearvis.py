@@ -36,6 +36,17 @@ vis_file = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/vis_files.c
 
 def main(args):
     
+
+    if args.populate:
+        with open(vis_file,"w") as csvfile:
+            for subdir, pattern in subdirs_to_clear:
+                for file in (operations_dir / subdir).glob(pattern):
+                    wr = csv.writer(csvfile,delimiter=',')
+                    wr.writerow([os.path.basename(str(file)),int(0),""])
+        print("Populated csv, returning")
+        return 0
+
+
     while True:
         
         #read vis files
@@ -54,11 +65,6 @@ def main(args):
             f"{cutoff.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
         
         
-        with open(vis_file,"w") as csvfile:
-            for subdir, pattern in subdirs_to_clear:
-                for file in (operations_dir / subdir).glob(pattern):
-                    wr = csv.writer(csvfile,delimiter=',')
-                    wr.writerow([os.path.basename(str(file)),int(0),""])
         
 
         for subdir, pattern in subdirs_to_clear:
@@ -94,6 +100,7 @@ if __name__=="__main__":
     #argument parsing
     parser = argparse.ArgumentParser()
     parser.add_argument('--waittime',type=float,help='Time between clearing visibilities in days, default 1',default=1.0)
+    parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
     args = parser.parse_args()
 
     main(args)

@@ -38,7 +38,10 @@ def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: 
     u_indices = ((u + np.max(u)) / (2 * np.max(u)) * (grid_size - 1)).astype(int)
     v_indices = ((v + np.max(v)) / (2 * np.max(v)) * (grid_size - 1)).astype(int)
 
-    uv_grid = np.bincount(u_indices * grid_size + v_indices, weights=vis_weights, minlength=grid_size**2)
+    #uv_grid = np.bincount(u_indices * grid_size + v_indices, weights=vis_weights, minlength=grid_size**2)
+    #print(np.any((u_indices * grid_size + v_indices) - np.min(u_indices * grid_size + v_indices)<0))
+    #print(np.any(vis_weights<0))
+    uv_grid = np.bincount((u_indices * grid_size + v_indices) - np.min(u_indices * grid_size + v_indices), weights=vis_weights, minlength=grid_size**2)
     Wk = uv_grid.flatten()
 
     f2 = (5 * 10 ** (-robust)) ** 2 / (np.sum(Wk ** 2) / np.sum(vis_weights))
@@ -48,7 +51,7 @@ def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: 
     return new_weights
 
 
-def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int = IMAGE_SIZE, robust: float = 0.0) -> np.ndarray:
+def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int = IMAGE_SIZE, robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
     """
     Process visibility data and create a dirty image using FFT and Briggs weighting.
 
@@ -69,7 +72,7 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     briggs_weights = briggs_weighting(u, v, image_size, robust=robust)
 
     weighted_V = chunk_V * briggs_weights
-    V_avg = np.mean(weighted_V, axis=0)
+    v_avg = np.mean(weighted_V, axis=0)
 
     i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
@@ -78,12 +81,17 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
     np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
+    if inject_img is not None:
+        if inject_flat:
+            visibility_grid[j_indices,i_indices] += inverse_uniform_image(inject_img,u,v)[j_indices,i_indices]
+        else:
+            visibility_grid += inverse_uniform_image(inject_img,u,v)
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
 
-    return np.real(dirty_image)
+    #return np.real(dirty_image)
+    return np.real(dirty_image) if not return_complex else dirty_image
 
-
-def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None) -> np.ndarray:
+def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
     """
     Converts visibility data into a 'dirty' image.
 
@@ -110,8 +118,10 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
     if inject_img is not None:
-        visibility_grid += inverse_uniform_image(inject_img,u,v) 
-
+        if inject_flat:
+            visibility_grid[j_indices,i_indices] += inverse_uniform_image(inject_img,u,v)[j_indices,i_indices] 
+        else:
+            visibility_grid += inverse_uniform_image(inject_img,u,v)
     #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
     #visibility_grid[i_indices, j_indices] /= count_indices
 
