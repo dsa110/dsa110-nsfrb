@@ -129,19 +129,19 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,h
     #first read header
     if headersize != 0:
         mjd = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'f', f.read(headersize//2))[0]
-        sbnum = 0#int.from_bytes(f.read(headersize//2),sys.byteorder,signed=False)
+        sbnum = int.from_bytes(f.read(headersize//2),sys.byteorder,signed=False)
     
     if nsamps == -1:
         raw_data = np.frombuffer(f.read(),dtype=dtype) #default reads all time samples
     else:
-        print("Reading from byte",gulp*nsamps*nbase*nchan*npol*2*datasize)
-        f.seek(gulp*nsamps*nbase*nchan*npol*2*datasize)
+        print("Reading from byte",headersize + gulp*nsamps*nbase*nchan*npol*2*datasize)
+        f.seek(headersize + gulp*nsamps*nbase*nchan*npol*2*datasize)
         raw_data = np.frombuffer(f.read(nsamps*nbase*nchan*npol*2*datasize),dtype=dtype)
     f.close()
 
     ntimes = int(len(raw_data)/nbase/nchan/npol/2)
 
-    dat = raw_data.reshape((ntimes,nbase,nchan,npol,2))
+    dat = raw_data.reshape((nbase,ntimes,nchan,npol,2)).transpose((1,0,2,3,4))
 
     #real and imaginary
     dat_complex = np.zeros(dat.shape[:-1],dtype=dtypecomplex)

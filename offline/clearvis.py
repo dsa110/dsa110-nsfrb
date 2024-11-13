@@ -78,13 +78,15 @@ def main(args):
                 modtime = modtime.replace(tzinfo=cutoff.tzinfo)
                 if modtime < cutoff:
                     print(f'Removing {file}')
+                    
                     try:
                         file.unlink()
-                    except:
+                    except Exception as exc:
+                        print("File unlink failed:",exc)
                         shutil.rmtree(file)
                     if os.path.basename(str(file)) in delidx_labels.keys():
                         delidx.append(delidx_labels[os.path.basename(str(file))])
-       
+                    
         #remove from csv
         if len(delidx)>1:
             print("sed -i.bak -e '" + "d;".join(delidx) + "d' " + vis_file)
@@ -94,12 +96,13 @@ def main(args):
             os.system("sed -i.bak -e '" + delidx[0] + "d' " + vis_file)
         
         
-        time.sleep(args.waittime*86400)
+        time.sleep(args.cadence*3600)
 
 if __name__=="__main__":
     #argument parsing
     parser = argparse.ArgumentParser()
     parser.add_argument('--waittime',type=float,help='Time between clearing visibilities in days, default 1',default=1.0)
+    parser.add_argument('--cadence',type=float,help='Time between checking for new vis to clear in hours, default 2',default=2.0)
     parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
     args = parser.parse_args()
 

@@ -49,7 +49,7 @@ do
 
 
 	linenumber=$((linenumber + 1))
-	echo $linenumber,$count
+	#echo $linenumber,$count
 	
 done
 
