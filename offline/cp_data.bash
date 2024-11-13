@@ -11,7 +11,7 @@ while :
 	      #rsync -avv lxd110h23.pro.pvt:/media/ubuntu/ssd/sherman/code/testfile*.txt . > tmp1.txt
 	      echo "finished rsync"
 	      cat tmp1.txt
-	      head -n -4 tmp1.txt > tmp2.txt && tail -n +4 tmp2.txt > tmp1.txt && rm tmp2.txt
+	      head -n -5 tmp1.txt > tmp2.txt && tail -n +4 tmp2.txt > tmp1.txt && rm tmp2.txt
               echo "finished trimming"
 	      cat tmp1.txt
 
