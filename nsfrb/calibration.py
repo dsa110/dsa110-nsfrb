@@ -141,7 +141,7 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,h
 
     ntimes = int(len(raw_data)/nbase/nchan/npol/2)
 
-    dat = raw_data.reshape((nbase,ntimes,nchan,npol,2)).transpose((1,0,2,3,4))
+    dat = raw_data.reshape((ntimes,nbase,nchan,npol,2))
 
     #real and imaginary
     dat_complex = np.zeros(dat.shape[:-1],dtype=dtypecomplex)
