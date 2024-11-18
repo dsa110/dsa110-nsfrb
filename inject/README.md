@@ -26,4 +26,16 @@ Optional arguments are defined below:
 - `--verbose`: Enable verbose output
 - `--nbursts`: Number of injected bursts; default = 1; if > 1, the SNR, width, and DM are drawn from normal distributions centered on the provided values, default=1
 
+`run_injector` runs the injector with most commonly used parameters. It takes the wait time between injected bursts in seconds as an argument, e.g.:
 
+```bash
+./run_injector 10
+```
+
+injects bursts every 10 seconds.
+
+To kill the injector run:
+
+```bash
+./kill_injector
+```
