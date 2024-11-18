@@ -25,6 +25,9 @@ import numpy as np
 import sys
 import csv
 import os
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+
+"""
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
@@ -33,7 +36,7 @@ sys.path.append(cwd + "/")
 
 binary_file = cwd + "-logfiles/binary_log.txt"
 inject_file = cwd + "-injections/injections.csv"
-
+"""
 def plot_uv_coverage(u, v, title='u-v Coverage'):
     """
     Plot the u-v coverage.

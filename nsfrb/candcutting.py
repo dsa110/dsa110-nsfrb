@@ -49,6 +49,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 #f.close()
 import os
 import sys
+"""
 cwd = os.environ['NSFRBDIR']
 cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/" #cwd + "-candidates/"
 vis_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/"
@@ -72,6 +73,9 @@ training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 psf_dir = cwd + "-PSF/"
 img_dir = cwd + "-images/"
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+
 
 freq_axis = np.linspace(fmin,fmax,nchans)
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)

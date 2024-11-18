@@ -44,3 +44,49 @@ vis_to_img_slope_not_binned = 6.320421766399212e-05 #slope relating noise in vis
 vis_to_img_slope = 0.0025062597643136777 #same, but with PSF smoothing; noise increases with contribution from PSF, but so does signal
 import numpy as np
 noise_data_type = np.float64
+
+#file system
+import os
+import sys
+
+#directories
+cwd = os.environ['NSFRBDIR']
+sys.path.append(cwd + "/")
+cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"
+frame_dir = cwd + "-frames/"
+psf_dir = cwd + "-PSF/"
+img_dir = cwd + "-images/"
+vis_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/"
+raw_cand_dir = cand_dir + "raw_cands/"
+backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
+final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
+inject_dir = inject_file = cwd + "-injections/"
+training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
+noise_dir = cwd + "-noise/"
+imgpath = cwd + "-images"
+
+
+#data files
+coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
+
+#log files
+
+output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
+processfile = cwd + "-logfiles/process_log.txt"
+timelogfile = cwd + "-logfiles/time_log.txt"
+cutterfile = cwd + "-logfiles/candcutter_log.txt"
+pipestatusfile = cwd + "/src/.pipestatus.txt"
+searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"
+run_file = cwd + "-logfiles/run_log.txt"
+processfile = cwd + "-logfiles/process_log.txt"
+cutterfile = cwd + "-logfiles/candcutter_log.txt"
+cuttertaskfile = cwd + "-logfiles/candcuttertask_log.txt"
+flagfile = cwd + "/process_server/process_flags.txt"
+error_file = cwd + "-logfiles/error_log.txt"
+inject_file = cwd + "-injections/injections.csv"
+recover_file = cwd + "-injections/recoveries.csv"
+binary_file = cwd + "-logfiles/binary_log.txt"
+inject_log_file = cwd + "-logfiles/inject_log.txt"
+
+
+

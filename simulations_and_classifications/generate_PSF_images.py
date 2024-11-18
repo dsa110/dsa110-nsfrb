@@ -1,6 +1,5 @@
 import argparse
 import numpy as np
-from simulations_and_classifications.generate_offset_source_images import generate_offset_src_images
 from simulations_and_classifications.generate_source_images import generate_src_images
 import os
 from nsfrb.config import gridsize,pixsize,IMAGE_SIZE
@@ -25,27 +24,10 @@ def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float
     spectral_index_low = spectral_index_high = 0
     tonumpy = True
     print("generating PSF with ",nsamps,"samples")
-    PSF = np.array(generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only,N_NOISE=nsamps),dtype=dtype)
+    PSF = np.array(generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only,N_NOISE=nsamps),dtype=dtype)
     print("newshape:",PSF.shape)
     return PSF
-"""
-    allPSFs = []
-    for i in range(nsamps):
-        print("generating PSF",i)
-        allPSFs.append(np.array(generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only),dtype=dtype))
-        print("done,",allPSFs[i].shape)
-    PSF = np.zeros((allPSFs[0].shape[0],allPSFs[0].shape[1],nsamps,allPSFs[0].shape[2]))
-    print("newshape:",(allPSFs[0].shape[0],allPSFs[0].shape[1],nsamps,allPSFs[0].shape[2]))
-    for i in range(nsamps):
-        PSF[:,:,i,:] = allPSFs[i]
-    return PSF
-"""
-"""
-    if nsamps == 1:
-        return np.array(generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only),dtype=dtype)
-    else:
-        return np.array(generate_offset_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy, inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only)[:,:,np.newaxis,:].repeat(nsamps,axis=2),dtype=dtype)
-"""
+
 #average FOV
 FOV = gridsize*(36/3600) #~3 degrees
 decs = np.arange(-90,90,FOV)

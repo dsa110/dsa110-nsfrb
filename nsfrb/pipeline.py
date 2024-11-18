@@ -9,12 +9,12 @@ from influxdb import DataFrameClient
 import os
 import sys
 
-cwd = os.environ['NSFRBDIR']
-sys.path.append(cwd + "/")
+#cwd = os.environ['NSFRBDIR']
+#sys.path.append(cwd + "/")
 from nsfrb.config import *
 from nsfrb.noise import noise_update,noise_dir,noise_update_all
 from nsfrb import jax_funcs
-
+"""
 #output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
@@ -24,6 +24,8 @@ frame_dir = cwd + "-frames/"
 psf_dir = cwd + "-PSF/"
 f=open(output_file,"w")
 f.close()
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
 
 
 

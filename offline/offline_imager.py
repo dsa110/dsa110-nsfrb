@@ -14,12 +14,12 @@ from dsautils import cnf
 from collections import OrderedDict
 my_cnf = cnf.Conf(use_etcd=True)
 
-f = open("../metadata.txt","r")
-cwd = f.read()[:-1]
-f.close()
+#f = open("../metadata.txt","r")
+#cwd = f.read()[:-1]
+#f.close()
 
-sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
-sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+#sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
+#sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize
 from nsfrb.imaging import inverse_uniform_image,uniform_image, uv_to_pix, robust_image
 from nsfrb.TXclient import send_data
@@ -32,9 +32,13 @@ from nsfrb.outputlogging import numpy_to_fits
 #from nsfrb import calibration as cal
 from nsfrb import pipeline
 import os
-vispath = os.environ["NSFRBDATA"] + "dsa110-nsfrb-fast-visibilities" #cwd + "-fast-visibilities"
-imgpath = cwd + "-images"
-inject_file = cwd + "-injections/injections.csv"
+#vispath = os.environ["NSFRBDATA"] + "dsa110-nsfrb-fast-visibilities" #cwd + "-fast-visibilities"
+#imgpath = cwd + "-images"
+#inject_file = cwd + "-injections/injections.csv"
+
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+
+
 """
 This script reads raw fast visibility data from a file on disk, applies fringe-stopping from a pre-made table,
 applies calibration, and images. If specified, the resulting image is transmitted to the process server.
@@ -285,7 +289,7 @@ if __name__=="__main__":
     #parser.add_argument('--fringestop', action='store_true', default=False, help='Fringe stop manually')
     #parser.add_argument('--fringetable',type=str,help='Fringe stop manually with specified table in the dsa110-nsfrb-fast-visibilities dir',default='')
     parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=4)
-    parser.add_argument('--path',type=str,help='Path to raw data files',default=vispath)
+    parser.add_argument('--path',type=str,help='Path to raw data files',default=vis_dir[:-1])
     parser.add_argument('--outpath',type=str,help='Output path for images',default=imgpath)
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')

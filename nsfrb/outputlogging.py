@@ -5,11 +5,14 @@
 import sys
 import os
 from astropy.io import fits
+"""
 cwd = os.environ['NSFRBDIR']
 
 output_file = cwd + "-logfiles/run_log.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
 
-def printlog(txt,output_file=output_file,end='\n'):
+def printlog(txt,output_file=run_file,end='\n'):
     if output_file != "":
         fout = open(output_file,"a")
     else:

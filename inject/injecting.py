@@ -31,11 +31,10 @@ import glob
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
-cwd = os.environ['NSFRBDIR']
-sys.path.append(cwd + "/")
+#cwd = os.environ['NSFRBDIR']
+#sys.path.append(cwd + "/")
 from nsfrb.outputlogging import printlog
 from simulations_and_classifications import generate_PSF_images as scPSF
-from simulations_and_classifications import generate_source_images as scSRC
 from nsfrb.config import *
 from nsfrb.searching import gen_dm_shifts,DM_trials
 
@@ -47,7 +46,7 @@ nDMtrials = len(DM_trials)
 """
 freq_axis = np.linspace(fmin,fmax,nchans)
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
-
+"""
 error_file = cwd + "-logfiles/inject_error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
 inject_file = cwd + "-injections/injections.csv"
@@ -56,11 +55,14 @@ psf_dir = cwd + "-PSF/"
 frame_dir = cwd + "-frames/"
 noise_dir = cwd + "-noise/"
 inject_dir = cwd + "-injections/"
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,inject_log_file
+
 PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
 
 
-def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True):
+def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True):
     """
     Uses functions from simulations_and_classifications to make injections
     """
@@ -290,7 +292,7 @@ freq_axis = np.linspace(fmin,fmax,nchans)
 tDM_max = (4.15)*np.max(default_DMtrials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
 maxshift = int(np.ceil(tDM_max/tsamp))
 
-def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width=np.nan,SNR=np.nan,gridsize=gridsize,DMtrials=default_DMtrials,widthtrials=default_widthtrials,freq_axis=freq_axis,nsamps=nsamps,nchans=nchans,tsamp=tsamp,SNRmin=0,SNRmax=10000):
+def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width=np.nan,SNR=np.nan,gridsize=gridsize,DMtrials=default_DMtrials,widthtrials=default_widthtrials,freq_axis=freq_axis,nsamps=nsamps,nchans=nchans,tsamp=tsamp,SNRmin=0,SNRmax=10000,output_file=inject_log_file):
     """
     Randomly draws injected burst parameters from set of trial DMs, widths and RA/DEC grid
     """
@@ -312,9 +314,9 @@ def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width
     if np.isnan(SNR):
         SNR = uniform.rvs(loc=SNRmin,scale=SNRmax)
 
-    printlog("Injecting burst " + str(time_start_isot) + " with DM = " + str(DM) + ", width = " + str(width) + ", S/N = " + str(SNR),output_file=log_file)
-    printlog("RA=" + str(RA_axis[int(len(RA_axis)//2 + offsetRA)]),output_file=log_file)
-    printlog("DEC="+str(DEC_axis[int(len(DEC_axis)//2 + offsetDEC)]),output_file=log_file)
+    printlog("Injecting burst " + str(time_start_isot) + " with DM = " + str(DM) + ", width = " + str(width) + ", S/N = " + str(SNR),output_file=inject_log_file)
+    printlog("RA=" + str(RA_axis[int(len(RA_axis)//2 + offsetRA)]),output_file=inject_log_file)
+    printlog("DEC="+str(DEC_axis[int(len(DEC_axis)//2 + offsetDEC)]),output_file=inject_log_file)
 
     return offsetRA,offsetDEC,SNR,width,DM,maxshift
 

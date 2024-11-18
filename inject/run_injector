@@ -13,7 +13,7 @@ do
 	#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 --filedir "3C286_vis" --timestamp $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
 	
 
-	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 --filedir "3C286_vis" --timestamp $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --inject_noiseless --snr_inject 10000 --offsetRA_inject 149 --offsetDEC_inject 149 --dm_inject 0 --point_field >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
+	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 --filedir "3C286_vis" --timestamp $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --snr_inject 10000 --dm_inject 0 --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
 
 
 
@@ -22,5 +22,5 @@ do
 
 	
 	break	
-	sleep $1
+	#sleep $1
 done

@@ -68,6 +68,7 @@ includes clustering, classifying, and cutting out sub-images. It will run in the
 Directory for output data
 """
 import os
+"""
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
@@ -80,6 +81,8 @@ raw_cand_dir = cand_dir + "raw_cands/"
 backup_cand_dir = cand_dir + "backup_raw_cands/"
 final_cand_dir = cand_dir + "final_cands/"
 error_file = cwd + "-logfiles/candcutter_error_log.txt"
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
 
 """
 Arguments: data file

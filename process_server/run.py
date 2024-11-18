@@ -24,10 +24,10 @@ from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
-cwd = os.environ['NSFRBDIR']
+#cwd = os.environ['NSFRBDIR']
 
 import sys
-sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+#sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 import csv
 import copy
 
@@ -67,6 +67,7 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
+"""
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
@@ -76,6 +77,8 @@ flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-
 cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 psf_dir = cwd + "-PSF/"
 error_file = cwd + "-logfiles/error_log.txt"
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
 
 """
 NSFRB modules
