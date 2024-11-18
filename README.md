@@ -2,12 +2,12 @@
 
 This repository contains code for the DSA-110 Not-So-Fast Radio Burst (NSFRB) search pipeline, which uses low time resolution (130 ms) radio images to search for transient radio emission on 1-10 second timescales. The pipeline is currently being developed as part of DSA-110 Completion efforts. Below is the offline system design (updated 2024-11-18):
 
-![NSFRBoffline](https://github.com/dsa110/dsa110-nsfrb/blob/main/NSFRB_T4_Offline_System_Diagram.png)
+![NSFRBoffline](https://github.com/dsa110/dsa110-nsfrb/blob/development/NSFRB_T4_Offline_System_Diagram.png?raw=True)
 
 
 Upon verification and testing of the completed offline pipeline, the NSFRB search will be scaled to realtime operation commensal with the FRB search. Below is the realtime system design (updated 2024-11-18):
 
-![NSFRBrealtime](https://github.com/dsa110/dsa110-nsfrb/blob/main/NSFRB_T4_Realtime_System_Diagram.png)
+![NSFRBrealtime](https://github.com/dsa110/dsa110-nsfrb/blob/development/NSFRB_T4_Realtime_System_Diagram.png?raw=True)
 
 Software requirements are listed in `requirements.txt`, and the `casa310nsfrb_env.yml` environment is provided with a subset of required modules installed. To install, first cd to the `dsa110-nsfrb` installation directory. After creating and activating the conda environment using:
 
