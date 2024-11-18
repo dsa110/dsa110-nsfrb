@@ -30,6 +30,7 @@ from the bash command line. The following sub-modules are defined:
 	- `simulating`
 	- `classifying`
 	- `TXclient`
+	- `pipeline`
 	- `plotting`
 	- `output_logging`
 	- `noise`

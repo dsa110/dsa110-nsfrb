@@ -29,7 +29,8 @@ import time
 from scipy.stats import norm,multivariate_normal
 import nsfrb.searching as sl
 from nsfrb.outputlogging import numpy_to_fits
-from nsfrb import calibration as cal
+#from nsfrb import calibration as cal
+from nsfrb import pipeline
 import os
 vispath = os.environ["NSFRBDATA"] + "dsa110-nsfrb-fast-visibilities" #cwd + "-fast-visibilities"
 imgpath = cwd + "-images"
@@ -55,27 +56,6 @@ f.close()
 def main(args):
 
     verbose = args.verbose
-    """
-    #read raw data for each corr node
-    dat_all = None
-    for i in range(len(corrs)):
-        corr = corrs[i]
-        fname = args.path + "/lxd110"+ corr + "/" + corr + args.filelabel + ".out"
-        fname = args.path + "/3C286_vis/" + corr + args.filelabel + ".out"
-        try:
-            tmp = cal.read_raw_vis(fname,datasize=args.datasize)
-            #print("tmp",tmp)
-            dat_corr = np.nanmean(cal.read_raw_vis(fname,datasize=args.datasize),axis=2,keepdims=True)
-            if verbose: print(dat_corr.shape)
-            if dat_all is None:
-                dat_all = np.nan*np.ones(dat_corr.shape,dtype=dat_corr.dtype).repeat(len(corrs),axis=2)
-            #print(dat_all.shape,dat_corr.shape)
-            dat_all[:,:,i,:] = dat_corr[:,:,0,:]
-            #print("tmp2",dat_all[:,:,i,:],dat_corr)
-        except Exception as exc:
-            if verbose: print("No data for " + corr)
-            if verbose: print(exc)
-    """
     #send in sub-gulps
     
     num_gulps = 1#int(dat_all.shape[0]//args.num_time_samples)
@@ -94,26 +74,6 @@ def main(args):
     #get timestamp
     if len(args.timestamp) != 0:
         timestamp = args.timestamp
-    """
-    else:
-        timestamp = ""
-        i = 0
-        while timestamp == "":
-            if len(args.filedir) == 0:
-                fname = args.path + "/lxd110"+ corrs[i] + "/" + ("nsfrb_" + sbs[i] if args.sb else corrs[i]) + args.filelabel + ".out"
-            else:
-                fname = args.path + "/" + args.filedir + "/" + ("nsfrb_" + sbs[i] if args.sb else corrs[i]) + args.filelabel + ".out"
-
-            try:
-                timestamp = Time(os.path.getctime(fname),format='unix').isot
-            except Exception as exc:
-                i += 1
-                if verbose: print("No data for " + corrs[i])
-                if verbose: print(exc)
-        if timestamp == "":
-            print("No data available")
-            return 1
-    """
 
     for gulp in range(num_gulps):
         #dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
@@ -135,7 +95,7 @@ def main(args):
                 #tmp = cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples)
                 #print("tmp",tmp)
 
-                dat_corr,sbnum,tstamp_mjd = cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=gulp,nchan=int(args.nchans_per_node),headersize=8)
+                dat_corr,sbnum,tstamp_mjd = pipeline.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=gulp,nchan=int(args.nchans_per_node),headersize=8)
                 if len(args.timestamp) == 0: 
                     timestamp = Time(tstamp_mjd,format='mjd').isot
             
