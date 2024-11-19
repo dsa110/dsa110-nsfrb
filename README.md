@@ -36,6 +36,7 @@ from the bash command line. The following sub-modules are defined:
 	- `noise`
 	- `config`
 	- `jax_funcs`
+	- `planning`
 - `process_server`: Scripts to run the T4 process server, which receives images over HTTP from each correlator node and runs the search and classification pipelines.
 	- `run`
 	- `run_poc_server`
