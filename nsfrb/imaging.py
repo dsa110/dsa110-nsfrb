@@ -8,7 +8,7 @@ import astropy.units as u
 from astropy.time import Time
 import sys
 from matplotlib import pyplot as plt
-from nsfrb import simulating
+from nsfrb import simulating,planning
 
 flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 #f = open("../metadata.txt","r")
@@ -164,7 +164,7 @@ def inverse_uniform_image(dirty_image,u,v):
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtries=5,output_file=output_file,az_offset=1.23001):
+def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtries=5,output_file=output_file):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -218,6 +218,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtrie
     else:
         bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
         elev = result['antmon']['ant_el'].values[bestidx]
+        """
         #alt = 180-elev
         #alt = elev - 90
         alt = 90 - elev
@@ -229,7 +230,8 @@ def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtrie
         else:
             alt = elev
             az = 180 - az_offset
-
+        """
+        alt,az = planning.DSAelev_to_ASTROPYalt(elev)
         print("Retrieved elevation: " + str(elev) + "deg",file=fout)
 
         antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)

@@ -54,6 +54,8 @@ os.system("mkdir ../dsa110-nsfrb-injections/")
 #create directory for stored PSFs
 os.system("mkdir ../dsa110-nsfrb-PSF/")
 
+#create directory for observing plans
+os.system("mkdir ../dsa110-nsfrb-plans/")
 import csv
 
 with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:

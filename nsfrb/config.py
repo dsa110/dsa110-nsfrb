@@ -64,7 +64,7 @@ inject_dir = inject_file = cwd + "-injections/"
 training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 noise_dir = cwd + "-noise/"
 imgpath = cwd + "-images"
-
+plan_dir = cwd + "-plans/"
 
 #data files
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
