@@ -122,6 +122,7 @@ def generate_rfi_images(dataset_dir, num_observations, ha_low, ha_high, dec_low,
         metadata_df.to_csv(os.path.join(dataset_dir, f'observation_{obs+1}/metadata.csv'), index=False)
 
     print("All observations saved.")
+    return dirty_images
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate images of RFI observed with DSA-110 core antennas.')

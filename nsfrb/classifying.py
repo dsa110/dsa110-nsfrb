@@ -13,6 +13,55 @@ from torchvision.transforms import functional as TF
 transform = transforms.Compose([
     transforms.Resize((50, 50)),
 ])
+"""
+transform = transforms.Compose([
+    transforms.RandomRotation(360),
+    transforms.RandomResizedCrop(50, scale=(0.8, 1.0)),
+    transforms.Resize((50, 50)),
+])
+"""
+
+class ImageCubeDataset(Dataset):
+    """
+    Custom dataset class for loading multiple batches of image cubes.; FROM RFI_CLASSIFICATION_PYTORCH.IPYNB NOTEBOOK
+    """
+    def __init__(self, root_dir, transform=None):
+        self.obs_dirs = [os.path.join(root_dir, obs)
+                         for obs in sorted(os.listdir(root_dir))
+                         if os.path.isdir(os.path.join(root_dir, obs))]
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.obs_dirs)
+
+    def __getitem__(self, idx):
+        obs_dir = self.obs_dirs[idx]
+        image_cube = self.load_image_cube(obs_dir)
+        if self.transform:
+            image_cube = self.transform(image_cube)
+        return image_cube
+
+    def load_image_cube(self, observation_dir):
+        subband_images = []
+        image_dir = os.path.join(observation_dir, 'images')
+        filenames = sorted(os.listdir(image_dir))
+
+        for filename in filenames:
+            if filename.endswith(".png") and "subband_avg" in filename:
+                img_path = os.path.join(image_dir, filename)
+                img = Image.open(img_path).convert('L')  # image to grayscale
+                subband_images.append(img)
+
+
+
+        tensor_stack = torch.stack([transforms.ToTensor()(img)[0] for img in subband_images], dim=0)
+
+
+
+
+        return tensor_stack
+
+
 
 class NumpyImageCubeDataset(Dataset):
     """
@@ -36,7 +85,7 @@ class NumpyImageCubeDataset(Dataset):
         if self.transform:
             transformed_channels = []
             for i in range(image_cube.shape[0]):
-                img = TF.to_pil_image(image_cube[i].astype(np.float32))
+                img = TF.to_pil_image(image_cube[i].astype(np.float32),mode='L')
                 transformed_img = self.transform(img)
                 transformed_channels.append(TF.to_tensor(transformed_img))
             image_cube_tensor = torch.stack(transformed_channels, dim=0)
@@ -113,7 +162,9 @@ def classify_images(data_array, model_weights_path, verbose=False):
     with torch.no_grad():
         for inputs in test_loader:
             outputs = model(inputs).squeeze()
-            predicted_prob = torch.sigmoid(outputs).item()
+            if verbose: print("output prob:",outputs)
+            if verbose: print("sigmoid prob:",torch.sigmoid(outputs))
+            predicted_prob = outputs #torch.sigmoid(outputs).item()
             predicted_label = 1 if predicted_prob > 0.5 else 0
             predictions.append(predicted_label)  # Store binary prediction
             probabilities.append(predicted_prob)  # Store probability
@@ -124,7 +175,47 @@ def classify_images(data_array, model_weights_path, verbose=False):
 
     return np.array(predictions), np.array(probabilities)  # Return both predictions and probabilities as NumPy arrays
 
+def classify_images_dataset(dataset_dir, model_weights_path, verbose=False):
+    """
+    Classifies images based on the provided CNN model and data array.
 
+    Parameters:
+    - dataset_dir (numpy.ndarray): Dataset directory with preprocessed array of images shaped as
+      [num_batches, 16 frequencies, image_height, image_width], where each
+      image is expected to be resized to 50x50 pixels.
+    - model_weights_path (str): Path to the file containing the trained model weights.
+    - verbose (bool, optional): If True, prints detailed output during classification.
+
+    Returns:
+    - predictions (numpy.ndarray): An array of binary predictions (0 or 1) for each image.
+    - probabilities (numpy.ndarray): An array of probabilities corresponding to the
+      predictions, indicating the confidence level of each prediction.
+    """
+    model = EnhancedCNN()
+    model.load_state_dict(torch.load(model_weights_path))
+    model.eval()
+
+    predictions = []  # List to store binary predictions (0s and 1s)
+    probabilities = []  # List to store predicted probabilities
+
+    test_dataset = ImageCubeDataset(dataset_dir,transform=transform)#NumpyImageCubeDataset(data_array, transform=transform)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+
+    with torch.no_grad():
+        for inputs in test_loader:
+            outputs = model(inputs).squeeze()
+            if verbose: print("output prob:",outputs)
+            if verbose: print("sigmoid prob:",torch.sigmoid(outputs))
+            predicted_prob = outputs #torch.sigmoid(outputs).item()
+            predicted_label = 1 if predicted_prob > 0.5 else 0
+            predictions.append(predicted_label)  # Store binary prediction
+            probabilities.append(predicted_prob)  # Store probability
+
+            if verbose:  # Check if verbose output is enabled
+                label_description = "RFI" if predicted_label == 1 else "Source"
+                print(f"Predicted Label: {label_description}, Probability: {predicted_prob}")
+
+    return np.array(predictions), np.array(probabilities)  # Return both predictions and probabilities as NumPy arrays
 
 
 

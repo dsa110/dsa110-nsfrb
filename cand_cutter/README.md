@@ -1,20 +1,19 @@
-# Process Server
+# Cand Cutter
 
-This folder contains scripts to execute the persistent process server, which receives images over HTTP connections from the image clients on each DSA-110 correlator node, and starts the search and classification pipelines.
+This folder contains scripts to execute the candidate clusterer and classifier, which checks for new raw candidate files and processes them offline.
 
 ## Structure
 
-- `run.py`: Python implementation of process server; uses HTTP to receive data and `concurrent.futures` module to multithread.
-- `run_proc_server`: Bash executable script that calls `run.py` so it can be run in the background
-- `kill_proc_server`: Bash executable script that kills process server while in the background
-- `process_flags.txt`: 8-bit flag storing the receipt status of each HTTP request; this is sent back to the client to prompt a re-send if needed
+- `run.py`: Python implementation of candcutter; uses Python `multiprocessing.Queue` to receive new raw candidate files
+- `run_cand_cutter`: Bash executable script that calls` run.py` so it can be run in the background
+- `kill_candcutter`: Bash executable script that kills candcutter while in the background
 
 ## Usage
 
-To run the process server:
+To run the candcutter:
 
 ```bash
-./run_proc_server arguments
+./run_candcutter arguments
 ```
 
 Optional arguments are defined below:
@@ -51,10 +50,32 @@ Optional arguments are defined below:
 - `--DMbatches`: Number of pixel batches to submit dedispersion to the GPUs , default=1
 - `--usejax`: Use JAX Just-In-Time compilation for GPU acceleration
 
-To kill process server:
+
+- `--cutout`: Get image cutouts around each candidate
+- `--subimgpix`: Length of image cutouts in pixels, default=11
+- `--cluster`: Enable clustering with HDBSCAN
+- `--plotclusters`: Plot intermediate plots from HDBSCAN clustering
+- `--mincluster`: Minimum number of candidates required to be made a separate HDBSCAN cluster,default=5
+- `--minsamples`: Minimum number of candidates to be core point,default=2
+- `--verbose`: Enable verbose output
+- `--classify`: Classify candidates with a machine learning convolutional neural network
+- `--model_weights`: Path to the model weights file
+- `--toslack`: Sends Candidate Summary Plots to Slack
+- `--sleep`: Time in seconds to sleep between successive cand\_cutter runs; default=0
+- `--runtime`: Minimum time in seconds to run before sleep cycle; default=60
+- `--maxProcesses`: Maximum number of threads for thread pool; default=5
+- `--archive`: Archive candidates on dsastorage
+- `--maxcands`: Maximum number of candidates searchable in one iteration. Default is full image, 300x300x5x16=7.2e6
+- `--percentile`: Percentile above which to take candidates, e.g. if 90, candidates with s/n in 90th percentile will be clustered. Default 0
+- `--SNRthresh`: SNR threshold, default = 10
+- `--train`: Save candidate cutouts to the training set for the ML classifier
+- `--useTOA`: Include TOAs in clustering algorithm
+- `--psfcluster`: PSF-based spatial clustering
+
+To kill candcutter:
 
 ```bash
-./kill_proc_server
+./kill_candcutter
 ```
 
 

@@ -1,0 +1,16 @@
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:53_sb00.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:50_sb01.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb02.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb03.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb04.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:51_sb05.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb06.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:50_sb07.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:53_sb08.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:50_sb09.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb10.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb11.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb12.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb13.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb14.hdf5
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-fast-visibilities/test_files/2024-06-12T21:35:49_sb15.hdf5

@@ -4,6 +4,10 @@ import sys
 import os
 import glob
 
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+
+from nsfrb.config import *
+"""
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
@@ -15,7 +19,7 @@ from nsfrb.config import *
 #noise directory
 noise_dir = cwd + "-noise/" 
 output_file = cwd + "-logfiles/search_log.txt"
-
+"""
 
 def noise_update(noise,gridsize_RA,gridsize_DEC,DM,width,noise_dir=noise_dir,output_file=output_file):
     """
@@ -71,7 +75,7 @@ def get_noise_dict(gridsize_RA,gridsize_DEC):
         noise_dict = dict()
     return noise_dict
 
-def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file,writeonly=False,readonly=False):
+def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_dir=noise_dir,output_file=output_file,writeonly=False,readonly=False,suff=""):
     """
     This function retrieves and updates the running mean standard deviation 
     noise for a given DM and pulse width.
@@ -82,7 +86,8 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         fout = sys.stdout
 
     #find noise pkl file
-    fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) +".pkl"
+    print(suff)
+    fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + str(suff) +".pkl"
     try:
         f = open(fname,"rb")
         noise_dict = pkl.load(f)
@@ -102,13 +107,15 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         for j in range(len(widthtrials)):
             
             width = widthtrials[j]
-            if (DM not in noise_dict.keys()) or (width not in noise_dict[DM].keys()):
+            if not readonly and noise is not None and np.isnan(noise[j,i]):
+                print("NOISE UPDATE IS NAN",file=fout)
+            elif (DM not in noise_dict.keys()) or (width not in noise_dict[DM].keys()):
                 if DM not in noise_dict.keys():
                     noise_dict[DM] = dict()
                 if not readonly:
                     noise_dict[DM][width] = [1, noise[j,i]]
                 else:
-                    noise_dict[DM][width] = [1, np.nan]
+                    noise_dict[DM][width] = [0,0]#[1, np.nan]
             elif not writeonly and not readonly:
                 prevN, prevnoise = noise_dict[DM][width]
                 nextN = prevN + 1
@@ -132,7 +139,39 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         return noise_final, prevN
     return noise_final 
 
-def init_noise(noise_dir=noise_dir):
-    if len(glob.glob(noise_dir + "/*pkl")) > 0:
-        os.system("rm " + noise_dir + "/*pkl")
+def init_noise(DM_trials,widthtrials,gridsize_RA,gridsize_DEC,noise_dir=noise_dir,img=False,suff=""):
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+    #remove non-initialization files
+    noisefiles = glob.glob(noise_dir + "/*pkl")
+    for n in noisefiles:
+        if '_sim' not in n:
+            os.system("rm " + n)
+    
+    #initialize
+    if img:
+        noisefiles = glob.glob(noise_dir + "/*pkl")
+        for n in noisefiles:
+            if '_sim' in n:
+                print("initializing with " + n,file=fout)
+                os.system("cp " + n + " " + n[:n.index("_sim")] + ".pkl")
+    else:
+        #initialize based on fit relation
+        vis_noise = np.mean(np.load(noise_dir + "raw_vis_noise_real.npy"))
+        all_noise = dict()
+        for i in range(len(DM_trials)):
+            all_noise[DM_trials[i]] = dict()
+            for j in range(len(widthtrials)):
+                all_noise[DM_trials[i]][widthtrials[j]] = [10,vis_to_img_slope*vis_noise*np.sqrt(widthtrials[j])]
+        fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + str(suff) +".pkl"
+        noisefile = open(fname,"wb")
+        pkl.dump(all_noise,noisefile)
+        noisefile.close()
+        
+    if output_file != "":
+        fout.close()
     return
+
+

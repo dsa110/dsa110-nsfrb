@@ -1,4 +1,5 @@
 import matplotlib
+from nsfrb.config import tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 fsize=45
@@ -24,6 +25,9 @@ import numpy as np
 import sys
 import csv
 import os
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+
+"""
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
@@ -32,7 +36,7 @@ sys.path.append(cwd + "/")
 
 binary_file = cwd + "-logfiles/binary_log.txt"
 inject_file = cwd + "-injections/injections.csv"
-
+"""
 def plot_uv_coverage(u, v, title='u-v Coverage'):
     """
     Plot the u-v coverage.
@@ -146,14 +150,14 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[]):
     """
     Makes updated diagnostic plots for search system
     """
     gridsize = len(RA_axis)
     decs,ras,wids,dms=np.array(canddict['dec_idxs'],dtype=int),np.array(canddict['ra_idxs'],dtype=int),np.array(canddict['wid_idxs'],dtype=int),np.array(canddict['dm_idxs'],dtype=int)#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
     snrs = np.array(canddict['snrs'])#imgsearched.flatten()[(imgsearched>2500).flatten()]
-
+    names = np.array(canddict['names'])
     """
     #check if the candidate is an injection
     injection = False
@@ -168,33 +172,62 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
             i += 1
     csvfile.close()
     """
-    fig=plt.figure(figsize=(40,12))
+    fig=plt.figure(figsize=(40,40))
     if injection:
         fig.patch.set_facecolor('red')
-    ax = plt.subplot(1,2,1)
+    gs = fig.add_gridspec(3,2)
+    ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
-    ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    if 'predicts' in canddict.keys():
+        ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+        ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+    else:
+        ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     #plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
     ax.imshow((img.mean((2,3)))[::-1,:],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
-    
+    if searched_image is not None:
+        ax.contour(searched_image.max((2,3))[::-1,:],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
     ax.axvline(RA_axis[gridsize//2],color='grey')
     ax.axhline(DEC_axis[gridsize//2],color='grey')
     ax.set_xlabel(r"RA ($^\circ$)")
     ax.set_ylabel(r"DEC ($^\circ$)")
     ax.invert_xaxis()
 
-    ax=plt.subplot(1,2,2)
-    c=ax.scatter(widthtrials[wids],
+    ax = fig.add_subplot(gs[0,1])#ax=plt.subplot(3,2,2)
+    if 'predicts' in canddict.keys():
+        c=ax.scatter(widthtrials[wids][canddict['predicts']==0],
+                DM_trials[dms][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+        c=ax.scatter(widthtrials[wids][canddict['predicts']==1],
+                DM_trials[dms][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    else:
+        c=ax.scatter(widthtrials[wids],
                 DM_trials[dms],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.colorbar(mappable=c,ax=ax,label='S/N')
     for i in widthtrials:
         ax.axvline(i,color='grey',linestyle='--')
     for i in DM_trials:
         ax.axhline(i,color='grey',linestyle='--')
-    ax.set_xlim(0,np.max(widthtrials)*2)
-    ax.set_ylim(0,np.max(DM_trials)*10)
+    ax.set_xlim(0,np.max(widthtrials) + 1)
+    ax.set_ylim(0,np.max(DM_trials) + 1)
     ax.set_xlabel("Width (Samples)")
     ax.set_ylabel(r"DM (pc/cc)")
+
+
+    #timeseries
+    ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
+    for i in range(len(timeseries)):
+        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label="NSFRB"+names[i])
+    ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
+    ax.set_xlim(0,tsamp*img.shape[2]/1000)
+    ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,5)
+    #show dynamic spectrum for highest S/N burst
+    showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
+    ax.set_title(showname)
+    ax.imshow(img[int(showy),int(showx)].transpose(),origin="lower",extent=[0,tsamp*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto')
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Frequency (MHz)")
+
+
     t = "NSFRB" + isot
     if injection: t = t + " (injection)"
     plt.suptitle(t)
@@ -216,18 +249,21 @@ def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_
     binplotdets = binplot >= SNRthresh
 
 
+
     #downscale
-    gridsize = binplot.shape[0]
-    if gridsize%size != 0:
-        binplot = binplot[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2)),
-                        gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
-        RA_axis = RA_axis[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
-        DEC_axis = DEC_axis[gridsize%size // 2: gridsize - (gridsize%size - (gridsize%size // 2))]
-    gridsize = binplot.shape[0]
-    binplot = np.nanmax(binplot.reshape((size,gridsize//size,size,gridsize//size)),(1,3))
+    gridsize_DEC,gridsize_RA = binplot.shape
+    if len(RA_axis) != gridsize_RA:
+        RA_axis = RA_axis[int((len(RA_axis)-gridsize_RA)//2):-((len(RA_axis)-gridsize_RA) - int((len(RA_axis)-gridsize_RA)//2))]
+    if gridsize_DEC%size != 0 or gridsize_RA%size != 0:
+        binplot = binplot[gridsize_DEC%size // 2: gridsize_DEC - (gridsize_DEC%size - (gridsize_DEC%size // 2)),
+                        gridsize_RA%size // 2: gridsize_RA - (gridsize_RA%size - (gridsize_RA%size // 2))]
+        RA_axis = RA_axis[gridsize_RA%size // 2: gridsize_RA - (gridsize_RA%size - (gridsize_RA%size // 2))]
+        DEC_axis = DEC_axis[gridsize_DEC%size // 2: gridsize_DEC - (gridsize_DEC%size - (gridsize_DEC%size // 2))]
+    gridsize_DEC,gridsize_RA = binplot.shape
+    binplot = np.nanmax(binplot.reshape((size,gridsize_DEC//size,size,gridsize_RA//size)),(1,3))
     binplotdets = binplot >= SNRthresh
-    RA_axis = RA_axis.reshape((size,gridsize//size)).mean(1)
-    DEC_axis = DEC_axis.reshape((size,gridsize//size)).mean(1)
+    RA_axis = RA_axis.reshape((size,gridsize_RA//size)).mean(1)
+    DEC_axis = DEC_axis.reshape((size,gridsize_DEC//size)).mean(1)
 
     #normalize
     binplot = (binplot - np.nanpercentile(binplot,10))/(np.nanpercentile(binplot,90) - np.nanpercentile(binplot,10))

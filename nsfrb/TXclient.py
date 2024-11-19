@@ -4,6 +4,10 @@ import logging
 from http.client import HTTPConnection
 import sys
 sys.path.append("..")
+
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+
+
 #from nsfrb.pipeline import pflagdict
 pflagdict = dict()
 pflagdict['parse_error'] = 1
@@ -22,11 +26,11 @@ to the persistent server for searching. For the realtime system, this should be 
 """
 
 #parameters that never change
+import os
 
 #http parameters
 port = 8080
-ipaddress = "10.41.0.254"#"10.42.0.232"#"10.41.0.94" #corr20
-#ipaddress = "10.41.0.228"
+ipaddress = os.environ['NSFRBIP']
 host = ipaddress + ":" + str(port)
 #url = "http://" + host + "/" + fname
 keepalive_time = 15

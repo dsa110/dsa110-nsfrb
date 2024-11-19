@@ -24,10 +24,10 @@ from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
-cwd = os.environ['NSFRBDIR']
+#cwd = os.environ['NSFRBDIR']
 
 import sys
-sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
+#sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 import csv
 import copy
 
@@ -67,15 +67,18 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
+"""
 output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
 pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
 searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
 output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
 processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
 flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
-cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
 psf_dir = cwd + "-PSF/"
 error_file = cwd + "-logfiles/error_log.txt"
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
 
 """
 NSFRB modules
@@ -485,8 +488,8 @@ def main(args):
         sl.freq_axis = np.linspace(config.fmin,config.fmax,config.nchans)
 
         config.gridsize = args.gridsize
-        sl.RA_axis = np.linspace(config.RA_point-config.pixsize*config.gridsize//2,config.RA_point+config.pixsize*config.gridsize//2,config.gridsize)
-        sl.DEC_axis = np.linspace(config.DEC_point-config.pixsize*config.gridsize//2,config.DEC_point+config.pixsize*config.gridsize//2,config.gridsize)
+        sl.RA_axis = np.linspace(config.RA_point-(config.pixsize*config.gridsize/2),config.RA_point+(config.pixsize*config.gridsize/2),config.gridsize)
+        sl.DEC_axis = np.linspace(config.DEC_point-(config.pixsize*config.gridsize/2),config.DEC_point+(config.pixsize*config.gridsize/2),config.gridsize)
 
 
         sl.DM_trials = np.array(sl.gen_dm(sl.minDM,sl.maxDM,1.5,config.fc*1e-3,config.nchans,config.tsamp,config.chanbw))#[0:1]
@@ -503,6 +506,13 @@ def main(args):
         sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
         sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
 
+    if args.nocutoff:
+        sl.default_cutoff = 0
+    else:
+        printlog(sl.DEC_axis,output_file=processfile)
+        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=sl.DEC_axis[1]-sl.DEC_axis[0])
+        printlog("Initialized pixel cutoff to " + str(sl.default_cutoff) + " pixels",output_file=processfile)
+
     #write DM and width trials to file for cand cutter
     np.save(cand_dir + "DMtrials.npy",np.array(sl.DM_trials))
     np.save(cand_dir + "widthtrials.npy",np.array(sl.widthtrials))
@@ -513,12 +523,12 @@ def main(args):
     #initialize last_frame 
     if args.initframes:
         printlog("Initializing previous frames...",output_file=processfile)
-        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps,args.nchans)
+        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps-sl.maxshift,args.nchans)
 
     #initialize noise stats
     if args.initnoise:
         printlog("Initializing noise statistics...",output_file=processfile)
-        init_noise()
+        init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
         sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
 
     #initialize jax functions
@@ -542,34 +552,37 @@ def main(args):
             tdelays_frac = sl.tdelays_frac_no_append
 
         if args.DMbatches > 1:
-            subgridsize_DEC = subgridsize_RA = args.gridsize//args.DMbatches
+            #subgridsize_DEC = subgridsize_RA = args.gridsize//args.DMbatches
+            subgridsize_DEC = args.gridsize//args.DMbatches
+            subgridsize_RA = (args.gridsize-sl.default_cutoff)//args.DMbatches
             #subband_size = args.nchans//(args.DMbatches)#*args.DMbatches)
             for i in range(args.DMbatches):
                 for j in range(args.DMbatches):
-                    jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]))
+                    jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]))
 
 
                     jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                jax.device_put(corr_shifts_all,jax.devices()[0]),
                                                jax.device_put(tdelays_frac,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1,i=i,j=j)
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth,i=i,j=j)
                     jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),
                                                jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
                                                jax.device_put(tdelays_frac,jax.devices()[1]),
-                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
 
         else:
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
                                                jax.device_put(tdelays_frac,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[0]),past_noise_N=1,noiseth=0.1)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
-                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,1,args.nchans)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
                                                jax.device_put(tdelays_frac,jax.devices()[1]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
-                                               jax.device_put(np.array(np.random.normal(size=(len(sl.widthtrials),len(sl.DM_trials))),dtype=np.float16),jax.devices()[1]),past_noise_N=1,noiseth=0.1)
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
 
 
 
@@ -817,9 +830,17 @@ def main(args):
             
             else:   
             """
+            #initialize noise stats
+            if args.fprtest or args.fnrtest:
+                printlog("FPR Test, Re-Initializing noise statistics...",output_file=processfile)
+                init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
+                sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
+
+
+
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
@@ -838,7 +859,7 @@ def main(args):
 if __name__=="__main__":
     #argument parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 3000',default=3000)
+    parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
     parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
@@ -872,12 +893,16 @@ if __name__=="__main__":
     parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
     parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
     parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
+    parser.add_argument('--fprtest',action='store_true',help='Saves only searched data and writes peak SNR to file')
+    parser.add_argument('--fnrtest',action='store_true',help='Saves only searched data and writes peak SNR to file')
     parser.add_argument('--appendframe',action='store_true',help='Use the previous image to fill in dedispersion search')
     parser.add_argument('--DMbatches',type=int,help='Number of pixel batches to submit dedispersion to the GPUs with, default = 1',default=1)
     parser.add_argument('--SNRbatches',type=int,help='Number of pixel batches to submit boxcar filtering to the GPUs with, default = 1',default=1)
     parser.add_argument('--usejax',action='store_true',help='Use JAX Just-In-Time compilation for GPU acceleration')
     parser.add_argument('--offline',action='store_true',help='Run system offline, relaxes realtime requirement and can update noise from injections')
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
+    parser.add_argument('--noiseth',type=float,help='S/N threshold below which samples are included in noise calculation; default=3',default=3)#Quantile threshold below which samples are included in noise calculation; default=0.1',default=0.1)
+    parser.add_argument('--nocutoff',action='store_true',help='If set, ignores offset between successive time batches (3.25 seconds)')
     args = parser.parse_args()
 
     

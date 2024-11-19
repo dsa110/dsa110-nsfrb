@@ -55,6 +55,21 @@ do
         tail -$2 ${cwd}-logfiles/candcutter_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
         echo ">>>>>>>>>>>>>>>"
 
+	echo ""
+        echo ">>>>>>>>>>>>>>> candcuttertask_log.txt"
+        tail -$2 ${cwd}-logfiles/candcuttertask_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
+        echo ">>>>>>>>>>>>>>>"
+
+	echo ""
+        echo ">>>>>>>>>>>>>>> candcutter_error_log.txt"
+        tail -$2 ${cwd}-logfiles/candcutter_error_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
+        echo ">>>>>>>>>>>>>>>"
+
+	echo ""
+        echo ">>>>>>>>>>>>>>> time_log.txt"
+        tail -$2 ${cwd}-logfiles/time_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
+        echo ">>>>>>>>>>>>>>>"
+
 	echo "------------------------------------------------------	End NSFRB Status Report		------------------------------------------------------"
 	sleep $1
 done

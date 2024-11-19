@@ -1,15 +1,35 @@
-import sys
+import csv
+import struct
+from matplotlib import pyplot as plt
 import numpy as np
+from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
+from astropy.time import Time
+import astropy.units as u
+from influxdb import DataFrameClient
 import os
+import sys
 
-#f = open("../metadata.txt","r")
-#cwd = f.read()[:-1]
-#f.close()
-cwd = os.environ['NSFRBDIR']
-
+#cwd = os.environ['NSFRBDIR']
+#sys.path.append(cwd + "/")
+from nsfrb.config import *
+from nsfrb.noise import noise_update,noise_dir,noise_update_all
+from nsfrb import jax_funcs
+"""
+#output_dir = cwd + "/tmpoutput/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/"
+coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 output_file = cwd + "-logfiles/search_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt"
+cand_dir = cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
+processfile = cwd + "-logfiles/process_log.txt"
+frame_dir = cwd + "-frames/"
+psf_dir = cwd + "-PSF/"
 f=open(output_file,"w")
 f.close()
+"""
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+
+
+
+
 
 ##defines function to get shape of np array from raw data
 def get_shape_from_raw(data,headersize=128,output_file=output_file):
@@ -165,4 +185,55 @@ def set_pflag(flag=None,on=True,reset=False):
     return pflags
 
     
+# functions for reading raw visibility data
+influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
+def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,headersize=8):
+    """
+    Read raw visibility data from given file.
+    fname: file name
+    datasize: size of data in bytes
+    headersize: size of header in bytes (1/2 headersize is sub-band number, 1/2 headersize is mjd as float)
+    """
+    if datasize==4:
+        dtype = np.float32
+        dtypecomplex = np.complex64
+    elif datasize==2:
+        dtype = np.float16
+        dtypecomplex = np.complex32
+    elif datasize==8:
+        dtype = np.float64
+        dtypecomplex = np.complex128
+    elif datasize==16:
+        dtype = np.float128
+        dtypecomplex = np.complex256
+    else:
+        print("Invalid datasize")
+        return None
+
+    f = open(fname,"rb")
+
+    #first read header
+    if headersize != 0:
+        mjd = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'f', f.read(headersize//2))[0]
+        sbnum = int.from_bytes(f.read(headersize//2),sys.byteorder,signed=False)
+
+    if nsamps == -1:
+        raw_data = np.frombuffer(f.read(),dtype=dtype) #default reads all time samples
+    else:
+        print("Reading from byte",headersize + gulp*nsamps*nbase*nchan*npol*2*datasize)
+        f.seek(headersize + gulp*nsamps*nbase*nchan*npol*2*datasize)
+        raw_data = np.frombuffer(f.read(nsamps*nbase*nchan*npol*2*datasize),dtype=dtype)
+    f.close()
+
+    ntimes = int(len(raw_data)/nbase/nchan/npol/2)
+
+    dat = raw_data.reshape((ntimes,nbase,nchan,npol,2))
+
+    #real and imaginary
+    dat_complex = np.zeros(dat.shape[:-1],dtype=dtypecomplex)
+    dat_complex[:,:,:,:] = dat[:,:,:,:,0] + 1j*dat[:,:,:,:,1]
+    if headersize == 0:
+        return dat_complex#,0,Time.now().mjd()
+    else:
+        return dat_complex,sbnum,mjd
 

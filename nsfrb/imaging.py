@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.fftpack import ifftshift, ifft2
+from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
 from nsfrb.config import IMAGE_SIZE,UVMAX
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
@@ -7,15 +7,20 @@ from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
 import astropy.units as u
 from astropy.time import Time
 import sys
+from matplotlib import pyplot as plt
+from nsfrb import simulating
 
+flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
 import os
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+"""
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
-
+"""
 def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: np.ndarray = None, robust: float = 0.0) -> np.ndarray:
     """
     Apply Briggs weighting to visibility data.
@@ -35,7 +40,10 @@ def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: 
     u_indices = ((u + np.max(u)) / (2 * np.max(u)) * (grid_size - 1)).astype(int)
     v_indices = ((v + np.max(v)) / (2 * np.max(v)) * (grid_size - 1)).astype(int)
 
-    uv_grid = np.bincount(u_indices * grid_size + v_indices, weights=vis_weights, minlength=grid_size**2)
+    #uv_grid = np.bincount(u_indices * grid_size + v_indices, weights=vis_weights, minlength=grid_size**2)
+    #print(np.any((u_indices * grid_size + v_indices) - np.min(u_indices * grid_size + v_indices)<0))
+    #print(np.any(vis_weights<0))
+    uv_grid = np.bincount((u_indices * grid_size + v_indices) - np.min(u_indices * grid_size + v_indices), weights=vis_weights, minlength=grid_size**2)
     Wk = uv_grid.flatten()
 
     f2 = (5 * 10 ** (-robust)) ** 2 / (np.sum(Wk ** 2) / np.sum(vis_weights))
@@ -45,7 +53,7 @@ def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: 
     return new_weights
 
 
-def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int = IMAGE_SIZE, robust: float = 0.0) -> np.ndarray:
+def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int = IMAGE_SIZE, robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
     """
     Process visibility data and create a dirty image using FFT and Briggs weighting.
 
@@ -66,20 +74,26 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     briggs_weights = briggs_weighting(u, v, image_size, robust=robust)
 
     weighted_V = chunk_V * briggs_weights
-    V_avg = np.mean(weighted_V, axis=0)
+    v_avg = np.mean(weighted_V, axis=0)
 
     i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
 
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (i_indices, j_indices), V_avg)
+    #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
+    if inject_img is not None:
+        if inject_flat:
+            visibility_grid[j_indices,i_indices] += inverse_uniform_image(inject_img,u,v)[j_indices,i_indices]
+        else:
+            visibility_grid += inverse_uniform_image(inject_img,u,v)
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
 
-    return np.real(dirty_image)
+    #return np.real(dirty_image)
+    return np.real(dirty_image) if not return_complex else dirty_image
 
-
-def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int) -> np.ndarray:
+def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
     """
     Converts visibility data into a 'dirty' image.
 
@@ -91,7 +105,7 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     Returns:
     A numpy array representing the dirty image.
     """
-    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3
+    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
@@ -102,17 +116,55 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
 
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
+
+    if inject_img is not None:
+        if inject_flat:
+            visibility_grid[j_indices,i_indices] += inverse_uniform_image(inject_img,u,v)[j_indices,i_indices] 
+        else:
+            visibility_grid += inverse_uniform_image(inject_img,u,v)
+    #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
+    #visibility_grid[i_indices, j_indices] /= count_indices
 
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
+    
+    return np.real(dirty_image) if not return_complex else dirty_image
 
-    return np.real(dirty_image)
+
+def inverse_uniform_image(dirty_image,u,v):
+    """
+    Inverse of uniform_image, used for injection purposes; inverts image to get gridded visibilities
+
+    Parameters:
+    dirty_image: Dirty image with shape (gridsize,gridsize)
+    pixel_resolution: image pixel size in degrees (?)
+    u,v: Coordinates in UV plane at which visibilities should be returned; the nearest grid point will be used
+    """
+
+    image_size = dirty_image.shape[0]
+    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3
+    uv_resolution = 1 / (image_size * pixel_resolution)
+    uv_max = uv_resolution * image_size / 2
+    grid_res = 2 * uv_max / image_size
+
+    visibility_grid = fftshift(fft2(fftshift(dirty_image)))
+    
+    
+    """
+    #get nearest visibility grid point for each u,v
+    i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
+    j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
+    #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
+    chunk_V = visibility_grid[i_indices,j_indices]#/count_indices
+    """
+    return visibility_grid
 
 
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerangems=100,maxtries=5,output_file=output_file):
+def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtries=5,output_file=output_file,az_offset=1.23001):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -131,8 +183,10 @@ def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerange
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
-
+    """
     #create offset grid using pixel size and max UV diagonal distance
+    x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas)
+    U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,Dec)
     pixel_resolution = (0.20 / uv_diag) / 3
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
@@ -140,7 +194,7 @@ def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerange
     offset_grid = np.arange(-1/uv_resolution/2,1/uv_resolution/2,1/uv_max/2)*180/np.pi
     #print(len(offset_grid) , image_size)
     assert(len(offset_grid) == image_size)
-
+    """
     #find RA, dec at center of the image 
 
     #(1) ovro location
@@ -164,14 +218,37 @@ def uv_to_pix(mjd_obs,image_size,uv_diag=UVMAX,Lat=37.23,Lon=-118.2851,timerange
     else:
         bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
         elev = result['antmon']['ant_el'].values[bestidx]
-        alt = 180-elev
-        alt = elev - 90
-        antpos = AltAz(obstime=tobs,location=loc,az=0*u.deg,alt=alt*u.deg)
+        #alt = 180-elev
+        #alt = elev - 90
+        alt = 90 - elev
+
+
+        if elev > 90:
+            alt = 180 - elev
+            az = az_offset
+        else:
+            alt = elev
+            az = 180 - az_offset
+
+        print("Retrieved elevation: " + str(elev) + "deg",file=fout)
+
+        antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
 
         #(4) convert to ICRS frame
         icrs_pos = antpos.transform_to(ICRS())
     
     print("Retrieved Coordinates: " + str(tobs.isot) + ", RA="+str(icrs_pos.ra.value) + "deg, DEC="+str(icrs_pos.dec.value) + "deg",file=fout)
+
+
+    #create offset grid using pixel size and max UV diagonal distance
+    x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas) #meters
+    U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
+    uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
+    pixel_resolution = (0.20 / uv_diag) / 3 #radians
+    offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
+
+    #print(offset_grid)
+    assert(len(offset_grid) == image_size)
 
     #add offset from image center
     ra_grid = icrs_pos.ra.value + offset_grid
