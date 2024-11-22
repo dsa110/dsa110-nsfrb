@@ -7,7 +7,7 @@ import astropy.units as u
 from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
-
+from nsfrb.imaging import DSAelev_to_ASTROPYalt
 from nsfrb.config import plan_dir
 
 """
@@ -26,27 +26,6 @@ def GP_curve(longitude,lat_offset=0):
 az_offset=1.23001
 Lat=37.23
 Lon=-118.2851
-def DSAelev_to_ASTROPYalt(elev,az=az_offset):
-    """
-    DSA110 uses elevation from 0 to 180 with azimuth fixed at 1.23 deg
-    Astropy uses altitude from -90 to 90 (<0 = below the horizon) and azimuth 0 to 360
-    This function converts in between them.
-    
-    elev: DSA-110 specified elevation
-    az_offset: offset from perfect az=0
-    """
-
-    elev = np.array(elev)
-
-    #if elevation > 90, need to shift to 0-90 range
-    alt = copy.deepcopy(elev)
-    alt[elev>90] = 180 - alt[elev>90]
-
-    #if elevation > 90, need to rotate az by 180 deg
-    az = np.array(az*np.ones_like(alt))
-    az[elev>90] = 180 + az[elev>90]
-    return alt,az
-
 
 
 
@@ -98,11 +77,11 @@ def find_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=3,Lat=37.23,L
     #for given point, get the point on GP that could be reached at each timestep, if possible
     if dec < interpGPwrapped(ra):#(dec > interpGPwrapped(ra) and elev <90) or (dec <= interpGPwrapped(ra) and elev >=90):#gb > 0:
         if verbose: print("DECREASING ELEV")
-        elev_steps = np.clip(elev - el_slew_rate*t_steps,0,180)
+        elev_steps = np.clip(elev + el_slew_rate*t_steps,0,180)
 
     else:
         if verbose: print("INCREASING ELEV")
-        elev_steps = np.clip(elev + el_slew_rate*t_steps,0,180)
+        elev_steps = np.clip(elev - el_slew_rate*t_steps,0,180)
 
     alt_steps,az_steps = DSAelev_to_ASTROPYalt(elev_steps,az_offset)#elev_steps - 90
     #az_steps = az_offset*np.ones_like(t_steps)

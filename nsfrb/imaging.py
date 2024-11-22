@@ -8,7 +8,8 @@ import astropy.units as u
 from astropy.time import Time
 import sys
 from matplotlib import pyplot as plt
-from nsfrb import simulating,planning
+from nsfrb import simulating#,planning
+import copy
 
 flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 #f = open("../metadata.txt","r")
@@ -160,11 +161,35 @@ def inverse_uniform_image(dirty_image,u,v):
     """
     return visibility_grid
 
+az_offset=1.23001
+Lat=37.23
+Lon=-118.2851
+def DSAelev_to_ASTROPYalt(elev,az=az_offset):
+    """
+    DSA110 uses elevation from 0 to 180 with azimuth fixed at 1.23 deg
+    Astropy uses altitude from -90 to 90 (<0 = below the horizon) and azimuth 0 to 360
+    This function converts in between them.
+    
+    elev: DSA-110 specified elevation
+    az_offset: offset from perfect az=0
+    """
+
+    elev = np.array(elev)
+
+    #if elevation > 90, need to shift to 0-90 range
+    alt = copy.deepcopy(elev)
+    alt[elev>90] = 180 - alt[elev>90]
+
+    #if elevation <= 90, need to rotate az by 180 deg
+    az = np.array(az*np.ones_like(alt))
+    az[elev<=90] = 180 + az[elev<=90]
+    return alt,az
+
 
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtries=5,output_file=output_file):
+def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=1000,maxtries=5,output_file=output_file,elev=None):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -204,41 +229,48 @@ def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=100,maxtrie
     tobs = Time(mjd_obs,format='mjd')
     tms = int(tobs.unix*1000) #ms
 
-    #(3) query antenna elevation at obs time
-    result = dict()
-    tries = 0
-    while len(result) == 0 and tries < maxtries:
-        query = f'SELECT time,ant_el FROM "antmon" WHERE time >= {tms-timerangems}ms and time < {tms+timerangems}ms'
-        result = influx.query(query)
-        timerangems *= 10
-        tries += 1
-    if len(result) == 0:
-        print("Failed to retrieve elevation, using RA,DEC = 0,0",file=fout)
-        icrs_pos = ICRS(ra=0*u.deg,dec=0*u.deg)
-    else:
-        bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
-        elev = result['antmon']['ant_el'].values[bestidx]
-        """
-        #alt = 180-elev
-        #alt = elev - 90
-        alt = 90 - elev
-
-
-        if elev > 90:
-            alt = 180 - elev
-            az = az_offset
+    if elev is None:
+        #(3) query antenna elevation at obs time
+        result = dict()
+        tries = 0
+        while len(result) == 0 and tries < maxtries:
+            query = f'SELECT time,ant_el FROM "antmon" WHERE time >= {tms-timerangems}ms and time < {tms+timerangems}ms'
+            result = influx.query(query)
+            tries += 1
+        if len(result) == 0:
+            print("Failed to retrieve elevation, using RA,DEC = 0,0",file=fout)
+            icrs_pos = ICRS(ra=0*u.deg,dec=0*u.deg)
         else:
-            alt = elev
-            az = 180 - az_offset
-        """
-        alt,az = planning.DSAelev_to_ASTROPYalt(elev)
-        print("Retrieved elevation: " + str(elev) + "deg",file=fout)
+            #bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
+            elev = np.nanmedian(result['antmon']['ant_el'].values)#[bestidx]
 
+            #convert to RA,DEC using dsa110-pyutils.cli.radecel method; it can only be run from command line, so we copy/paste
+            """ha = tobs.sidereal_time("apparent", Lon*u.deg)
+            
+            print(f'MJD, RA, Decl, Elev (deg): {mjd_obs}, {ha.to_value(u.deg)}, {elev+Lat-90}, {elev}')
+            icrs_pos = ICRS(ra=(ha.to_value(u.deg))*u.deg,dec=(elev+Lat-90)*u.deg)
+            """
+            alt,az = DSAelev_to_ASTROPYalt(elev)
+            print("Retrieved elevation: " + str(elev) + "deg",file=fout)
+
+            antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
+
+            #(4) convert to ICRS frame
+            icrs_pos = antpos.transform_to(ICRS())
+            
+    else:
+        print("Using input elevation: " + str(elev) + "deg",file=fout)
+        """
+        icrs_pos = ICRS(ra=(ha.to_value(u.deg))*u.deg,dec=(elev+Lat-90)*u.deg)
+        """
+        alt,az = DSAelev_to_ASTROPYalt(elev)
+        print("Using input elevation: " + str(elev) + "deg",file=fout)
+    
         antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
 
         #(4) convert to ICRS frame
         icrs_pos = antpos.transform_to(ICRS())
-    
+        
     print("Retrieved Coordinates: " + str(tobs.isot) + ", RA="+str(icrs_pos.ra.value) + "deg, DEC="+str(icrs_pos.dec.value) + "deg",file=fout)
 
 

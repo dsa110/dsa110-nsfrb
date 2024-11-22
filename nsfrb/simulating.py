@@ -73,7 +73,7 @@ def get_core_coordinates(flagged_antennas=[],return_names=False):
 
     # Create a mask for core antennas
     core_mask = (x_m > x_min) & (x_m < x_max) & (y_m > y_min) & (y_m < y_max) & flag_mask
-    print(list(df.index[core_mask]))
+    #print(list(df.index[core_mask]))
 
     # Extract core coordinates using the mask
     x_core = x_m[core_mask]
