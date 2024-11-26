@@ -20,8 +20,8 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize
-from nsfrb.imaging import inverse_uniform_image,uniform_image, uv_to_pix, robust_image
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin
+from nsfrb.imaging import inverse_uniform_image,uniform_image, uv_to_pix, robust_image,flag_vis
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
@@ -36,7 +36,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas
 
 
 """
@@ -52,7 +52,7 @@ wavs = c/(freqs*1e6) #m
 
 #flagged antennas
 
-flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
+#flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 """f = open("/home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat","r")
 flagged_antennas = np.array(f.read().split("\n")[:-1],dtype=int)
 f.close()
@@ -115,7 +115,7 @@ def main(args):
                 if verbose: print(exc)
         
 
-        
+        print("Are any values nan?:",np.any(np.isnan(dat))) 
         if verbose: print("Gulp size:",dat.shape)
 
         #use MJD to get pointing
@@ -153,6 +153,36 @@ def main(args):
         #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
         pt_dec = Dec*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+        
+        #flagging andd baseline cut
+        dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
+        """
+        #get indices of flagged visibilities
+        flagged_vis = []
+        for i in flagged_antennas:
+            for j in np.array(antenna_order)[:antenna_order.index(i)]:
+                flagged_vis.append(list(bname).index(str(j) + "-" + str(i)))
+            for j in np.array(antenna_order)[antenna_order.index(i):]:
+                flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
+        flagged_vis = np.array(flagged_vis)
+        print("Flagged visibilities:",bname[flagged_vis])
+        unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)))
+        print("Unflagged visibilities:",bname[unflagged_vis])
+        antenna_order = list(set(antenna_order)-set(flagged_antennas))
+        bname = bname[unflagged_vis]
+        blen = blen[unflagged_vis]
+        UVW = UVW[:,unflagged_vis,:]
+        dat = dat[:,unflagged_vis,:,:]
+
+        print(dat)
+        #remove short baselines
+        if args.bmin > 0:
+            blen_mask = np.sqrt(np.sum(blen**2,axis=1))>=args.bmin
+            bname = bname[blen_mask]
+            blen = blen[blen_mask]
+            UVW = UVW[:,blen_mask,:]
+            dat = dat[:,blen_mask,:,:]
+        """
 
         U = UVW[0,:,0]
         V = UVW[0,:,1]
@@ -228,7 +258,7 @@ def main(args):
 
         else:
             inject_img = np.zeros((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
-        
+        dat[np.isnan(dat)]= 0 
         #imaging
         dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
         for i in range(dat.shape[0]):
@@ -248,16 +278,19 @@ def main(args):
 
                         plt.close()
                     """
+                    #print(i,j,k)
                     if args.briggs:
                         if k == 0:
-                            dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                         else:
-                            dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                     else:
                         if k == 0:
-                            dirty_img[:,:,i,j] = uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            dirty_img[:,:,i,j] = uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                         else:
-                            dirty_img[:,:,i,j] += uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            dirty_img[:,:,i,j] += uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                    #print("")
+        print(dirty_img)
         #save image to fits, numpy file
         if args.save:
             np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
@@ -313,6 +346,7 @@ if __name__=="__main__":
     parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
     parser.add_argument('--sleeptime',type=float,help='Time to sleep between processing gulps (seconds)',default=30)
+    parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     args = parser.parse_args()
     main(args)
 

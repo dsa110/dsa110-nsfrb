@@ -1,4 +1,7 @@
 #!/bin/bash
+#echo "start here"
+
+> newfile.csv
 
 runfile=$1
 maxrun=$2
@@ -9,7 +12,6 @@ fname="${NSFRBDATA}dsa110-nsfrb-fast-visibilities/vis_files.csv"
 cat $fname | while read l
 do
 	#array=$(echo $l | tr "," "\n")
-	
 	IFS=',' read -r -a array <<< "$l"
 	labelinit=${array[0]}
         label="${labelinit: 10}"
@@ -18,6 +20,7 @@ do
 	
 
 	#run imager if not already run for this isot and if specified
+	#echo $label $runfile
 	if ([[ "$runfile" == "all" ]] || [[ "$label" == "$runfile" ]]) && (( $count < $maxrun )); then
 		prerun=0
 		for dfile in "${donefiles[@]}"
@@ -30,7 +33,7 @@ do
 			fi
 		done
 		if (( $prerun==0 )); then
-
+			#echo "down here"
 			#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _0 --verbose --offline --num_gulps 1 --save --num_time_samples 25 --search --sb --num_chans 16
 			python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --save --num_time_samples 25 --sb --nchans_per_node 2 #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label $tstamp --verbose --offline --num_gulps 1 --save --num_time_samples 25 --search >>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1

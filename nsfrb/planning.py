@@ -1,4 +1,8 @@
 import numpy as np
+from influxdb import DataFrameClient
+from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
+from astropy.time import Time
+import astropy.units as u
 import csv
 from matplotlib import pyplot as plt
 from astropy.time import Time
@@ -8,8 +12,9 @@ from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
 from nsfrb.imaging import DSAelev_to_ASTROPYalt
-from nsfrb.config import plan_dir
-
+from nsfrb.config import plan_dir,table_dir,vis_dir
+from nsfrb.pipeline import read_raw_vis
+import pickle as pkl
 """
 This module contains functions for observation planning, including making DSA-110 observing scripts giving desired elevation at subsequent timesteps.
 """
@@ -526,3 +531,89 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
                 
     
     return mjd_steps,elev_steps
+
+
+
+# functions for parsing and using the VLA Calibrators Catalog
+def VLAC_data_to_dict(fname=table_dir+"VLA_CALIBRATORS.dat"):
+    alldat = dict()
+    alldat_array = []
+    alldat_RAs = []
+    alldat_DECs = []
+    with open(fname,"r") as csvfile:
+        rdr = csv.reader(csvfile,delimiter=' ')
+        for row in rdr:
+            if 'IAU' not in row and 'BAND' not in row and 'cm' not in ''.join(row) and row[0] != '=====================================================' and row[0] != '-----------------------------------------------------' and 'B1950' not in row and len(row)>2:
+                row2 = np.array(row)[np.array(row)!='']
+                print(row2)
+                print(row2[3],row2[4])
+                alldat[row2[0]] = SkyCoord(row2[3]+('+' if '-' not in row2[4] else '')+row2[4],unit=(u.hourangle,u.deg),frame='icrs')
+                alldat_array.append(row2[3]+('+' if '-' not in row2[4] else '')+row2[4])
+                alldat_RAs.append(row2[3])
+                alldat_DECs.append(('+' if '-' not in row2[4] else '')+row2[4])
+    f = open(table_dir+"VLA_CALIBRATORS_DICT.pkl","wb")
+    pkl.dump(alldat,f)
+    f.close()
+
+    np.save(table_dir + "VLA_CALIBRATORS_ARRAY_RA.npy",np.array(alldat_RAs))#SkyCoord(alldat_array,unit=(u.hourangle,u.deg),frame='icrs'))
+    np.save(table_dir + "VLA_CALIBRATORS_ARRAY_DEC.npy",np.array(alldat_DECs))
+    return
+
+influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
+def VLAC_find_cal(mjd_obs=None,obs_name=None,datasize=4,nbase=4656,nchan=384,npol=2,gulp=0,radius_degree=1.5,Lat=37.23,Lon=-118.2851,timerangems=1000,maxtries=5):
+    """
+    Takes the mjd and returns any calibrators within 3 deg
+    """
+    
+    #query etcd to get elevation
+    #(1) ovro location
+    loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg) #default is ovro
+
+    #(2) observation time
+    if mjd_obs is not None:
+        tobs = Time(mjd_obs,format='mjd')
+    elif obs_name is not None:
+        fname=vis_dir+"lxd110h03/nsfrb_sb00_"+str(obs_name)+".out"
+        dat_complex,sbnum,mjd_obs = read_raw_vis(fname,datasize=datasize,nbase=nbase,nchan=nchan,npol=npol,nsamps=1,gulp=gulp,headersize=8)
+        print("Retrieved MJD:",mjd_obs)
+        tobs = Time(mjd_obs,format='mjd')
+    else:
+        print("Need either mjd or file label")
+        return 
+
+    tms = int(tobs.unix*1000) #ms
+
+    #(3) query antenna elevation at obs time
+    result = dict()
+    tries = 0
+    while len(result) == 0 and tries < maxtries:
+        query = f'SELECT time,ant_el FROM "antmon" WHERE time >= {tms-timerangems}ms and time < {tms+timerangems}ms'
+        result = influx.query(query)
+        tries += 1
+    if len(result) == 0:
+        print("Failed to retrieve elevation, using RA,DEC = 0,0")#,file=fout)
+        icrs_pos = ICRS(ra=0*u.deg,dec=0*u.deg)
+    else:
+        #bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
+        elev = np.nanmedian(result['antmon']['ant_el'].values)#[bestidx]
+
+        #convert to RA,DEC using dsa110-pyutils.cli.radecel method; it can only be run from command line, so we copy/paste
+        alt,az = DSAelev_to_ASTROPYalt(elev)
+        print("Retrieved elevation: " + str(elev) + "deg")#,file=fout)
+
+        antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
+
+        #(4) convert to ICRS frame
+        icrs_pos = antpos.transform_to(ICRS())
+    pointing = SkyCoord(ra=icrs_pos.ra.value*u.deg,dec=icrs_pos.dec.value*u.deg,frame='icrs')
+
+    #find calibrators w/in 3 deg
+    cal_RAs = np.load(table_dir + "VLA_CALIBRATORS_ARRAY_RA.npy",allow_pickle=True)
+    cal_DECs = np.load(table_dir + "VLA_CALIBRATORS_ARRAY_DEC.npy",allow_pickle=True)
+    cals = SkyCoord([cal_RAs[i] +cal_DECs[i] for i in range(len(cal_RAs))],unit=(u.hourangle,u.deg),frame='icrs')
+    cal_seps = pointing.separation(cals).to(u.deg).value
+    close_cals = cals[cal_seps<radius_degree]
+
+    return close_cals
+
+    

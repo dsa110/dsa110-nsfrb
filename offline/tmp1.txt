@@ -1,1 +1,0 @@
-opening connection using: ssh h22.pro.pvt rsync --server --sender -vvlogDtpre.iLsfxC --remove-source-files . "./data/nsfrb_*.out"  (9 args)

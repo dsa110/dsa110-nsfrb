@@ -42,6 +42,11 @@ UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding
 
 vis_to_img_slope_not_binned = 6.320421766399212e-05 #slope relating noise in visibilities to std noise in image estimated from simulation
 vis_to_img_slope = 0.0025062597643136777 #same, but with PSF smoothing; noise increases with contribution from PSF, but so does signal
+
+#outrigger flagging and short baseline flagging
+bmin=20 #meters
+flagged_antennas = [103,104,105,106,107,108,109,110,111,112,113,114,115,116]
+
 import numpy as np
 noise_data_type = np.float64
 
@@ -65,6 +70,7 @@ training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 noise_dir = cwd + "-noise/"
 imgpath = cwd + "-images"
 plan_dir = cwd + "-plans/"
+table_dir = cwd + "-tables/"
 
 #data files
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"

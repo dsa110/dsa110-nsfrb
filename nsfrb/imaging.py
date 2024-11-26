@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX
+from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from nsfrb import simulating#,planning
 import copy
 
-flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
+#flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
 #f.close()
@@ -22,6 +22,48 @@ cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
+
+def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin):
+    """
+    Removes visibilities containing flagged antennas and below minimum 
+    baseline length
+    
+    dat: visibility data (time x baseline x channel x pol)
+    bname: baseline names
+    blen: baseline lengths (baseline x 3)
+    UVW: U,V,W, coordinates (baseline x 3)
+    antenna_order: antenna ordering
+    flagged_antennas: number of antennas to be flagged
+    bmin: minimum baseline length in meters
+
+    """
+    #get indices of flagged visibilities
+    flagged_vis = []
+    for i in flagged_antennas:
+        for j in np.array(antenna_order)[:antenna_order.index(i)]:
+            flagged_vis.append(list(bname).index(str(j) + "-" + str(i)))
+        for j in np.array(antenna_order)[antenna_order.index(i):]:
+            flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
+    flagged_vis = np.array(flagged_vis)
+    print("Flagged visibilities:",bname[flagged_vis])
+    unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)))
+    print("Unflagged visibilities:",bname[unflagged_vis])
+    antenna_order = list(set(antenna_order)-set(flagged_antennas))
+    bname = bname[unflagged_vis]
+    blen = blen[unflagged_vis]
+    UVW = UVW[:,unflagged_vis,:]
+    dat = dat[:,unflagged_vis,:,:]
+
+    print(dat)
+    #remove short baselines
+    if bmin > 0:
+        blen_mask = np.sqrt(np.sum(blen**2,axis=1))>=bmin
+        bname = bname[blen_mask]
+        blen = blen[blen_mask]
+        UVW = UVW[:,blen_mask,:]
+        dat = dat[:,blen_mask,:,:]
+    return dat, bname, blen, UVW, antenna_order
+
 def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: np.ndarray = None, robust: float = 0.0) -> np.ndarray:
     """
     Apply Briggs weighting to visibility data.
@@ -113,23 +155,25 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
 
     v_avg = np.mean(np.array(chunk_V), axis=0)
 
+    #print("from uniform image:",list(v_avg))
     i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
-
+    #print("from uniform image:",list(i_indices),list(j_indices))
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
     #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
     np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
     if inject_img is not None:
+        #print("IN THE WRONG PLACE")
         if inject_flat:
             visibility_grid[j_indices,i_indices] += inverse_uniform_image(inject_img,u,v)[j_indices,i_indices] 
         else:
             visibility_grid += inverse_uniform_image(inject_img,u,v)
     #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
     #visibility_grid[i_indices, j_indices] /= count_indices
-
+    #print("from uniform image:",visibility_grid)
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-    
+    #print("from uniform image:",dirty_image)
     return np.real(dirty_image) if not return_complex else dirty_image
 
 
