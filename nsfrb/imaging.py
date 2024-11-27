@@ -136,6 +136,88 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     #return np.real(dirty_image)
     return np.real(dirty_image) if not return_complex else dirty_image
 
+def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
+    """
+    Converts visibility data into a 'dirty' image. The following issues are corrected:
+        - require odd image size
+        - long baselines are excluded
+        - conjugate visibilities are included
+        - FFT sign convention respected
+
+    Parameters:
+    chunk_V: Visibility data (complex numbers).
+    u, v: Coordinates in UV plane.
+    image_size: Output size.
+
+    Returns:
+    A numpy array representing the dirty image.
+    """
+    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+    uv_resolution = 1 / (image_size * pixel_resolution)
+    uv_max = uv_resolution * image_size / 2
+    grid_res = 2 * uv_max / image_size
+
+    v_avg = np.mean(np.array(chunk_V), axis=0)
+    
+    #removed clip
+    i_indices = ((u + uv_max) / grid_res).astype(int)
+    j_indices = ((v + uv_max) / grid_res).astype(int)
+    
+    #remove long baselines
+    uvs = np.sqrt(u**2 + v**2)
+    v_avg = v_avg[uvs<uv_max]
+    i_indices = i_indices[uvs<uv_max]
+    j_indices = j_indices[uvs<uv_max]
+
+    #get conjugate baselines
+    i_conj_indices = image_size - i_indices - 1
+    j_conj_indices = image_size - j_indices - 1
+
+    visibility_grid = np.zeros((image_size, image_size), dtype=complex)
+    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
+    np.add.at(visibility_grid, (j_conj_indices, i_conj_indices), np.conj(v_avg))
+
+    if inject_img is not None:
+        #print("IN THE WRONG PLACE")
+        if inject_flat:
+            visibility_grid[j_indices,i_indices] += inverse_revised_uniform_image(inject_img,u,v)[j_indices,i_indices]
+            visibility_grid[j_conj_indices,i_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[j_conj_indices,i_conj_indices]
+        else:
+            visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
+
+    #updated sign convention
+    dirty_image = fftshift(fft2(ifftshift(visibility_grid)))
+    return np.real(dirty_image) if not return_complex else dirty_image
+    
+
+def inverse_revised_uniform_image(dirty_image,u,v):
+    """
+    Inverse of uniform_image, used for injection purposes; inverts image to get gridded visibilities
+
+    Parameters:
+    dirty_image: Dirty image with shape (gridsize,gridsize)
+    pixel_resolution: image pixel size in degrees (?)
+    u,v: Coordinates in UV plane at which visibilities should be returned; the nearest grid point will be used
+    """
+
+    image_size = dirty_image.shape[0]
+    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3
+    uv_resolution = 1 / (image_size * pixel_resolution)
+    uv_max = uv_resolution * image_size / 2
+    grid_res = 2 * uv_max / image_size
+
+    visibility_grid = fftshift(ifft2(ifftshift(dirty_image)))
+
+
+    """
+    #get nearest visibility grid point for each u,v
+    i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
+    j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
+    #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
+    chunk_V = visibility_grid[i_indices,j_indices]#/count_indices
+    """
+    return visibility_grid
+
 def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
     """
     Converts visibility data into a 'dirty' image.

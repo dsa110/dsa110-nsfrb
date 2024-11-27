@@ -21,7 +21,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin
-from nsfrb.imaging import inverse_uniform_image,uniform_image, uv_to_pix, robust_image,flag_vis
+from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,flag_vis
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
@@ -286,9 +286,9 @@ def main(args):
                             dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                     else:
                         if k == 0:
-                            dirty_img[:,:,i,j] = uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                         else:
-                            dirty_img[:,:,i,j] += uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                     #print("")
         print(dirty_img)
         #save image to fits, numpy file

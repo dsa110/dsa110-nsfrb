@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm  
 from nsfrb.simulating import compute_uvw, add_complex_gaussian_noise, get_core_coordinates, apply_spectral_index, apply_phase_shift
-from nsfrb.imaging import uniform_image
+from nsfrb.imaging import revised_uniform_image,uniform_image
 from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
 
 
@@ -128,9 +128,9 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             
                 #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
                 if inflate:
-                    dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2)
+                    dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2)
                 else:
-                    dirty_img = uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
+                    dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
                 dirty_images.append(dirty_img)
 
             # Creating necessary directories
