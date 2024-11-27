@@ -71,7 +71,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
         u_core, v_core, w_core = compute_uvw(x_core, y_core, z_core, HA_point, Dec_point) #core antennas -- this will make the PSF show up at the center
         u_core_s, v_core_s, w_core_s = compute_uvw(x_core, y_core, z_core, HA_source, Dec_source) #use this to offset to the source
 
-        V = [np.ones(len(u_core)) + 1j*np.ones(len(v_core)) for _ in range(NUM_CHANNELS)]
+        V = [np.ones(len(u_core)) + 0j for _ in range(NUM_CHANNELS)]#[np.ones(len(u_core)) + 1j*np.ones(len(v_core)) for _ in range(NUM_CHANNELS)]
 
         u_core_new, v_core_new, w_core_new, V_new = [], [], [], []
         u_core_s_new, v_core_s_new, w_core_s_new = [], [], []
@@ -102,7 +102,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             V[i] = apply_spectral_index(V[i], frequency_MHz, reference_frequency_MHz, spectral_index)
 
         if tonumpy and N_NOISE > 1:
-            dirty_img_all_noise = np.zeros((zoom_pix*2,zoom_pix*2,N_NOISE,int(NUM_CHANNELS//AVERAGING_FACTOR)))
+            dirty_img_all_noise = np.zeros((zoom_pix*2 + 1,zoom_pix*2 + 1,N_NOISE,int(NUM_CHANNELS//AVERAGING_FACTOR)))
         for k_n in range(N_NOISE):
             noise = np.random.uniform(noise_std_low, noise_std_high)
             if noise_only:
@@ -128,7 +128,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             
                 #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
                 if inflate:
-                    dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2)
+                    dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2 + 1)
                 else:
                     dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
                 dirty_images.append(dirty_img)
@@ -142,14 +142,17 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
 
             # Saving the images and collecting metadata
             if tonumpy:
-                dirty_img_all = np.zeros((zoom_pix*2,zoom_pix*2,int(NUM_CHANNELS//AVERAGING_FACTOR)))
+                dirty_img_all = np.zeros((zoom_pix*2 + 1,zoom_pix*2 + 1,int(NUM_CHANNELS//AVERAGING_FACTOR)))
             for i, dirty_img in enumerate(dirty_images):
                 avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
                 filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
                 filepath = os.path.join(observation_dir, filename)
                 im_zoom = np.array(np.fliplr(np.abs(dirty_img.T)))
                 if not inflate:
-                    im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix), (IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 + zoom_pix)]
+                    #im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix - 1):(IMAGE_SIZE // 2 + zoom_pix + 1), (IMAGE_SIZE // 2 - zoom_pix - 1):(IMAGE_SIZE // 2 + zoom_pix + 1)]
+                    #print((IMAGE_SIZE // 2 - zoom_pix),(IMAGE_SIZE // 2 - zoom_pix)+(2*zoom_pix + 1))
+                    im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 - zoom_pix)+(2*zoom_pix + 1), (IMAGE_SIZE // 2 - zoom_pix):(IMAGE_SIZE // 2 - zoom_pix )+(2*zoom_pix + 1)]
+                #print("IMZOOM SHAPE:",im_zoom.shape)
                 plt.imsave(filepath, im_zoom, cmap='gray')
                 if tonumpy:
                     dirty_img_all[:,:,i] = im_zoom

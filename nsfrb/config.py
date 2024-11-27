@@ -3,7 +3,7 @@
 # Constants
 NUM_CHANNELS = 768
 AVERAGING_FACTOR = 48
-IMAGE_SIZE = 300  # pixels
+IMAGE_SIZE = 301#300  # pixels
 
 # Speed of light
 c = 299792458  # m/s
@@ -35,7 +35,7 @@ telescope_diameter = 4.65 #m
 
 #resolution parameters
 pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
-gridsize = 300#256
+gridsize = 301#300#256
 RA_point = 0 #rad
 DEC_point = 0 #rad
 UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding

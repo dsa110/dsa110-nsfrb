@@ -300,7 +300,7 @@ def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width
     #get RA,DEC axes
     time_start = Time(time_start_isot,format='isot')
     if RA_axis is None or DEC_axis is None:
-        RA_axis,DEC_axis = uv_to_pix(time_start.mjd,gridsize,Lat=37.23,Lon=-118.2851)
+        RA_axis,DEC_axis,tmp = uv_to_pix(time_start.mjd,gridsize,Lat=Lat,Lon=Lon)
     offsetRA = np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int))
     offsetDEC = np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int))
 

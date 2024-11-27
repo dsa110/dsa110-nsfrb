@@ -36,7 +36,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat
 
 
 """
@@ -118,24 +118,28 @@ def main(args):
         print("Are any values nan?:",np.any(np.isnan(dat))) 
         if verbose: print("Gulp size:",dat.shape)
 
+        
         #use MJD to get pointing
         mjd = Time(timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp/86400)
         time_start_isot = Time(mjd,format='mjd').isot
-        LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=-118.2851).to(u.hourangle).value
+        LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=Lon).to(u.hourangle).value
+        #pt_RA = LST*15*np.pi/180
         if verbose: print("Time:",time_start_isot)
         if verbose: print("LST (hr):",LST)
-        RA_axis,Dec_axis = uv_to_pix(mjd,IMAGE_SIZE,Lat=37.23,Lon=-118.2851)
-        HA_axis = np.zeros_like(RA_axis)#(LST*15) - RA_axis
+        RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,flagged_antennas=flagged_antennas)
+        HA_axis = (LST*15) - RA_axis
+        print(HA_axis)
         #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
         RA = RA_axis[int(len(RA_axis)//2)]
         HA = HA_axis[int(len(HA_axis)//2)]
         Dec = Dec_axis[int(len(Dec_axis)//2)]
-
+        if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
         if verbose: print("Coordinates (deg):",RA,Dec)
         if verbose: print("Hour angle (deg):",HA)
 
         #get antenna positions coordinates
         #x_m,y_m,z_m,antenna_names = get_all_coordinates(flagged_antennas,return_names=True) #meters
+      
         """
         #re-order based on antenna order from etcd
         my_cnf = cnf.Conf(use_etcd=True)
@@ -152,7 +156,7 @@ def main(args):
         #get UVW from etcd
         #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
         pt_dec = Dec*np.pi/180.
-        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec - (Lat*np.pi/180), refmjd, casa_order=False)
         
         #flagging andd baseline cut
         dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
@@ -187,11 +191,34 @@ def main(args):
         U = UVW[0,:,0]
         V = UVW[0,:,1]
         W = UVW[0,:,2]
+        uv_diag=np.max(np.sqrt(U**2 + V**2))
         if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
         if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
         if verbose: print(UVW)
         #if verbose: print("core idxs",len(core_idxs),core_idxs)
-   
+  
+
+        """
+        #use MJD to get RA,DEC axes
+        mjd = Time(timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp/86400)
+        time_start_isot = Time(mjd,format='mjd').isot
+        LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=Lon).to(u.hourangle).value
+        pt_RA = LST*15*np.pi/180
+        if verbose: print("Time:",time_start_isot)
+        if verbose: print("LST (hr):",LST)
+        RA_axis,Dec_axis = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,RA=pt_RA*180/np.pi,DEC=pt_dec*180/np.pi,uv_diag=uv_diag)
+        HA_axis = (LST*15) - RA_axis
+        print(HA_axis)
+        #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
+        RA = RA_axis[int(len(RA_axis)//2)]
+        HA = HA_axis[int(len(HA_axis)//2)]
+        Dec = Dec_axis[int(len(Dec_axis)//2)]
+        if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
+        if verbose: print("Coordinates (deg):",RA,Dec)
+        if verbose: print("Hour angle (deg):",HA)
+        """
+
+
         """
         #fringe stopping
         if args.fringestop:
@@ -304,7 +331,7 @@ def main(args):
         if args.search:
             for i in range(args.num_chans):
                 #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-                msg=send_data(time_start_isot, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
+                msg=send_data(time_start_isot, uv_diag, elev, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
                 if args.verbose: print(msg)
                 time.sleep(1)
 

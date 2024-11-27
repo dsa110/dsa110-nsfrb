@@ -73,7 +73,7 @@ def build_np_header(shape,descr='<f8',fortran_order=False,headersize=128):
     return headerbytes
     
 
-def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time,port=port,ipaddress=ipaddress):
+def send_data(timestamp,uv_diag,elev,array,shape=None,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time,port=port,ipaddress=ipaddress):
     host = ipaddress + ":" + str(port)
 
     if type(array) != bytes and shape is None:
@@ -96,7 +96,7 @@ def send_data(timestamp,array,shape=None,node=23,ENDFILE='',headersize=128,verbo
             print("Invalid corr node")
 
     #make filename
-    fname = sb + "_IMG" + str(timestamp) + ".npy"
+    fname = sb + "_IMG" + str(timestamp) + "_UV" + str(np.float64(uv_diag).tobytes().hex()) +  "_EL" + str(np.float64(elev).tobytes().hex()) + ".npy"
     url = host + "/" + fname
     
     #make a header

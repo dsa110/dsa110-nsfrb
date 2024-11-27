@@ -162,8 +162,10 @@ def main(args):
         if args.etcd:#'DASKPORT' in os.environ.keys() and QSETUP:
             printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)
             fname = raw_cand_dir + str(QQUEUE.get())
+            uv_diag = np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
+            elev = np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-            future = executor.submit(cc.candcutter_task,fname,vars(args))
+            future = executor.submit(cc.candcutter_task,fname,uv_diag,elev,vars(args))
             #printlog(future.result(),output_file=cutterfile)
             #fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
         else:
@@ -177,7 +179,7 @@ def main(args):
             for i in range(len(rawfiles)):
                 fname = rawfiles[i]
                 printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-                cc.candcutter_task(fname,vars(args))
+                cc.candcutter_task(fname,None,None,vars(args))
 
         if args.sleep > 0:
             printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)

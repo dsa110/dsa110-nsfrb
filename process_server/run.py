@@ -78,7 +78,7 @@ cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidat
 psf_dir = cwd + "-PSF/"
 error_file = cwd + "-logfiles/error_log.txt"
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat
 
 """
 NSFRB modules
@@ -137,14 +137,16 @@ def set_pflag_loc(flag=None,on=True,reset=False):
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id_isot,img_id_mjd,shape=(32,32,25,16),dtype=np.float16):
+    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape=(32,32,25,16),dtype=np.float16):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
         self.img_id_isot = img_id_isot
         self.img_id_mjd = img_id_mjd
+        self.img_uv_diag =img_uv_diag
         self.shape = shape
+        self.img_elev = img_elev
         #get ra and dec axes
-        self.RA_axis,self.DEC_axis = uv_to_pix(self.img_id_mjd,self.shape[0],Lat=37.23,Lon=-118.2851)
+        self.RA_axis,self.DEC_axis,tmp = uv_to_pix(self.img_id_mjd,self.shape[0],Lat=Lat,Lon=Lon,uv_diag=img_uv_diag,elev=img_elev)
     
     def add_corr_img(self,data,corr_node,testmode=False):
         self.image_tesseract[:,:,:,corr_node] = data
@@ -234,7 +236,10 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     printlog(NPheaderMsgStr,output_file=processfile)
     
     #get metadata
-    img_id_isot = HTTPheaderMsgStr[HTTPheaderMsgStr.index('IMG')+3:HTTPheaderMsgStr.index('.npy')]
+    #img_id_isot = HTTPheaderMsgStr[HTTPheaderMsgStr.index('IMG')+3:HTTPheaderMsgStr.index('.npy')]
+    img_id_isot = HTTPheaderMsgStr[HTTPheaderMsgStr.index('IMG')+3:HTTPheaderMsgStr.index('_UV')]
+    img_uv_diag = np.frombuffer(bytes.fromhex(HTTPheaderMsgStr[HTTPheaderMsgStr.index('UV')+2:HTTPheaderMsgStr.index('_EL')]))[0]
+    img_elev = np.frombuffer(bytes.fromhex(HTTPheaderMsgStr[HTTPheaderMsgStr.index('EL')+2:HTTPheaderMsgStr.index('.npy')]))[0]
     img_id_mjd = Time(img_id_isot,format='isot').mjd
     #corr_address = address#HTTPheaderMsgStr[HTTPheaderMsgStr.index('Host')+6:HTTPheaderMsgStr.index(':'+str(port))]
     corr_node = corraddrs[corr_address]
@@ -244,6 +249,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     printlog("corr:"+str(corr_node),output_file=processfile)
     printlog("img_id:" +str(img_id_isot),output_file=processfile)
     printlog("shape:" + str(shape),output_file=processfile)
+    printlog("UVdiag:" + str(img_uv_diag),output_file=processfile)
 
     #use content length to get just data portion
     #data = fullMsg[fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(headersize*2):fullMsg.index(HEADER_DELIM)+len(HEADER_DELIM)+(content_length*2)]
@@ -267,7 +273,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
         if corraddrs[corr_address] > 15:
             corraddrs[corr_address] = 0
 
-    return corr_node,img_id_isot,img_id_mjd,shape,img_data
+    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape,img_data
 
 """
 def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
@@ -319,6 +325,8 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         if 'DASKPORT' in os.environ.keys():
             #try scheduling a task instead
             QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
+            QQUEUE.put(str(np.float64(fullimg.img_uv_diag).tobytes().hex()))
+            QQUEUE.put(str(np.float64(fullimg.img_elev).tobytes().hex()))
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
 
@@ -752,7 +760,7 @@ def main(args):
 
         #try to parse to get address
         try:
-            corr_node,img_id_isot,img_id_mjd,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=args.headersize,datasize=args.datasize,port=args.port,corr_address=corr_address,testh23=args.testh23)
+            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=args.headersize,datasize=args.datasize,port=args.port,corr_address=corr_address,testh23=args.testh23)
             #if set_pflag_loc("all",on=False) == None:
             #    printlog("Error setting flags, abort",processfile=processfile)
             #    break
@@ -790,7 +798,7 @@ def main(args):
 
         #if object is in dict
         if img_id_isot not in fullimg_dict.keys():
-            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[args.nchans]])))
+            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape=tuple(np.concatenate([shape,[args.nchans]])))
 
         """
         #if object corresponding to the image is in list
@@ -861,7 +869,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
-    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, default=300',default=300)
+    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default=301',default=301)
     parser.add_argument('--nsamps',type=int,help='Expected number of time samples (integrations) for each sub-band image, default=25',default=25)
     parser.add_argument('--nchans',type=int,help='Expected number of sub-band images for each full image, default=16',default=16)
     parser.add_argument('--datasize',type=int,help='Expected size of each element in sub-band image in bytes,default=8',default=8,choices=list(dtypelookup.keys()))

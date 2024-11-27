@@ -108,8 +108,8 @@ def compute_uvw(x_m, y_m, z_m, HA, Dec, Lon=Lon, Lat=Lat):
             dz = z_m[j] - z_m[i]
 
             u_ij = dx * np.sin(HA-((Lon)*np.pi/180)) + dy * np.cos(HA-((Lon)*np.pi/180))
-            v_ij = -dx * np.sin(Dec - (Lat*np.pi/180)) * np.cos(HA-((Lon)*np.pi/180)) + dy * np.sin(Dec - (Lat*np.pi/180)) * np.sin(HA-((Lon)*np.pi/180)) + dz * np.cos(Dec - (Lat*np.pi/180))
-            w_ij = dx * np.cos(Dec - (Lat*np.pi/180)) * np.cos(HA-((Lon)*np.pi/180)) - dy * np.cos(Dec - (Lat*np.pi/180)) * np.sin(HA-((Lon)*np.pi/180)) + dz * np.sin(Dec - (Lat*np.pi/180))
+            v_ij = -dx * np.sin(Dec - (0*np.pi/180)) * np.cos(HA-((Lon)*np.pi/180)) + dy * np.sin(Dec - (0*np.pi/180)) * np.sin(HA-((Lon)*np.pi/180)) + dz * np.cos(Dec - (0*np.pi/180))
+            w_ij = dx * np.cos(Dec - (0*np.pi/180)) * np.cos(HA-((Lon)*np.pi/180)) - dy * np.cos(Dec - (0*np.pi/180)) * np.sin(HA-((Lon)*np.pi/180)) + dz * np.sin(Dec - (0*np.pi/180))
 
             u.append(u_ij)
             v.append(v_ij)
