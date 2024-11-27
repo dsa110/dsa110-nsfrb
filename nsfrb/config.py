@@ -94,5 +94,9 @@ recover_file = cwd + "-injections/recoveries.csv"
 binary_file = cwd + "-logfiles/binary_log.txt"
 inject_log_file = cwd + "-logfiles/inject_log.txt"
 
-
+import casatools as cc
+me = cc.measures()
+obs=me.observatory("OVRO_MMA")
+Lat=obs['m1']['value']*180/np.pi#37.23
+Lon=obs['m0']['value']*180/np.pi#-118.2851
 

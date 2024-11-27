@@ -16,7 +16,7 @@ import copy
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
@@ -288,8 +288,8 @@ def inverse_uniform_image(dirty_image,u,v):
     return visibility_grid
 
 az_offset=1.23001
-Lat=37.23
-Lon=-118.2851
+#Lat=37.23
+#Lon=-118.2851
 def DSAelev_to_ASTROPYalt(elev,az=az_offset):
     """
     DSA110 uses elevation from 0 to 180 with azimuth fixed at 1.23 deg
@@ -315,7 +315,7 @@ def DSAelev_to_ASTROPYalt(elev,az=az_offset):
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=37.23,Lon=-118.2851,timerangems=1000,maxtries=5,output_file=output_file,elev=None):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,output_file=output_file,elev=None):
     """
     Takes UV grid coordinates and converts them to RA and declination
 

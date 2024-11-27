@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import random
 from antpos.utils import get_itrf
-from nsfrb.config import IMAGE_SIZE, c,fmin,fmax,tsamp    
+from nsfrb.config import IMAGE_SIZE, c,fmin,fmax,tsamp,Lon,Lat    
 import sys
 from PIL import Image,ImageOps
 from nsfrb import config
@@ -85,7 +85,7 @@ def get_core_coordinates(flagged_antennas=[],return_names=False):
 
 
 
-def compute_uvw(x_m, y_m, z_m, HA, Dec):
+def compute_uvw(x_m, y_m, z_m, HA, Dec, Lon=Lon, Lat=Lat):
 
     """
     Computes the u, v, w coordinates for baseline vectors between pairs of antennas.
@@ -107,9 +107,9 @@ def compute_uvw(x_m, y_m, z_m, HA, Dec):
             dy = y_m[j] - y_m[i]
             dz = z_m[j] - z_m[i]
 
-            u_ij = dx * np.sin(HA) + dy * np.cos(HA)
-            v_ij = -dx * np.sin(Dec) * np.cos(HA) + dy * np.sin(Dec) * np.sin(HA) + dz * np.cos(Dec)
-            w_ij = dx * np.cos(Dec) * np.cos(HA) - dy * np.cos(Dec) * np.sin(HA) + dz * np.sin(Dec)
+            u_ij = dx * np.sin(HA-((Lon)*np.pi/180)) + dy * np.cos(HA-((Lon)*np.pi/180))
+            v_ij = -dx * np.sin(Dec - (Lat*np.pi/180)) * np.cos(HA-((Lon)*np.pi/180)) + dy * np.sin(Dec - (Lat*np.pi/180)) * np.sin(HA-((Lon)*np.pi/180)) + dz * np.cos(Dec - (Lat*np.pi/180))
+            w_ij = dx * np.cos(Dec - (Lat*np.pi/180)) * np.cos(HA-((Lon)*np.pi/180)) - dy * np.cos(Dec - (Lat*np.pi/180)) * np.sin(HA-((Lon)*np.pi/180)) + dz * np.sin(Dec - (Lat*np.pi/180))
 
             u.append(u_ij)
             v.append(v_ij)

@@ -125,7 +125,7 @@ def main(args):
         if verbose: print("Time:",time_start_isot)
         if verbose: print("LST (hr):",LST)
         RA_axis,Dec_axis = uv_to_pix(mjd,IMAGE_SIZE,Lat=37.23,Lon=-118.2851)
-        HA_axis = (LST*15) - RA_axis
+        HA_axis = np.zeros_like(RA_axis)#(LST*15) - RA_axis
         #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
         RA = RA_axis[int(len(RA_axis)//2)]
         HA = HA_axis[int(len(HA_axis)//2)]
