@@ -16,7 +16,7 @@ import copy
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
@@ -37,17 +37,26 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin):
     bmin: minimum baseline length in meters
 
     """
-    #get indices of flagged visibilities
     flagged_vis = []
     for i in flagged_antennas:
+        #print(i)
+        for j in np.array(antenna_order):
+            #print("--",j)
+            if str(i) + "-" + str(j) in list(bname):
+                flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
+            elif str(j) + "-" + str(i) in list(bname):
+                flagged_vis.append(list(bname).index(str(j) + "-" + str(i)))
+                
+        """
         for j in np.array(antenna_order)[:antenna_order.index(i)]:
             flagged_vis.append(list(bname).index(str(j) + "-" + str(i)))
         for j in np.array(antenna_order)[antenna_order.index(i):]:
             flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
-    flagged_vis = np.array(flagged_vis)
-    print("Flagged visibilities:",bname[flagged_vis])
-    unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)))
-    print("Unflagged visibilities:",bname[unflagged_vis])
+        """
+    flagged_vis = np.array(flagged_vis,dtype=int)
+    print("Flagged visibilities:",np.array(list(bname))[flagged_vis])
+    unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)),dtype=int)
+    print("Unflagged visibilities:",np.array(list(bname))[unflagged_vis])
     antenna_order = list(set(antenna_order)-set(flagged_antennas))
     bname = bname[unflagged_vis]
     blen = blen[unflagged_vis]
@@ -123,12 +132,12 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
 
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
+    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    #np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
     if inject_img is not None:
         if inject_flat:
-            visibility_grid[j_indices,i_indices] += inverse_uniform_image(inject_img,u,v)[j_indices,i_indices]
+            visibility_grid[i_indices,j_indices] += inverse_uniform_image(inject_img,u,v)[i_indices,j_indices]
         else:
             visibility_grid += inverse_uniform_image(inject_img,u,v)
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
@@ -153,6 +162,7 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     A numpy array representing the dirty image.
     """
     pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+    #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
@@ -174,14 +184,14 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     j_conj_indices = image_size - j_indices - 1
 
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
-    np.add.at(visibility_grid, (j_conj_indices, i_conj_indices), np.conj(v_avg))
+    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
 
     if inject_img is not None:
         #print("IN THE WRONG PLACE")
         if inject_flat:
-            visibility_grid[j_indices,i_indices] += inverse_revised_uniform_image(inject_img,u,v)[j_indices,i_indices]
-            visibility_grid[j_conj_indices,i_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[j_conj_indices,i_conj_indices]
+            visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices]
+            visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices]
         else:
             visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
 
@@ -242,13 +252,13 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
     #print("from uniform image:",list(i_indices),list(j_indices))
     visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    #np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-    np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
+    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+    #np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
 
     if inject_img is not None:
         #print("IN THE WRONG PLACE")
         if inject_flat:
-            visibility_grid[j_indices,i_indices] += inverse_uniform_image(inject_img,u,v)[j_indices,i_indices] 
+            visibility_grid[i_indices,j_indices] += inverse_uniform_image(inject_img,u,v)[i_indices,j_indices] 
         else:
             visibility_grid += inverse_uniform_image(inject_img,u,v)
     #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
@@ -287,7 +297,7 @@ def inverse_uniform_image(dirty_image,u,v):
     """
     return visibility_grid
 
-az_offset=1.23001
+#az_offset=1.23001
 #Lat=37.23
 #Lon=-118.2851
 def DSAelev_to_ASTROPYalt(elev,az=az_offset):
@@ -315,7 +325,7 @@ def DSAelev_to_ASTROPYalt(elev,az=az_offset):
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None,az=az_offset):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -377,7 +387,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
             print(f'MJD, RA, Decl, Elev (deg): {mjd_obs}, {ha.to_value(u.deg)}, {elev+Lat-90}, {elev}')
             icrs_pos = ICRS(ra=(ha.to_value(u.deg))*u.deg,dec=(elev+Lat-90)*u.deg)
             """
-            alt,az = DSAelev_to_ASTROPYalt(elev)
+            alt,az = DSAelev_to_ASTROPYalt(elev,az)
             print("Retrieved elevation: " + str(elev) + "deg",file=fout)
 
             antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
@@ -390,7 +400,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
         """
         icrs_pos = ICRS(ra=(ha.to_value(u.deg))*u.deg,dec=(elev+Lat-90)*u.deg)
         """
-        alt,az = DSAelev_to_ASTROPYalt(elev)
+        alt,az = DSAelev_to_ASTROPYalt(elev,az)
         print("Using input elevation: " + str(elev) + "deg",file=fout)
     
         antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)

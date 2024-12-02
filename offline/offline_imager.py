@@ -2,7 +2,7 @@ import argparse
 import csv
 from matplotlib import pyplot as plt
 from nsfrb.simulating import compute_uvw,get_core_coordinates,get_all_coordinates
-from inject import injecting
+#from inject import injecting
 import h5py
 from casatools import table
 import numpy as np
@@ -20,14 +20,14 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize
 from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,flag_vis
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
 import time
 from scipy.stats import norm,multivariate_normal
-import nsfrb.searching as sl
+#import nsfrb.searching as sl
 from nsfrb.outputlogging import numpy_to_fits
 #from nsfrb import calibration as cal
 from nsfrb import pipeline
@@ -69,21 +69,25 @@ def main(args):
 
     #randomly choose which gulp to inject burst in
     if args.inject:
-        inject_gulp = np.random.choice(np.arange(num_gulps,dtype=int))
+        inject_gulp = np.random.choice(np.arange(args.gulp_offset, args.gulp_offset + num_gulps,dtype=int))
 
     #parameters from etcd
-    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+    #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
 
-    if verbose: print("TIMESTAMP:",tsamp)
+    #if verbose: print("TIMESTAMP:",tsamp)
     #get timestamp
     if len(args.timestamp) != 0:
         timestamp = args.timestamp
 
-    for gulp in range(num_gulps):
+    for gulp in range(args.gulp_offset,args.gulp_offset + num_gulps):
+         #parameters from etcd
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+
         #dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
         
         #read raw data for each corr node
         dat = None
+        Dec = None
         for i in range(len(corrs)):
             corr = corrs[i]
             sb = sbs[i]
@@ -99,7 +103,7 @@ def main(args):
                 #tmp = cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples)
                 #print("tmp",tmp)
 
-                dat_corr,sbnum,tstamp_mjd = pipeline.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=gulp,nchan=int(args.nchans_per_node),headersize=8)
+                dat_corr,sbnum,tstamp_mjd,Dec = pipeline.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=gulp,nchan=int(args.nchans_per_node),headersize=12)
                 if len(args.timestamp) == 0: 
                     timestamp = Time(tstamp_mjd,format='mjd').isot
             
@@ -126,14 +130,18 @@ def main(args):
         #pt_RA = LST*15*np.pi/180
         if verbose: print("Time:",time_start_isot)
         if verbose: print("LST (hr):",LST)
-        RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,flagged_antennas=flagged_antennas)
-        HA_axis = (LST*15) - RA_axis
-        print(HA_axis)
-        #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
-        RA = RA_axis[int(len(RA_axis)//2)]
-        HA = HA_axis[int(len(HA_axis)//2)]
-        Dec = Dec_axis[int(len(Dec_axis)//2)]
-        if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
+        if Dec is None:
+
+            RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,flagged_antennas=flagged_antennas)
+            HA_axis = (LST*15) - RA_axis
+            print(HA_axis)
+            #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
+            RA = RA_axis[int(len(RA_axis)//2)]
+            HA = HA_axis[int(len(HA_axis)//2)]
+            Dec = Dec_axis[int(len(Dec_axis)//2)]
+        else:
+            RA = LST*15
+            HA = 0
         if verbose: print("Coordinates (deg):",RA,Dec)
         if verbose: print("Hour angle (deg):",HA)
 
@@ -156,7 +164,8 @@ def main(args):
         #get UVW from etcd
         #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
         pt_dec = Dec*np.pi/180.
-        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec - (Lat*np.pi/180), refmjd, casa_order=False)
+        if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
         
         #flagging andd baseline cut
         dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
@@ -241,6 +250,7 @@ def main(args):
 
         #creating injection
         if args.inject and (gulp == inject_gulp):
+            from inject import injecting
             offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000)
             #offsetRA = offsetDEC = 0
 
@@ -321,7 +331,7 @@ def main(args):
         #save image to fits, numpy file
         if args.save:
             np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
-            numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
+            #numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
             
             if args.inject:
                 np.save(args.outpath + "/" + time_start_isot + "_response.npy",dirty_img/inject_img)
@@ -345,10 +355,11 @@ if __name__=="__main__":
     parser.add_argument('--timestamp',type=str,help='Timestamp in ISOT format (e.g. 2024-06-12T21:35:49); if not given, timestamp is retrieved from sb00 file with os.path.getctime() or from time of rsync',default='')
     parser.add_argument('--filedir',type=str,help='Path to fast visibilities; if not given, the /dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/lxd110h**/ paths are used',default='')
     parser.add_argument('--num_gulps', type=int, help='Number of gulps, default -1 for all ',default=-1)
+    parser.add_argument('--gulp_offset',type=int,help='Gulp offset to start from, default = 0', default=0)
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
     #parser.add_argument('--fringestop', action='store_true', default=False, help='Fringe stop manually')
     #parser.add_argument('--fringetable',type=str,help='Fringe stop manually with specified table in the dsa110-nsfrb-fast-visibilities dir',default='')
-    parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=4)
+    parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=raw_datasize)
     parser.add_argument('--path',type=str,help='Path to raw data files',default=vis_dir[:-1])
     parser.add_argument('--outpath',type=str,help='Output path for images',default=imgpath)
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')

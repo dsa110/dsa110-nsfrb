@@ -187,7 +187,7 @@ def set_pflag(flag=None,on=True,reset=False):
     
 # functions for reading raw visibility data
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,headersize=8):
+def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,headersize=12):
     """
     Read raw visibility data from given file.
     fname: file name
@@ -214,9 +214,9 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,h
 
     #first read header
     if headersize != 0:
-        mjd = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'f', f.read(headersize//2))[0]
-        sbnum = int.from_bytes(f.read(headersize//2),sys.byteorder,signed=False)
-
+        mjd = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'f', f.read(headersize//3))[0]
+        sbnum = int.from_bytes(f.read(headersize//3),sys.byteorder,signed=False)
+        dec = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'f', f.read(headersize//3))[0]
     if nsamps == -1:
         raw_data = np.frombuffer(f.read(),dtype=dtype) #default reads all time samples
     else:
@@ -235,5 +235,5 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,h
     if headersize == 0:
         return dat_complex#,0,Time.now().mjd()
     else:
-        return dat_complex,sbnum,mjd
+        return dat_complex,sbnum,mjd,dec
 

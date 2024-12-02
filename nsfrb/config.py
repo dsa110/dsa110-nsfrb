@@ -44,8 +44,8 @@ vis_to_img_slope_not_binned = 6.320421766399212e-05 #slope relating noise in vis
 vis_to_img_slope = 0.0025062597643136777 #same, but with PSF smoothing; noise increases with contribution from PSF, but so does signal
 
 #outrigger flagging and short baseline flagging
-bmin=20 #meters
-flagged_antennas = []#[103,104,105,106,107,108,109,110,111,112,113,114,115,116]
+bmin=0#20 #meters
+flagged_antennas = [48]#[103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 
 import numpy as np
 noise_data_type = np.float64
@@ -99,4 +99,5 @@ me = cc.measures()
 obs=me.observatory("OVRO_MMA")
 Lat=obs['m1']['value']*180/np.pi#37.23
 Lon=obs['m0']['value']*180/np.pi#-118.2851
-
+az_offset = 0
+raw_datasize = 4 #bytes
