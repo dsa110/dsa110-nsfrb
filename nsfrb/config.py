@@ -3,7 +3,7 @@
 # Constants
 NUM_CHANNELS = 768
 AVERAGING_FACTOR = 48
-IMAGE_SIZE = 301#300  # pixels
+IMAGE_SIZE = 301#301#300  # pixels
 
 # Speed of light
 c = 299792458  # m/s
@@ -35,7 +35,7 @@ telescope_diameter = 4.65 #m
 
 #resolution parameters
 pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
-gridsize = 301#300#256
+gridsize = 301#301#300#256
 RA_point = 0 #rad
 DEC_point = 0 #rad
 UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding
@@ -44,8 +44,8 @@ vis_to_img_slope_not_binned = 6.320421766399212e-05 #slope relating noise in vis
 vis_to_img_slope = 0.0025062597643136777 #same, but with PSF smoothing; noise increases with contribution from PSF, but so does signal
 
 #outrigger flagging and short baseline flagging
-bmin=0#20 #meters
-flagged_antennas = [48]#[103,104,105,106,107,108,109,110,111,112,113,114,115,116]
+bmin=20 #meters
+flagged_antennas = [48,103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 
 import numpy as np
 noise_data_type = np.float64

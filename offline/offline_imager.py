@@ -80,9 +80,11 @@ def main(args):
         timestamp = args.timestamp
 
     for gulp in range(args.gulp_offset,args.gulp_offset + num_gulps):
-         #parameters from etcd
+        #parameters from etcd
         test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
-
+        ff = 1.53-np.arange(8192)*0.25/8192
+        fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+        fobs = np.reshape(fobs,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1)
         #dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
         
         #read raw data for each corr node
@@ -107,12 +109,12 @@ def main(args):
                 if len(args.timestamp) == 0: 
                     timestamp = Time(tstamp_mjd,format='mjd').isot
             
-                dat_corr = np.nanmean(dat_corr,axis=2,keepdims=True)
+                #dat_corr = np.nanmean(dat_corr,axis=2,keepdims=True)
                 if verbose: print(dat_corr.shape)
                 if dat is None:
                     dat = np.nan*np.ones(dat_corr.shape,dtype=dat_corr.dtype).repeat(len(corrs),axis=2)
                 #print(dat_all.shape,dat_corr.shape)
-                dat[:,:,i,:] = dat_corr[:,:,0,:]
+                dat[:,:,i*args.nchans_per_node:(i+1)*args.nchans_per_node,:] = dat_corr
                 #print("tmp2",dat_all[:,:,i,:],dat_corr)
             except Exception as exc:
                 if verbose: print("No data for " + corr)
@@ -120,6 +122,7 @@ def main(args):
         
 
         print("Are any values nan?:",np.any(np.isnan(dat))) 
+        #print(list(np.isnan(dat.mean((0,1,3)))))
         if verbose: print("Gulp size:",dat.shape)
 
         
@@ -169,6 +172,10 @@ def main(args):
         
         #flagging andd baseline cut
         dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
+        
+        print("Print bad channels:",np.isnan(dat.mean((0,1,3))))
+        
+        
         """
         #get indices of flagged visibilities
         flagged_vis = []
@@ -201,6 +208,7 @@ def main(args):
         V = UVW[0,:,1]
         W = UVW[0,:,2]
         uv_diag=np.max(np.sqrt(U**2 + V**2))
+        pixel_resolution = (0.20 / uv_diag) / 3
         if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
         if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
         if verbose: print(UVW)
@@ -296,6 +304,7 @@ def main(args):
         else:
             inject_img = np.zeros((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
         dat[np.isnan(dat)]= 0 
+        
         #imaging
         dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
         for i in range(dat.shape[0]):
@@ -316,26 +325,27 @@ def main(args):
                         plt.close()
                     """
                     #print(i,j,k)
-                    if args.briggs:
-                        if k == 0:
-                            dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                    for jj in range(args.nchans_per_node):
+                        if args.briggs:
+                            if k == 0 and jj == 0:
+                                dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            else:
+                                dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                         else:
-                            dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
-                    else:
-                        if k == 0:
-                            dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
-                        else:
-                            dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1],inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                            if k == 0 and jj == 0:
+                                dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution)
+                            else:
+                                dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution)
                     #print("")
         print(dirty_img)
         #save image to fits, numpy file
         if args.save:
             np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
-            #numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
+            numpy_to_fits(np.nanmean(dirty_img,(2,3)).transpose(),args.outpath + "/" + time_start_isot + ".fits")
             
             if args.inject:
                 np.save(args.outpath + "/" + time_start_isot + "_response.npy",dirty_img/inject_img)
-                numpy_to_fits(np.nanmean(dirty_img,(2,3))/np.nanmean(inject_img,(2,3)),args.outpath + "/" + time_start_isot + "_response.fits")        
+                numpy_to_fits(np.nanmean(dirty_img,(2,3)).transpose()/np.nanmean(inject_img,(2,3)).transpose(),args.outpath + "/" + time_start_isot + "_response.fits")        
 
         #send to proc server
         if args.search:

@@ -145,7 +145,7 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     #return np.real(dirty_image)
     return np.real(dirty_image) if not return_complex else dirty_image
 
-def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
+def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None) -> np.ndarray:
     """
     Converts visibility data into a 'dirty' image. The following issues are corrected:
         - require odd image size
@@ -161,7 +161,8 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     Returns:
     A numpy array representing the dirty image.
     """
-    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+    if pixel_resolution is None:
+        pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
     #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
