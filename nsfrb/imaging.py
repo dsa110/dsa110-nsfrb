@@ -162,7 +162,7 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     A numpy array representing the dirty image.
     """
     if pixel_resolution is None:
-        pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
     #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
@@ -326,7 +326,7 @@ def DSAelev_to_ASTROPYalt(elev,az=az_offset):
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None,az=az_offset):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None,az=az_offset,ref_wav=0.20):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -415,6 +415,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
 
 
     #create offset grid using pixel size and max UV diagonal distance
+    """
     if uv_diag is None:
         x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas) #meters
         U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
@@ -428,6 +429,14 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
     #add offset from image center
     ra_grid = icrs_pos.ra.value + offset_grid
     dec_grid = icrs_pos.dec.value + offset_grid
+    """
+    #use np.fft.fftfreq to get pixel coordinates at first integration
+    uv_res = 1 / (image_size * (wav/uv_diag/3))
+    m_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
+    l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
+    dec_grid = DEC + (180/np.pi)*2*np.arcsin(m_grid/2)
+    ra_grid = RA + np.arccos((np.cos(2*np.arcsin(l_grid/2)) - np.cos(DEC*np.pi/180)**2)/(np.sin(DEC*np.pi/180)**2))*(180/np.pi)
+    ra_grid[l_grid<0] = -ra_grid[l_grid<0]
     if output_file != "":
         fout.close()
     return ra_grid,dec_grid,elev
