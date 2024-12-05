@@ -224,7 +224,7 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     if wstack and w is not None:
         dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(0,1)),axes=(0,1)),axes=(0,1))
         #multiply by phase term and scale factor
-        l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)),np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
+        l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
         l_grid_3D = l_grid_2D[:,:,np.newaxis]    
         m_grid_3D = m_grid_2D[:,:,np.newaxis]    
         w_grid_3D = w_bins[np.newaxis,np.newaxis,:]
@@ -468,7 +468,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
     #use np.fft.fftfreq to get pixel coordinates at first integration
     uv_res = 1 / (image_size * (ref_wav/uv_diag/3))
     m_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
-    l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
+    l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))[::-1]
     dec_grid = icrs_pos.dec.value + (180/np.pi)*2*np.arcsin(m_grid/2)
     ra_grid = icrs_pos.ra.value + np.arccos((np.cos(2*np.arcsin(l_grid/2)) - np.cos(icrs_pos.dec.value*np.pi/180)**2)/(np.sin(icrs_pos.dec.value*np.pi/180)**2))*(180/np.pi)
     ra_grid[l_grid<0] = -ra_grid[l_grid<0]
