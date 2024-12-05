@@ -306,6 +306,8 @@ def main(args):
         dat[np.isnan(dat)]= 0 
         
         #imaging
+        print("Start imaging")
+        if args.wstack: print("W-stacking with ",args.Nlayers," layers")
         dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
         for i in range(dat.shape[0]):
             for j in range(args.num_chans):
@@ -333,10 +335,11 @@ def main(args):
                                 dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                         else:
                             if k == 0 and jj == 0:
-                                dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution)
+                                dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
                             else:
-                                dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution)
+                                dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
                     #print("")
+        print("Imaging complete")            
         print(dirty_img)
         #save image to fits, numpy file
         if args.save:
@@ -395,6 +398,8 @@ if __name__=="__main__":
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
     parser.add_argument('--sleeptime',type=float,help='Time to sleep between processing gulps (seconds)',default=30)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
+    parser.add_argument('--wstack',action='store_true',help='If set use w-stacking algorithm with --Nlayers layers')
+    parser.add_argument('--Nlayers',type=int,help='Number of layers for w-stacking',default=18)
     args = parser.parse_args()
     main(args)
 

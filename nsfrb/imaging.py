@@ -145,7 +145,7 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     #return np.real(dirty_image)
     return np.real(dirty_image) if not return_complex else dirty_image
 
-def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None) -> np.ndarray:
+def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18) -> np.ndarray:
     """
     Converts visibility data into a 'dirty' image. The following issues are corrected:
         - require odd image size
@@ -168,36 +168,70 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
 
+    if wstack and w is not None:
+        w_min = -np.max(np.abs(w))
+        w_max = np.max(np.abs(w))
+        w_grid_res = (w_max+1-w_min)/Nlayers_w
+        w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
+
     v_avg = np.mean(np.array(chunk_V), axis=0)
     
     #removed clip
     i_indices = ((u + uv_max) / grid_res).astype(int)
     j_indices = ((v + uv_max) / grid_res).astype(int)
-    
+    if wstack and w is not None:
+        k_indices = ((w - w_min) / w_grid_res).astype(int)
+
     #remove long baselines
     uvs = np.sqrt(u**2 + v**2)
     v_avg = v_avg[uvs<uv_max]
     i_indices = i_indices[uvs<uv_max]
     j_indices = j_indices[uvs<uv_max]
+    if wstack and w is not None:
+        k_indices = k_indices[uvs<uv_max]
 
     #get conjugate baselines
     i_conj_indices = image_size - i_indices - 1
     j_conj_indices = image_size - j_indices - 1
+    if wstack and w is not None:
+        k_conj_indices = Nlayers_w - k_indices - 1
 
-    visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-    np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
+    if wstack and w is not None:
+        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
+        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
+        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
+    else:
+        visibility_grid = np.zeros((image_size, image_size), dtype=complex)
+        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
 
     if inject_img is not None:
         #print("IN THE WRONG PLACE")
-        if inject_flat:
-            visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices]
-            visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices]
+        if wstack and w is not None:
+            if inject_flat:
+                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2)
+                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2)
+            else:
+                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2)
         else:
-            visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
+            if inject_flat:
+                visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices]
+                visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices]
+            else:
+                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
 
     #updated sign convention
-    dirty_image = fftshift(fft2(ifftshift(visibility_grid)))
+    if wstack and w is not None:
+        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(0,1)),axes=(0,1)),axes=(0,1))
+        #multiply by phase term and scale factor
+        l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)),np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
+        l_grid_3D = l_grid_2D[:,:,np.newaxis]    
+        m_grid_3D = m_grid_2D[:,:,np.newaxis]    
+        w_grid_3D = w_bins[np.newaxis,np.newaxis,:]
+        dirty_image = np.nansum(dirty_image*np.exp(2*np.pi*1j*w_grid_3D*(np.sqrt(1-l_grid_3D**2-m_grid_3D**2) - 1))*np.sqrt(1 - l_grid_3D**2 - m_grid_3D**2)/(w_max-w_min),2)
+    else:
+        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
+    
     return np.real(dirty_image) if not return_complex else dirty_image
     
 
@@ -217,7 +251,7 @@ def inverse_revised_uniform_image(dirty_image,u,v):
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
 
-    visibility_grid = fftshift(ifft2(ifftshift(dirty_image)))
+    visibility_grid = fftshift(fft2(fftshift(dirty_image)))
 
 
     """
@@ -415,11 +449,12 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
 
 
     #create offset grid using pixel size and max UV diagonal distance
-    """
+    
     if uv_diag is None:
         x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas) #meters
         U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
         uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
+    """
     pixel_resolution = (0.20 / uv_diag) / 3 #radians
     offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
 
@@ -431,11 +466,11 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
     dec_grid = icrs_pos.dec.value + offset_grid
     """
     #use np.fft.fftfreq to get pixel coordinates at first integration
-    uv_res = 1 / (image_size * (wav/uv_diag/3))
+    uv_res = 1 / (image_size * (ref_wav/uv_diag/3))
     m_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
     l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
-    dec_grid = DEC + (180/np.pi)*2*np.arcsin(m_grid/2)
-    ra_grid = RA + np.arccos((np.cos(2*np.arcsin(l_grid/2)) - np.cos(DEC*np.pi/180)**2)/(np.sin(DEC*np.pi/180)**2))*(180/np.pi)
+    dec_grid = icrs_pos.dec.value + (180/np.pi)*2*np.arcsin(m_grid/2)
+    ra_grid = icrs_pos.ra.value + np.arccos((np.cos(2*np.arcsin(l_grid/2)) - np.cos(icrs_pos.dec.value*np.pi/180)**2)/(np.sin(icrs_pos.dec.value*np.pi/180)**2))*(180/np.pi)
     ra_grid[l_grid<0] = -ra_grid[l_grid<0]
     if output_file != "":
         fout.close()
