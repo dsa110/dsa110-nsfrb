@@ -202,7 +202,7 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False,
 
 minDM = 171
 maxDM = 4000
-DM_trials = np.array(gen_dm(minDM,maxDM,1.6,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
+DM_trials = np.array(gen_dm(minDM,maxDM,DM_tol,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 nDMtrials = len(DM_trials)
 
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps)
@@ -1828,6 +1828,11 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
         print(image_tesseract_binned.shape,image_tesseract_filtered_cut.shape,file=fout)
         canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+        print(canddec_idxs,file=fout)
+        print(candra_idxs,file=fout)
+        print(candwid_idxs,file=fout)
+        print(canddm_idxs,file=fout)
+        #fout.close()
         ncands = len(canddec_idxs)
         #print(len(DEC_axis),np.max(canddec_idxs),len(RA_axis),np.max(candra_idxs),file=fout)
         #fout.close()
@@ -2106,6 +2111,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     time_axis = np.arange(nsamps)*tsamp
     global default_PSF
     global default_PSF_params
+    global PSF_dict
     if kernel_size in PSF_dict.keys() and default_PSF_params != (kernel_size,PSF_dict[kernel_size]['declabels'][np.argmin(np.abs(PSF_dict[kernel_size]['declabels']-np.nanmean(DEC_axis)))]):
         best_dec = PSF_dict[kernel_size]['declabels'][np.argmin(np.abs(PSF_dict[kernel_size]['declabels']-np.nanmean(DEC_axis)))]
         printlog("loading PSF for kernelsize " + str(kernel_size) +", declination " + str(best_dec),output_file=processfile)
@@ -2115,7 +2121,22 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         printlog("making PSF for kernelsize " + str(kernel_size) + ", declination " + "{d:.2f}".format(d=np.nanmean(DEC_axis)),output_file=processfile)
         default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),kernel_size//2,True,nsamps)
         default_PSF_params = (kernel_size,float("{d:.2f}".format(d=np.nanmean(DEC_axis))))
+        os.system("mkdir " + psf_dir + "gridsize_" + str(kernel_size) )
+        np.save(psf_dir + "gridsize_" + str(kernel_size)+"/PSF_" + str(kernel_size) + "_{d:.2f}".format(d=np.nanmean(DEC_axis)) + "_deg.npy",default_PSF[:,:,0,:].astype(np.float32))
 
+        printlog("updating PSF dict...",output_file=processfile)
+        PSF_decs = []
+        psfnames = glob.glob(psf_dir+"gridsize_*")
+        for psfname in psfnames:
+            gsize = int(psfname[psfname.index("gridsize_")+9:])
+            PSF_dict[gsize] = dict()
+            PSF_decs = []
+            decnames = glob.glob(psfname+"/*npy")
+            for decname in decnames:
+                dec = float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")])
+                PSF_decs.append(float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")]))
+
+            PSF_dict[gsize]['declabels'] = np.array(np.sort(PSF_decs))
 
     canddict = dict()
 
@@ -2127,7 +2148,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=output_file,usefft=usefft,space_filter=space_filter,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2],pixsize=fullimg.DEC_axis[1]-fullimg.DEC_axis[0]))
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2],pixsize=fullimg.DEC_axis[1]-fullimg.DEC_axis[0]))
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2],pixsize=fullimg.DEC_axis[1]-fullimg.DEC_axis[0]),DM_trials=DM_trials,widthtrials=widthtrials)
 
 
     #update noise stats

@@ -145,6 +145,7 @@ def main(args):
         else:
             RA = LST*15
             HA = 0
+            tmp,tmp,elev = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,flagged_antennas=flagged_antennas)
         if verbose: print("Coordinates (deg):",RA,Dec)
         if verbose: print("Hour angle (deg):",HA)
 

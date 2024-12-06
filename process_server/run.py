@@ -33,6 +33,7 @@ import copy
 
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
 from nsfrb.noise import init_noise,noise_update_all,get_noise_dict
+from simulations_and_classifications import generate_PSF_images as scPSF
 #from nsfrb.simulating import make_PSF_cube
 fsize=45
 fsize2=35
@@ -488,19 +489,27 @@ def main(args):
     if args.gridsize != config.gridsize or args.nchans != config.nchans or args.nsamps != config.nsamps:
 
         config.nsamps = args.nsamps
+        sl.nsamps = args.nsamps
         config.T = config.nsamps*config.tsamp
+        sl.T = config.nsamps*config.tsamp
         sl.time_axis = np.linspace(0,config.T,config.nsamps)
+        sl.widthtrials = sl.widthtrials[sl.widthtrials<args.nsamps]
+        sl.nwidths = len(sl.widthtrials)
+        sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,args.nsamps)
 
         config.nchans = args.nchans
+        sl.nchans = args.nchans
         config.chanbw = (config.fmax-config.fmin)/config.nchans #MHz
+        sl.chanbw = (config.fmax-config.fmin)/config.nchans 
         sl.freq_axis = np.linspace(config.fmin,config.fmax,config.nchans)
 
         config.gridsize = args.gridsize
+        sl.gridsize = args.gridsize
         sl.RA_axis = np.linspace(config.RA_point-(config.pixsize*config.gridsize/2),config.RA_point+(config.pixsize*config.gridsize/2),config.gridsize)
         sl.DEC_axis = np.linspace(config.DEC_point-(config.pixsize*config.gridsize/2),config.DEC_point+(config.pixsize*config.gridsize/2),config.gridsize)
 
 
-        sl.DM_trials = np.array(sl.gen_dm(sl.minDM,sl.maxDM,1.5,config.fc*1e-3,config.nchans,config.tsamp,config.chanbw))#[0:1]
+        sl.DM_trials = np.array(sl.gen_dm(sl.minDM,sl.maxDM,config.DM_tol,config.fc*1e-3,config.nchans,config.tsamp,config.chanbw))#[0:1]
         sl.nDMtrials = len(sl.DM_trials)
 
         sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,config.nsamps)

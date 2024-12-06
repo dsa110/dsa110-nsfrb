@@ -38,9 +38,9 @@ do
 		done
 		if (( $prerun==0 )); then
 			if [ -z "$4" ]; then
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset 0 --save --num_time_samples 5 --sb --nchans_per_node 2 --wstack #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset 0 --save --num_time_samples 15 --sb --nchans_per_node 2 --search #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			else
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset 0 --save --num_time_samples 5 --sb --nchans_per_node 2 --wstack --filedir $filedir
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset 0 --save --num_time_samples 15 --sb --nchans_per_node 2 --search --filedir $filedir
 
 			fi
 			donefiles+=($label)
