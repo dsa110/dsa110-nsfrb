@@ -10,6 +10,7 @@ import sys
 from matplotlib import pyplot as plt
 from nsfrb import simulating#,planning
 import copy
+import numba
 
 #flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 #f = open("../metadata.txt","r")
@@ -475,3 +476,120 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
     if output_file != "":
         fout.close()
     return ra_grid,dec_grid,elev
+
+
+
+@numba.njit(parallel=True)
+def process_w_layers_parallel(dirty_image: np.ndarray, 
+                              w_bins: np.ndarray, 
+                              l_grid_2D: np.ndarray, 
+                              m_grid_2D: np.ndarray, 
+                              w_min: float, 
+                              w_max: float) -> np.ndarray:
+    """
+    Numba-accelerated function to process w-layers in parallel.
+    dirty_image: (image_size, image_size, Nlayers_w) complex array
+    w_bins: (Nlayers_w,) array
+    l_grid_2D, m_grid_2D: (image_size, image_size) arrays
+    w_min, w_max: floats
+    """
+    image_size = dirty_image.shape[0]
+    Nlayers_w = dirty_image.shape[2]
+    out_image = np.zeros((image_size, image_size), dtype=np.complex128)
+
+    scale_factor = (w_max - w_min)
+    for i in numba.prange(image_size):
+        for j in numba.prange(image_size):
+            l_val = l_grid_2D[i, j]
+            m_val = m_grid_2D[i, j]
+            val_sqrt = 1.0 - l_val**2 - m_val**2
+            if val_sqrt <= 0:
+                # If invalid geometry, skip
+                continue
+            phase_factor = np.sqrt(val_sqrt)
+            # sum over w
+            temp_sum = 0.0j
+            for k in range(Nlayers_w):
+                w_val = w_bins[k]
+                exponent = 2 * np.pi * 1j * w_val * (phase_factor - 1)
+                # dirty_image[i,j,k]
+                temp_sum += dirty_image[i, j, k] * np.exp(exponent) * phase_factor / scale_factor
+            out_image[i, j] = temp_sum
+
+    return out_image
+
+
+def revised_uniform_image_parallel(chunk_V: np.ndarray, 
+                          u: np.ndarray, 
+                          v: np.ndarray, 
+                          image_size: int, 
+                          return_complex=False, 
+                          inject_img=None, 
+                          inject_flat=False, 
+                          pixel_resolution=None, 
+                          wstack=False, 
+                          w=None, 
+                          Nlayers_w=18) -> np.ndarray:
+    """
+    Converts visibility data into a 'dirty' image with possible w-stacking.
+    """
+    if pixel_resolution is None:
+        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+    uv_resolution = 1 / (image_size * pixel_resolution)
+    uv_max = uv_resolution * image_size / 2
+    grid_res = 2 * uv_max / image_size
+
+    if wstack and w is not None:
+        w_min = -np.max(np.abs(w))
+        w_max = np.max(np.abs(w))
+        w_grid_res = (w_max+1-w_min)/Nlayers_w
+        w_bins = np.linspace(w_min, w_max+1, Nlayers_w)
+
+    v_avg = np.mean(np.array(chunk_V), axis=0)
+
+    i_indices = ((u + uv_max) / grid_res).astype(int)
+    j_indices = ((v + uv_max) / grid_res).astype(int)
+    if wstack and w is not None:
+        k_indices = ((w - w_min) / w_grid_res).astype(int)
+
+    # remove long baselines
+    uvs = np.sqrt(u**2 + v**2)
+    mask = uvs < uv_max
+    v_avg = v_avg[mask]
+    i_indices = i_indices[mask]
+    j_indices = j_indices[mask]
+    if wstack and w is not None:
+        k_indices = k_indices[mask]
+
+    # get conjugate baselines
+    i_conj_indices = image_size - i_indices - 1
+    j_conj_indices = image_size - j_indices - 1
+    if wstack and w is not None:
+        k_conj_indices = Nlayers_w - k_indices - 1
+
+    if wstack and w is not None:
+        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
+        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
+        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
+    else:
+        visibility_grid = np.zeros((image_size, image_size), dtype=complex)
+        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
+
+
+    if wstack and w is not None:
+        # Perform FFT
+        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid, axes=(0,1)), axes=(0,1)), axes=(0,1))
+
+        # Precompute grids
+        l_arr = np.fft.fftshift(np.fft.fftfreq(image_size, grid_res))[::-1]
+        m_arr = np.fft.fftshift(np.fft.fftfreq(image_size, grid_res))
+        l_grid_2D, m_grid_2D = np.meshgrid(l_arr, m_arr)
+
+        # Process w-layers in parallel with numba
+        # The dirty_image dimension: (image_size, image_size, Nlayers_w)
+        dirty_image = process_w_layers_parallel(dirty_image, w_bins, l_grid_2D, m_grid_2D, w_min, w_max)
+    else:
+        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
+
+    return np.real(dirty_image) if not return_complex else dirty_image
