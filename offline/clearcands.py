@@ -25,16 +25,17 @@ def main(args):
         #delete the expired ones
         for rt in raw_times:
             dt = (Tnow - rt).datetime.days
-            if dt >= 1:
+            if dt >= args.waittime:
                 print("Deleting ",rt.isot,"raw candidate files")
                 os.system("rm " + cand_dir + "raw_cands/*" + rt.isot + "*")
                 os.system("rm " + cand_dir + "backup_raw_cands/*" + rt.isot + "*")
 
-        time.sleep(args.waittime*3600)
+        time.sleep(args.cadence*3600)
 if __name__=="__main__":
     #argument parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument('--waittime',type=float,help='Time between clearing visibilities in hours, default 1',default=1.0)
+    parser.add_argument('--waittime',type=float,help='Time between clearing candidates in days, default 1',default=1.0)
+    parser.add_argument('--cadence',type=float,help='Time between checking for new candidates to clear in hours, default 2',default=2.0)
     args = parser.parse_args()
 
 

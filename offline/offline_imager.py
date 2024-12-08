@@ -21,7 +21,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize
-from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,flag_vis
+from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,flag_vis,get_ra
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
@@ -135,7 +135,7 @@ def main(args):
         if verbose: print("LST (hr):",LST)
         if Dec is None:
 
-            RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,flagged_antennas=flagged_antennas)
+            RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas)
             HA_axis = (LST*15) - RA_axis
             print(HA_axis)
             #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
@@ -143,9 +143,9 @@ def main(args):
             HA = HA_axis[int(len(HA_axis)//2)]
             Dec = Dec_axis[int(len(Dec_axis)//2)]
         else:
-            RA = LST*15
+            RA = get_ra(mjd,Dec) #LST*15
             HA = 0
-            tmp,tmp,elev = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,flagged_antennas=flagged_antennas)
+            tmp,tmp,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas)
         if verbose: print("Coordinates (deg):",RA,Dec)
         if verbose: print("Hour angle (deg):",HA)
 

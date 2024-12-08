@@ -1,6 +1,7 @@
 import numpy as np
+from astropy import wcs
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas
+from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,CRPIX
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
@@ -17,7 +18,7 @@ import numba
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
@@ -64,7 +65,7 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin):
     UVW = UVW[:,unflagged_vis,:]
     dat = dat[:,unflagged_vis,:,:]
 
-    print(dat)
+    #print(dat)
     #remove short baselines
     if bmin > 0:
         blen_mask = np.sqrt(np.sum(blen**2,axis=1))>=bmin
@@ -357,11 +358,25 @@ def DSAelev_to_ASTROPYalt(elev,az=az_offset):
     az[elev<=90] = 180 + az[elev<=90]
     return alt,az
 
-
+#credit: Vikram Ravi
+def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
+    """
+    Gets RA, given the MJD and declination pointing
+    """
+    ovro =  EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)#(lat=37.2317 * u.deg, lon=-118.2951 * u.deg, height=1222 * u.m)
+    time = Time(mjd,format='mjd')
+    if dec<Lat:#37.23:
+        az=180.0*u.deg
+        alt=(90.-(Lat-dec))*u.deg#37.23-dec))*u.deg
+    else:
+        az=0.0*u.deg
+        alt=(90.-(dec-Lat))*u.deg#37.23))*u.deg
+    altaz = SkyCoord(alt=alt,az=az,frame = 'altaz',obstime=time,location=ovro)
+    return altaz.icrs.ra.deg
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None,az=az_offset,ref_wav=0.20):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None,az=az_offset,ref_wav=0.20,fl=False):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -395,7 +410,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
     #find RA, dec at center of the image 
 
     #(1) ovro location
-    loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg) #default is ovro
+    loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m) #default is ovro
 
     #(2) observation time
     tobs = Time(mjd_obs,format='mjd')
@@ -430,7 +445,9 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
 
             #(4) convert to ICRS frame
             icrs_pos = antpos.transform_to(ICRS())
-            
+    elif elev is None and RA is None and DEC is not None:
+        print("Using input declination:" + str(DEC) + "deg",file=fout)
+        icrs_pos = ICRS(ra=get_ra(mjd_obs,DEC,Lon=Lon,Lat=Lat,Height=Height)*u.deg,dec=DEC*u.deg)
     elif RA is None and DEC is None:
         print("Using input elevation: " + str(elev) + "deg",file=fout)
         """
@@ -456,23 +473,37 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,timerangems=1000,maxtries=5,out
         U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
         uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
     """
-    pixel_resolution = (0.20 / uv_diag) / 3 #radians
-    offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
+    if fl:
+        pixel_resolution = (0.20 / uv_diag) / 3 #radians
+        offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
 
-    #print(offset_grid)
-    assert(len(offset_grid) == image_size)
+        #print(offset_grid)
+        assert(len(offset_grid) == image_size)
 
-    #add offset from image center
-    ra_grid = icrs_pos.ra.value + offset_grid
-    dec_grid = icrs_pos.dec.value + offset_grid
+        #add offset from image center
+        ra_grid = icrs_pos.ra.value + offset_grid[::-1]
+        dec_grid = icrs_pos.dec.value + offset_grid
+    else:
+        #use np.fft.fftfreq to get pixel coordinates at first integration
+        uv_res = 1 / (image_size * (ref_wav/uv_diag/3))
+        m_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
+        l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))[::-1]
+        dec_grid = icrs_pos.dec.value + (180/np.pi)*2*np.arcsin(m_grid/2)
+        shift_grid = np.arccos((np.cos(2*np.arcsin((l_grid)/2)) - np.cos(icrs_pos.dec.value*np.pi/180)**2)/(np.sin(icrs_pos.dec.value*np.pi/180)**2))*(180/np.pi)
+        shift_grid[l_grid<0] = -shift_grid[l_grid<0]
+        ra_grid = icrs_pos.ra.value + shift_grid #-np.nanmin(shift_grid)#+ np.arccos((np.cos(2*np.arcsin(l_grid/2)) - np.cos(icrs_pos.dec.value*np.pi/180)**2)/(np.sin(icrs_pos.dec.value*np.pi/180)**2))*(180/np.pi)
+        #ra_grid[l_grid<0] = -ra_grid[l_grid<0]
     """
-    #use np.fft.fftfreq to get pixel coordinates at first integration
-    uv_res = 1 / (image_size * (ref_wav/uv_diag/3))
-    m_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))
-    l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))[::-1]
-    dec_grid = icrs_pos.dec.value + (180/np.pi)*2*np.arcsin(m_grid/2)
-    ra_grid = icrs_pos.ra.value + np.arccos((np.cos(2*np.arcsin(l_grid/2)) - np.cos(icrs_pos.dec.value*np.pi/180)**2)/(np.sin(icrs_pos.dec.value*np.pi/180)**2))*(180/np.pi)
-    ra_grid[l_grid<0] = -ra_grid[l_grid<0]
+    w = wcs.WCS(naxis=2)
+    w.wcs.crval = [icrs_pos.ra.value,icrs_pos.dec.value]
+    pixel_resolution = (ref_wav / uv_diag) / 3
+    w.wcs.cdelt = np.array([-pixel_resolution, pixel_resolution])*180/np.pi
+    w.wcs.crpix = list((np.array(CRPIX) - (301//2) + (image_size//2)).astype(int))
+    w.wcs.ctype = ["RA---SIN", "DEC--SIN"]
+    tmp = w.wcs_pix2world(np.array([np.arange(image_size),np.arange(image_size)]).transpose(),0)
+    ra_grid = tmp[:,0]
+    dec_grid = tmp[:,1]
+
     if output_file != "":
         fout.close()
     return ra_grid,dec_grid,elev

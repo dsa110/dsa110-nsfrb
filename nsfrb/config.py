@@ -99,5 +99,7 @@ me = cc.measures()
 obs=me.observatory("OVRO_MMA")
 Lat=obs['m1']['value']*180/np.pi#37.23
 Lon=obs['m0']['value']*180/np.pi#-118.2851
+Height = obs['m2']['value'] #m
 az_offset = 0
 raw_datasize = 4 #bytes
+CRPIX = [122,147] #for 301 pixels

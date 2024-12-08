@@ -35,7 +35,7 @@ import numpy as np
 import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
-from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat
+from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol
 from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter,default_PSF
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
@@ -604,7 +604,7 @@ def candcutter_task(fname,uv_diag,elev,args):
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         return
-    RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],Lat=Lat,Lon=Lon,uv_diag=uv_diag,elev=elev)
+    RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,elev=elev)
     #PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps)
 
     #get DM trials from file
@@ -784,7 +784,7 @@ def candcutter_task(fname,uv_diag,elev,args):
             canddict['predicts'] = predictions
         if useTOA: 
             canddict['TOAs'] = [finalcands[j][4] for j in finalidxs]
-        RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],Lat=Lat,Lon=Lon,uv_diag=uv_diag,elev=elev)
+        RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,elev=elev)
 
         # dedisperse to each unique dm candidate
         timeseries = []
