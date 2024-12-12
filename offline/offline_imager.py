@@ -345,17 +345,17 @@ def main(args):
         #save image to fits, numpy file
         if args.save:
             np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
-            numpy_to_fits(np.nanmean(dirty_img,(2,3)).transpose(),args.outpath + "/" + time_start_isot + ".fits")
+            numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
             
             if args.inject:
                 np.save(args.outpath + "/" + time_start_isot + "_response.npy",dirty_img/inject_img)
-                numpy_to_fits(np.nanmean(dirty_img,(2,3)).transpose()/np.nanmean(inject_img,(2,3)).transpose(),args.outpath + "/" + time_start_isot + "_response.fits")        
+                numpy_to_fits(np.nanmean(dirty_img,(2,3))/np.nanmean(inject_img,(2,3)),args.outpath + "/" + time_start_isot + "_response.fits")        
 
         #send to proc server
         if args.search:
             for i in range(args.num_chans):
                 #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-                msg=send_data(time_start_isot, uv_diag, elev, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
+                msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
                 if args.verbose: print(msg)
                 time.sleep(1)
 

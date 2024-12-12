@@ -11,7 +11,7 @@ import astropy.units as u
 from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
-from nsfrb.imaging import DSAelev_to_ASTROPYalt,get_ra
+from nsfrb.imaging import DSAelev_to_ASTROPYalt
 from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset
 from nsfrb.pipeline import read_raw_vis
 import pickle as pkl
@@ -396,6 +396,7 @@ def lock_to_grid(mjd_steps,elev_steps,gl_grid,Lat=Lat,Lon=Lon,Height=Height,az_o
     new_elev_steps = new_elev_steps[~np.isnan(new_elev_steps)]
 
     #get new ra,dec,etc
+    loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg) #default is ovro
     new_alt_steps,new_az_steps = DSAelev_to_ASTROPYalt(new_elev_steps,az_offset)#new_elev_steps-90
     antpos = AltAz(obstime=Time(new_mjd_steps,format='mjd'),location=loc,az=new_az_steps*u.deg,alt=new_alt_steps*u.deg)
     galpos = antpos.transform_to(Galactic())
@@ -420,7 +421,7 @@ def lock_to_grid(mjd_steps,elev_steps,gl_grid,Lat=Lat,Lon=Lon,Height=Height,az_o
     return new_mjd_steps,new_elev_steps,new_alt_steps,new_ra_steps,new_dec_steps,new_gl_steps,new_gb_steps,new_obs_time,new_obs_deg
 
 
-def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolution=1000,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,gl_grid=None,plan_dir=plan_dir):
+def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolution=1000,Lat=37.23,Lon=-118.2851,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,gl_grid=None,plan_dir=plan_dir):
     """
     This function generates an observing plan to track the Galactic Plane given the current mjd and elevation, as a list of mjds and elevations. The plan is output as numpy arrays and written to a csv.
     """
@@ -455,7 +456,7 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
         plt.xlabel("Time (MJD)")
         plt.ylabel("Elevation")
         
-        loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m) #default is ovro
+        loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg) #default is ovro
         alt,az = DSAelev_to_ASTROPYalt(elev,az_offset)#elev-90
         #az = az_offset
         antpos = AltAz(obstime=Time(mjd,format='mjd'),location=loc,az=az*u.deg,alt=alt*u.deg)
@@ -468,7 +469,7 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
 
 
     #first get to the plane
-    mjd_int,ra_int,dec_int,az_int,elev_int,ra_steps,dec_steps,dec_plane,elev_steps,az_steps,alt_steps,mjd_steps,gb_steps,gl_steps = find_plane(mjd,elev,el_slew_rate=el_slew_rate,resolution=resolution*15/3600,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset)
+    mjd_int,ra_int,dec_int,az_int,elev_int,ra_steps,dec_steps,dec_plane,elev_steps,az_steps,alt_steps,mjd_steps,gb_steps,gl_steps = find_plane(mjd,elev,el_slew_rate=el_slew_rate,resolution=resolution*15/3600,Lat=Lat,Lon=Lon,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset)
     print("Start UTC:",Time(mjd_int,format='mjd').isot)
     print("Start Elevation:",elev_int,'degrees')
     print("GP Offset:",gb_offset,'degrees')
@@ -481,7 +482,7 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
         
     
     #then iterate with equal steps in gl
-    mjd_steps,ra_steps,dec_steps,az_steps,elev_steps,gl_steps,gb_steps,flipped_steps,obs_time,obs_deg,t_waits,t_slews = track_plane(mjd_int,elev_int,el_slew_rate=el_slew_rate,resolution=resolution,subresolution=subresolution,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset)
+    mjd_steps,ra_steps,dec_steps,az_steps,elev_steps,gl_steps,gb_steps,flipped_steps,obs_time,obs_deg,t_waits,t_slews = track_plane(mjd_int,elev_int,el_slew_rate=el_slew_rate,resolution=resolution,subresolution=subresolution,Lat=Lat,Lon=Lon,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset)
     
     #lock to the grid points if needed
     if gl_grid is not None:
@@ -566,14 +567,11 @@ def VLAC_find_cal(mjd_obs=None,obs_name=None,datasize=4,nbase=4656,nchan=384,npo
     loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m) #default is ovro
 
     #(2) observation time
-    dec =None
-    ra = None
     if mjd_obs is not None:
         tobs = Time(mjd_obs,format='mjd')
     elif obs_name is not None:
         fname=vis_dir+"lxd110h03/nsfrb_sb00_"+str(obs_name)+".out"
-        dat_complex,sbnum,mjd_obs,dec = read_raw_vis(fname,datasize=datasize,nbase=nbase,nchan=nchan,npol=npol,nsamps=1,gulp=gulp,headersize=headersize)
-        ra = get_ra(mjd_obs,dec)
+        dat_complex,sbnum,mjd_obs = read_raw_vis(fname,datasize=datasize,nbase=nbase,nchan=nchan,npol=npol,nsamps=1,gulp=gulp,headersize=headersize)
         print("Retrieved MJD:",mjd_obs)
         tobs = Time(mjd_obs,format='mjd')
     else:
@@ -589,10 +587,10 @@ def VLAC_find_cal(mjd_obs=None,obs_name=None,datasize=4,nbase=4656,nchan=384,npo
         query = f'SELECT time,ant_el FROM "antmon" WHERE time >= {tms-timerangems}ms and time < {tms+timerangems}ms'
         result = influx.query(query)
         tries += 1
-    if len(result) == 0 and ra is None and dec is None:
+    if len(result) == 0:
         print("Failed to retrieve elevation, using RA,DEC = 0,0")#,file=fout)
         icrs_pos = ICRS(ra=0*u.deg,dec=0*u.deg)
-    elif ra is None and dec is None:
+    else:
         #bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
         elev = np.nanmedian(result['antmon']['ant_el'].values)#[bestidx]
 
@@ -604,9 +602,6 @@ def VLAC_find_cal(mjd_obs=None,obs_name=None,datasize=4,nbase=4656,nchan=384,npo
 
         #(4) convert to ICRS frame
         icrs_pos = antpos.transform_to(ICRS())
-    else:
-        print("Using RA,DEC = " + str(ra) + "," + str(dec))
-        icrs_pos = ICRS(ra=ra*u.deg,dec=dec*u.deg)
     pointing = SkyCoord(ra=icrs_pos.ra.value*u.deg,dec=icrs_pos.dec.value*u.deg,frame='icrs')
 
     #find calibrators w/in 3 deg

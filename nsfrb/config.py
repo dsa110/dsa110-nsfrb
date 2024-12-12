@@ -35,7 +35,7 @@ DM_tol = 1.6
 
 #resolution parameters
 pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
-gridsize = 301#301#300#256
+gridsize = IMAGE_SIZE#301#301#300#256
 RA_point = 0 #rad
 DEC_point = 0 #rad
 UVMAX = 2316.5744224010487 #maximum UV extent for uniform gridding
@@ -102,4 +102,14 @@ Lon=obs['m0']['value']*180/np.pi#-118.2851
 Height = obs['m2']['value'] #m
 az_offset = 0
 raw_datasize = 4 #bytes
-CRPIX = [122,147] #for 301 pixels
+
+
+#astrometry parameters
+crpix_dict = {16.27:{"source":"3C138",
+                     "ID":76798,
+                     "crval":[80.29119335,16.63945791],
+                     "crpix":[150+69,150],
+                     "mjd":60653.33203125
+                     }
+             }
+

@@ -536,7 +536,7 @@ def img_to_classifier_format(img,candname,output_dir):
     return img_class_format
 
 #main cand cutter task function
-def candcutter_task(fname,uv_diag,elev,args):
+def candcutter_task(fname,uv_diag,dec_obs,args):
     """
     Main task to obtain cutouts
     """
@@ -604,7 +604,7 @@ def candcutter_task(fname,uv_diag,elev,args):
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         return
-    RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,elev=elev)
+    RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
     #PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps)
 
     #get DM trials from file
@@ -784,7 +784,7 @@ def candcutter_task(fname,uv_diag,elev,args):
             canddict['predicts'] = predictions
         if useTOA: 
             canddict['TOAs'] = [finalcands[j][4] for j in finalidxs]
-        RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,elev=elev)
+        RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
 
         # dedisperse to each unique dm candidate
         timeseries = []

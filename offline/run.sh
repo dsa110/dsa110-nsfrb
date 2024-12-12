@@ -6,7 +6,8 @@
 runfile=$1
 maxrun=$2
 ngulp=$3
-filedir=$4
+gulpoffset=$4
+filedir=$5
 echo "here"
 echo $filedir
 echo "here"
@@ -37,10 +38,10 @@ do
 			fi
 		done
 		if (( $prerun==0 )); then
-			if [ -z "$4" ]; then
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset 88 --save --num_time_samples 25 --sb --nchans_per_node 2 #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
+			if [ -z "$5" ]; then
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --search #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			else
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset 88 --save --num_time_samples 25 --sb --nchans_per_node 2 --filedir $filedir
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --filedir --search $filedir 
 
 			fi
 			donefiles+=($label)

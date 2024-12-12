@@ -1,7 +1,7 @@
 import numpy as np
 from astropy import wcs
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,CRPIX
+from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,crpix_dict
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
@@ -234,7 +234,7 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     else:
         dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
     
-    return np.real(dirty_image) if not return_complex else dirty_image
+    return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
     
 
 def inverse_revised_uniform_image(dirty_image,u,v):
@@ -253,7 +253,7 @@ def inverse_revised_uniform_image(dirty_image,u,v):
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
 
-    visibility_grid = fftshift(fft2(fftshift(dirty_image)))
+    visibility_grid = fftshift(fft2(fftshift(dirty_image.transpose())))
 
 
     """
@@ -303,7 +303,7 @@ def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size:
     #print("from uniform image:",visibility_grid)
     dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
     #print("from uniform image:",dirty_image)
-    return np.real(dirty_image) if not return_complex else dirty_image
+    return np.real(dirty_image).transpose()  if not return_complex else dirty_image.transpose() 
 
 
 def inverse_uniform_image(dirty_image,u,v):
@@ -322,7 +322,7 @@ def inverse_uniform_image(dirty_image,u,v):
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
 
-    visibility_grid = fftshift(fft2(fftshift(dirty_image)))
+    visibility_grid = fftshift(fft2(fftshift(dirty_image.transpose() )))
     
     
     """
@@ -376,7 +376,7 @@ def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None,az=az_offset,ref_wav=0.20,fl=False):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=[],uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -472,6 +472,47 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas) #meters
         U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
         uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
+    pixel_resolution = (ref_wav / uv_diag) / 3
+    
+
+    #check if there's a crpix entry for this declination; if not, just estimate using pixel resolution, will not have SIN projection though
+    if np.any(np.abs(np.array(list(crpix_dict.keys()))-icrs_pos.dec.value)<pixel_resolution*image_size):
+        best_dec = list(crpix_dict.keys())[np.argmin(np.abs(np.array(list(crpix_dict.keys()))-icrs_pos.dec.value))]
+        
+        #make wcs object from saved cal params
+        print("Using WCS from astrometric cal with " + str(crpix_dict[best_dec]['source']),file=fout)
+        w2 = wcs.WCS(naxis=2)
+        w2.wcs.crval = crpix_dict[best_dec]['crval']
+        w2.wcs.cdelt = np.array([-pixel_resolution, -pixel_resolution])*180/np.pi
+        w2.wcs.crpix = crpix_dict[best_dec]['crpix']
+        w2.wcs.ctype = ["RA---SIN", "DEC--SIN"]
+    
+
+        #get axes
+        if two_dim:
+            dec_grid_pix_2D,ra_grid_pix_2D = np.meshgrid(np.arange(image_size,dtype=float),np.arange(image_size,dtype=float))
+            ra_grid_pix_2D -= (((mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
+            tmp = w2.wcs_pix2world(np.array([ra_grid_pix_2D.flatten(),
+                                     dec_grid_pix_2D.flatten()]).transpose(),0)
+            ra_grid = tmp[:,0].reshape((image_size,image_size))
+            dec_grid = tmp[:,1].reshape((image_size,image_size))
+
+        else:
+            dec_grid_pix,ra_grid_pix = np.arange(image_size,dtype=float),np.arange(image_size,dtype=float)
+            ra_grid_pix -= (((mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
+            tmp = w2.wcs_pix2world(np.array([ra_grid_pix,dec_grid_pix]).transpose(),0)
+            ra_grid = tmp[:,0]
+            dec_grid =tmp[:,1]
+            print("RADECSHAPE:",ra_grid.shape,dec_grid.shape,file=fout)
+    else:
+        pixel_resolution = (0.20 / uv_diag) / 3 #radians
+        offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
+
+        assert(len(offset_grid) == image_size)
+
+        #add offset from image center
+        ra_grid = icrs_pos.ra.value + offset_grid[::-1]
+        dec_grid = icrs_pos.dec.value + offset_grid
     """
     if fl:
         pixel_resolution = (0.20 / uv_diag) / 3 #radians
@@ -493,7 +534,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         shift_grid[l_grid<0] = -shift_grid[l_grid<0]
         ra_grid = icrs_pos.ra.value + shift_grid #-np.nanmin(shift_grid)#+ np.arccos((np.cos(2*np.arcsin(l_grid/2)) - np.cos(icrs_pos.dec.value*np.pi/180)**2)/(np.sin(icrs_pos.dec.value*np.pi/180)**2))*(180/np.pi)
         #ra_grid[l_grid<0] = -ra_grid[l_grid<0]
-    """
+    
     w = wcs.WCS(naxis=2)
     w.wcs.crval = [icrs_pos.ra.value,icrs_pos.dec.value]
     pixel_resolution = (ref_wav / uv_diag) / 3
@@ -503,7 +544,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
     tmp = w.wcs_pix2world(np.array([np.arange(image_size),np.arange(image_size)]).transpose(),0)
     ra_grid = tmp[:,0]
     dec_grid = tmp[:,1]
-
+    """
     if output_file != "":
         fout.close()
     return ra_grid,dec_grid,elev
@@ -623,4 +664,4 @@ def revised_uniform_image_parallel(chunk_V: np.ndarray,
     else:
         dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
 
-    return np.real(dirty_image) if not return_complex else dirty_image
+    return np.real(dirty_image).transpose()  if not return_complex else dirty_image.transpose() 

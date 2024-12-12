@@ -138,17 +138,19 @@ def set_pflag_loc(flag=None,on=True,reset=False):
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape=(32,32,25,16),dtype=np.float16):
+    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
         self.img_id_isot = img_id_isot
         self.img_id_mjd = img_id_mjd
         self.img_uv_diag =img_uv_diag
         self.shape = shape
-        self.img_elev = img_elev
+        self.img_dec = img_dec
         #get ra and dec axes
-        self.RA_axis,self.DEC_axis,tmp = uv_to_pix(self.img_id_mjd,self.shape[0],Lat=Lat,Lon=Lon,uv_diag=img_uv_diag,elev=img_elev)
-    
+        self.RA_axis,self.DEC_axis,tmp = uv_to_pix(self.img_id_mjd,self.shape[0],Lat=Lat,Lon=Lon,uv_diag=img_uv_diag,DEC=img_dec)
+        printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
+        printlog(self.RA_axis,output_file=processfile)
+        printlog(self.DEC_axis,output_file=processfile)
     def add_corr_img(self,data,corr_node,testmode=False):
         self.image_tesseract[:,:,:,corr_node] = data
         #if testmode:
@@ -239,8 +241,8 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     #get metadata
     #img_id_isot = HTTPheaderMsgStr[HTTPheaderMsgStr.index('IMG')+3:HTTPheaderMsgStr.index('.npy')]
     img_id_isot = HTTPheaderMsgStr[HTTPheaderMsgStr.index('IMG')+3:HTTPheaderMsgStr.index('_UV')]
-    img_uv_diag = np.frombuffer(bytes.fromhex(HTTPheaderMsgStr[HTTPheaderMsgStr.index('UV')+2:HTTPheaderMsgStr.index('_EL')]))[0]
-    img_elev = np.frombuffer(bytes.fromhex(HTTPheaderMsgStr[HTTPheaderMsgStr.index('EL')+2:HTTPheaderMsgStr.index('.npy')]))[0]
+    img_uv_diag = np.frombuffer(bytes.fromhex(HTTPheaderMsgStr[HTTPheaderMsgStr.index('UV')+2:HTTPheaderMsgStr.index('_DE')]))[0]
+    img_dec = np.frombuffer(bytes.fromhex(HTTPheaderMsgStr[HTTPheaderMsgStr.index('DE')+2:HTTPheaderMsgStr.index('.npy')]))[0]
     img_id_mjd = Time(img_id_isot,format='isot').mjd
     #corr_address = address#HTTPheaderMsgStr[HTTPheaderMsgStr.index('Host')+6:HTTPheaderMsgStr.index(':'+str(port))]
     corr_node = corraddrs[corr_address]
@@ -274,181 +276,8 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
         if corraddrs[corr_address] > 15:
             corraddrs[corr_address] = 0
 
-    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape,img_data
+    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,img_data
 
-"""
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,append_frame,DMbatches,SNRbatches,usejax):
-    printlog("starting search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
-
-    #define search params
-    gridsize=fullimg.image_tesseract.shape[0]
-    RA_axis = fullimg.RA_axis#np.linspace(-gridsize//2,gridsize//2,gridsize)
-    DEC_axis= fullimg.DEC_axis#np.linspace(-gridsize//2,gridsize//2,gridsize)
-    nsamps = fullimg.image_tesseract.shape[2]
-    nchans = fullimg.image_tesseract.shape[3]
-    time_axis = np.arange(nsamps)*sl.tsamp
-    canddict = dict()
-
-    #print("starting process " + str(img_id) + "...")
-    timing1 = time.time()
-    if PyTorchDedispersion: #uses Nikita's dedisp code
-        total_noise = None
-        printlog("Using PyTorchDedispersion",output_file=processfile)
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = sl.run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=sl.output_file,usefft=usefft,space_filter=space_filter)
-
-    else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = sl.run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=sl.output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax)
-    
-    #update noise stats
-    if total_noise is not None:
-        sl.current_noise = (noise_update_all(total_noise,gridsize,gridsize,sl.DM_trials,sl.widthtrials),sl.current_noise[1] + 1)
-
-    #update last frame
-    if append_frame:
-        sl.save_last_frame(sl.last_frame,full=True)
-        printlog("Writing to last_frame.npy",output_file=processfile)
-
-    if savesearch or len(fullimg.candidxs)>0:
-        #write raw candidates to csv
-        csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
-        wr = csv.writer(csvfile,delimiter=',')
-        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
-        for i in range(len(fullimg.candidxs)):
-            wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i],dtype=int)]))
-        csvfile.close()
-
-        #save image
-        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
-        np.save(f,fullimg.image_tesseract_binned)
-        f.close()
-        
-        #if the dask scheduler is set up, put the cand file name in the queue
-        if 'DASKPORT' in os.environ.keys():
-            #try scheduling a task instead
-            QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
-            QQUEUE.put(str(np.float64(fullimg.img_uv_diag).tobytes().hex()))
-            QQUEUE.put(str(np.float64(fullimg.img_elev).tobytes().hex()))
-    printlog(fullimg.image_tesseract_searched,output_file=processfile)
-    printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
-
-    if len(fullimg.candidxs)==0:
-        printlog("No candidates found",output_file=processfile)
-        return fullimg.image_tesseract_searched#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
-    else:
-        printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
-        return fullimg.image_tesseract_searched
-"""
-
-
-"""
-    #clustering with hdbscan
-    if cluster:
-        printlog("clustering with HDBSCAN...",output_file=processfile)
-
-        #prune candidates with infinite signal-to-noise for clustering
-        cands_noninf = []
-        for i in fullimg.candidxs:
-            if not np.isinf(i[-1]): cands_noninf.append(i)  
-
-        #clustering with hdbscan
-        classes,fullimg.cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = sl.hdbscan_cluster(cands_noninf,min_cluster_size=5,gridsize=gridsize,plot=True,show=False,SNRthresh=SNRthresh)
-        printlog("done, made " + str(len(fullimg.cluster_cands)) + " clusters",output_file=processfile)
-        printlog(classes,output_file=processfile)
-        printlog(fullimg.cluster_cands,output_file=processfile)
-    else:
-        fullimg.cluster_cands = fullimg.candidxs
-
-    
-    printlog("basic clustering in RA, DEC...",output_file=processfile,end='')
-    fullimg.unique_cands = [(fullimg.cluster_cands[i][0],fullimg.cluster_cands[i][1],fullimg.cluster_cands[i][3]) for i in range(len(fullimg.cluster_cands))]
-    fullimg.unique_cands = list(set(fullimg.unique_cands))
-    printlog("{a} unique positions/widths...".format(a=len(fullimg.unique_cands)),output_file=processfile,end='')
-    printlog("done",output_file=processfile)
-
-    printlog("obtaining image cutouts...",output_file=processfile,end='')
-    fullimg.subimgs = np.zeros((len(fullimg.unique_cands),subimgpix,subimgpix,fullimg.image_tesseract_binned.shape[3]),dtype=np.float16)
-    
-    for i in range(len(fullimg.unique_cands)):
-        fullimg.subimgs[i,:,:,:] = sl.get_subimage(fullimg.image_tesseract_binned,fullimg.unique_cands[i][0],fullimg.unique_cands[i][1],save=False,subimgpix=subimgpix)[:,:,int(fullimg.unique_cands[i][2]),:]
-    
-    data_array = np.nan_to_num(fullimg.subimgs,nan=0.0) #change nans to 0s so that classification works, maybe better to implement something different here
-
-
-    #*** The classifier only classifies based on RA,DEC,frequency, so we should bin each candidate in time and just send the peak time sample. I'm going to modify sl.get_subimage to output an array that is Ncands x RA x DEC x frequency after binning in time for th emaximum pulse width for each candidate. ***#
-    # actually...we already output a de-dispersed and binned image tessearct from the search; let's also output one thats just been binned, then we can get argmax for each time series and use that.
-
-
-    #print(data_array.shape)
-    transposed_array = np.transpose(data_array, (0,3,1,2))#cands x frequencies x RA x DEC
-    new_shape = (data_array.shape[0], data_array.shape[3], data_array.shape[1], data_array.shape[2])
-    merged_array = transposed_array.reshape(new_shape)
-
-    predictions, probabilities = classify_images(merged_array, model_weights, verbose=verbose)  
-
-    printlog(predictions,output_file=processfile)
-    printlog(probabilities,output_file=processfile)
-    fullimg.predictions = copy.deepcopy(predictions)
-    fullimg.probabilities = copy.deepcopy(probabilities)
-
-    #find candidates most likely to be real; need to ask Nikita about conditions
-    finalidxs = np.arange(data_array.shape[0])[~np.array(fullimg.predictions,dtype=bool)]
-    
-    #only save if we find candidates
-    if len(finalidxs)==0: 
-        printlog("No candidates found",output_file=processfile)
-        return fullimg.image_tesseract_searched #fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
-
-
-    #save predictions/probabilities to a csv
-    with open(cand_dir + "/classification_" + fullimg.img_id_isot + ".csv","w") as csvfile:
-        wr = csv.writer(csvfile,delimiter=',')
-        wr.writerow(np.concatenate([["predictions"],predictions]))
-        wr.writerow(np.concatenate([["probabilities"],probabilities]))
-    csvfile.close()
-
-
-
-    #get candidates most likely to be real; need to ask Nikita about conditions
-    finalcands = [fullimg.cluster_cands[i] for i in finalidxs]#[condition]
-
-    #dump sub-images to numpy files and write candidates to csv
-    suffix = ".npy"# + fullimg_array[idx].img_id_hex
-    prefix = "NSFRB"
-    lastname = None	#once we have etcd, change to 'names.get_lastname()'
-    csvfile = open(cand_dir + "candidates_" + fullimg.img_id_isot + ".csv","w")
-    wr = csv.writer(csvfile,delimiter=',')
-    wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"])
-    for i in range(len(finalidxs)):
-        lastname = names.increment_name(fullimg.img_id_mjd,lastname=lastname)
-        finalcand = finalcands[i]
-        wr.writerow(np.concatenate([[lastname],np.array(finalcand,dtype=int)]))
-        np.save(cand_dir + prefix + lastname + suffix,data_array[finalidxs[i],:,:,:])       
-    csvfile.close()
-
-    #make diagnostic plot with all candidates and push to slack
-    if len(finalidxs) > 0:
-        #make diagnostic plot
-        printlog("making diagnostic plot...",output_file=processfile,end='')
-        candplot=pl.search_plots_new(canddict,fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,DM_trials=sl.DM_trials,widthtrials=sl.widthtrials,output_dir=cand_dir,show=False)
-        printlog("done!",output_file=processfile)
-
-        if toslack:
-            printlog("sending plot to slack...",output_file=processfile,end='')
-            send_candidate_slack(candplot)
-            printlog("done!",output_file=processfile)
-
-
-    #if args.verbose:
-    printlog(fullimg.subimgs.shape,output_file=processfile)
-    printlog("done",output_file=processfile)
-
-
-
-    
-
-    return fullimg.image_tesseract_searched#, SNRthresh#fullimg.cands,fullimg.cluster_cands,len(fullimg.cluster_cands)
-
-"""
 fullimg_dict = dict()
 def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled):
     """
@@ -461,7 +290,9 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
         ETCD.put_dict(
                     ETCDKEY,
                     {
-                        "candfile":future.result()[1]
+                        "candfile":future.result()[1],
+                        "uv_diag":fullimg_dict[timestepisot].img_uv_diag,
+                        "dec":fullimg_dict[timestepisot].img_dec
                     }
                 )
     printlog(future.result()[0],output_file=processfile)
@@ -769,7 +600,7 @@ def main(args):
 
         #try to parse to get address
         try:
-            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=args.headersize,datasize=args.datasize,port=args.port,corr_address=corr_address,testh23=args.testh23)
+            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=args.headersize,datasize=args.datasize,port=args.port,corr_address=corr_address,testh23=args.testh23)
             #if set_pflag_loc("all",on=False) == None:
             #    printlog("Error setting flags, abort",processfile=processfile)
             #    break
@@ -807,7 +638,7 @@ def main(args):
 
         #if object is in dict
         if img_id_isot not in fullimg_dict.keys():
-            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_elev,shape=tuple(np.concatenate([shape,[args.nchans]])))
+            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[args.nchans]])))
 
         """
         #if object corresponding to the image is in list
