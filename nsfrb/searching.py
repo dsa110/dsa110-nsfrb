@@ -1747,7 +1747,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             print("OLD SHAPE:",image_tesseract_filtered.shape,file=fout)
 
             truensamps = image_tesseract_filtered.shape[2]
-            image_tesseract_filtered_cut = np.concatenate([last_frame[:,RA_cutoff:,:,:],image_tesseract_filtered[:,:-RA_cutoff,:,:]],axis=2)
+            image_tesseract_filtered_cut = np.concatenate([last_frame[:,:-RA_cutoff,:,:],image_tesseract_filtered[:,RA_cutoff:,:,:]],axis=2)
             PSF = PSF[:,int(RA_cutoff//2):-(RA_cutoff - int(RA_cutoff//2)),:,:]
             nsamps = image_tesseract_filtered.shape[2]
             corr_shifts_all = corr_shifts_all_append

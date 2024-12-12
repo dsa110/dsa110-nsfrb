@@ -113,3 +113,4 @@ crpix_dict = {16.27:{"source":"3C138",
                      }
              }
 
+maxrawsamps = 2250

@@ -494,8 +494,8 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
             ra_grid_pix_2D -= (((mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
             tmp = w2.wcs_pix2world(np.array([ra_grid_pix_2D.flatten(),
                                      dec_grid_pix_2D.flatten()]).transpose(),0)
-            ra_grid = tmp[:,0].reshape((image_size,image_size))
-            dec_grid = tmp[:,1].reshape((image_size,image_size))
+            ra_grid = tmp[:,0].reshape((image_size,image_size)).transpose()
+            dec_grid = tmp[:,1].reshape((image_size,image_size)).transpose()
 
         else:
             dec_grid_pix,ra_grid_pix = np.arange(image_size,dtype=float),np.arange(image_size,dtype=float)
