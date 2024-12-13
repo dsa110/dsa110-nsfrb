@@ -363,6 +363,8 @@ def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
     """
     Gets RA, given the MJD and declination pointing
     """
+    return Time(mjd,format='mjd').sidereal_time("mean",longitude=Lon).to(u.deg).value
+    """
     ovro =  EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)#(lat=37.2317 * u.deg, lon=-118.2951 * u.deg, height=1222 * u.m)
     time = Time(mjd,format='mjd')
     if dec<Lat:#37.23:
@@ -373,7 +375,7 @@ def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
         alt=(90.-(dec-Lat))*u.deg#37.23))*u.deg
     altaz = SkyCoord(alt=alt,az=az,frame = 'altaz',obstime=time,location=ovro)
     return altaz.icrs.ra.deg
-
+    """
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
 def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False):
@@ -482,7 +484,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         #make wcs object from saved cal params
         print("Using WCS from astrometric cal with " + str(crpix_dict[best_dec]['source']),file=fout)
         w2 = wcs.WCS(naxis=2)
-        w2.wcs.crval = crpix_dict[best_dec]['crval']
+        w2.wcs.crval = [icrs_pos.ra.value,icrs_pos.dec.value]#crpix_dict[best_dec]['crval']
         w2.wcs.cdelt = np.array([-pixel_resolution, -pixel_resolution])*180/np.pi
         w2.wcs.crpix = crpix_dict[best_dec]['crpix']
         w2.wcs.ctype = ["RA---SIN", "DEC--SIN"]
@@ -491,7 +493,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         #get axes
         if two_dim:
             dec_grid_pix_2D,ra_grid_pix_2D = np.meshgrid(np.arange(image_size,dtype=float),np.arange(image_size,dtype=float))
-            ra_grid_pix_2D -= (((mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
+            #ra_grid_pix_2D -= (-1 if mjd_obs<crpix_dict[best_dec]['mjd'] else 1)*((np.abs(mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
             tmp = w2.wcs_pix2world(np.array([ra_grid_pix_2D.flatten(),
                                      dec_grid_pix_2D.flatten()]).transpose(),0)
             ra_grid = tmp[:,0].reshape((image_size,image_size)).transpose()
@@ -499,7 +501,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
 
         else:
             dec_grid_pix,ra_grid_pix = np.arange(image_size,dtype=float),np.arange(image_size,dtype=float)
-            ra_grid_pix -= (((mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
+            #ra_grid_pix -= (-1 if mjd_obs<crpix_dict[best_dec]['mjd'] else 1)*((np.abs(mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
             tmp = w2.wcs_pix2world(np.array([ra_grid_pix,dec_grid_pix]).transpose(),0)
             ra_grid = tmp[:,0]
             dec_grid =tmp[:,1]
