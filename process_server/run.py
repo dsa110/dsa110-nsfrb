@@ -347,8 +347,9 @@ def main(args):
 
         sl.corr_shifts_all_append,sl.tdelays_frac_append,sl.corr_shifts_all_no_append,sl.tdelays_frac_no_append = sl.gen_dm_shifts(sl.DM_trials,sl.freq_axis,config.tsamp,config.nsamps) 
 
-        sl.default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(sl.DEC_axis),args.kernelsize//2,True,args.nsamps) #make_PSF_cube(gridsize=args.kernelsize,nsamps=args.nsamps,nchans=args.nchans)
-        sl.default_PSF_params = (args.kernelsize,"{d:.2f}".format(d=np.nanmean(sl.DEC_axis)))
+        sl.default_PSF,sl.default_PSF_params = scPSF.manage_PSF_dict(sl.PSF_dict,args.kernelsize,sl.DEC_axis[len(sl.DEC_axis)//2],sl.default_PSF_params,sl.default_PSF,args.nsamps)
+        #sl.default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(sl.DEC_axis),args.kernelsize//2,True,args.nsamps) #make_PSF_cube(gridsize=args.kernelsize,nsamps=args.nsamps,nchans=args.nchans)
+        #sl.default_PSF_params = (args.kernelsize,"{d:.2f}".format(d=np.nanmean(sl.DEC_axis)))
 
         sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
         sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
@@ -726,7 +727,7 @@ if __name__=="__main__":
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of images that can be searched at once, default = 5, maximum is 40',default=5)
     parser.add_argument('--headersize',type=int,help='Number of bytes representing the header; note this varies depending on the data shape, default = 128',default=128)
     parser.add_argument('--spacefilter',action='store_true', help='Use PSF to spatial matched filter the input image')
-    parser.add_argument('--kernelsize',type=int,help='Kernel size for PSF spatial matched filter; default is same as image size',default=300)
+    parser.add_argument('--kernelsize',type=int,help='Kernel size for PSF spatial matched filter; default=151',default=151)
     parser.add_argument('--usefft',action='store_true', help='Implement PSF spatial matched filter as a 2D FFT')
     parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
     parser.add_argument('--multithreading',action='store_true',help='Enable multithreading in search')

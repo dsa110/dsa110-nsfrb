@@ -25,8 +25,10 @@ from scipy.signal import convolve2d
 from nsfrb import simulating as sim
 from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.outputlogging import printlog,numpy_to_fits
+from nsfrb.imaging import uv_to_pix
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
+from astropy.time import Time
 
 fsize=45
 fsize2=35
@@ -131,8 +133,10 @@ jaxdev = 0
 
 
 #create axes
-RA_axis = np.linspace(RA_point-(pixsize*gridsize/2),RA_point+(pixsize*gridsize/2),gridsize)
-DEC_axis = np.linspace(DEC_point-(pixsize*gridsize/2),DEC_point+(pixsize*gridsize/2),gridsize)
+RA_axis,DEC_axis,elev = uv_to_pix(Time.now().mjd,gridsize)
+print(DEC_axis)
+#RA_axis = np.linspace(RA_point-(pixsize*gridsize/2),RA_point+(pixsize*gridsize/2),gridsize)
+#DEC_axis = np.linspace(DEC_point-(pixsize*gridsize/2),DEC_point+(pixsize*gridsize/2),gridsize)
 time_axis = np.linspace(0,T,nsamps) #ms
 freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
@@ -304,19 +308,10 @@ ANTENNAELEVS = np.array(ANTENNAELEVS)
 """
 pre-computed psf values
 """
-PSF_dict = dict()
-PSF_decs = []
-psfnames = glob.glob(psf_dir+"gridsize_*")
-for psfname in psfnames:
-    gsize = int(psfname[psfname.index("gridsize_")+9:])
-    PSF_dict[gsize] = dict()
-    PSF_decs = []
-    decnames = glob.glob(psfname+"/*npy")
-    for decname in decnames:
-        dec = float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")])
-        PSF_decs.append(float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")]))
+PSF_dict = scPSF.make_PSF_dict()
+default_PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,gridsize,DEC_axis[int(gridsize//2)],nsamps=nsamps)
 
-    PSF_dict[gsize]['declabels'] = np.array(np.sort(PSF_decs))
+"""
 if gridsize in PSF_dict.keys():
     printlog("loading PSF for gridsize " + str(gridsize) +", declination " + str(PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]),output_file=processfile)
     default_PSF = np.array(np.load(psf_dir + "gridsize_" + str(gridsize) + "/PSF_" + str(gridsize) + "_{d:.2f}".format(d=PSF_dict[gridsize]['declabels'][np.argmin(np.abs(PSF_dict[gridsize]['declabels']-np.nanmean(DEC_axis)))]) + "_deg.npy"),dtype=np.float32)[:,:,np.newaxis,:].repeat(nsamps,axis=2)
@@ -324,7 +319,7 @@ if gridsize in PSF_dict.keys():
 else:
     default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),gridsize//2,True,nsamps)#sim.make_PSF_cube()
     default_PSF_params = (gridsize,np.nanmean(DEC_axis))
-
+"""
 
 
 
@@ -1748,7 +1743,12 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
             truensamps = image_tesseract_filtered.shape[2]
             image_tesseract_filtered_cut = np.concatenate([last_frame[:,:-RA_cutoff,:,:],image_tesseract_filtered[:,RA_cutoff:,:,:]],axis=2)
-            PSF = PSF[:,int(RA_cutoff//2):-(RA_cutoff - int(RA_cutoff//2)),:,:]
+            if PSF.shape[1]>= image_tesseract_filtered_cut.shape[1]:
+                #first trim to equal dimensions as image
+                PSF = PSF[int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2):int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2)+image_tesseract_filtered.shape[0],
+                          int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2):int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2)+image_tesseract_filtered.shape[1],:,:]
+                #then apply RA cutoff
+                PSF = PSF[:,int(RA_cutoff//2):-(RA_cutoff - int(RA_cutoff//2)),:,:]
             nsamps = image_tesseract_filtered.shape[2]
             corr_shifts_all = corr_shifts_all_append
             tdelays_frac = tdelays_frac_append
@@ -1763,10 +1763,16 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             RA_axis = RA_axis[:-RA_cutoff]
             gridsize_RA = len(RA_axis)
         else:
+            if PSF.shape[1]>= image_tesseract_filtered_cut.shape[1]:
+                #first trim to equal dimensions as image
+                PSF = PSF[int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2):int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2)+image_tesseract_filtered.shape[0],
+                          int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2):int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2)+image_tesseract_filtered.shape[1],:,:]
             corr_shifts_all = corr_shifts_all_no_append
             tdelays_frac = tdelays_frac_no_append
             truensamps = nsamps = image_tesseract_filtered.shape[2]
             image_tesseract_filtered_cut=image_tesseract_filtered_cut
+        assert(PSF.shape[0]<=image_tesseract_filtered_cut.shape[0])
+        assert(PSF.shape[1]<=image_tesseract_filtered_cut.shape[1])
         #subgrid
         subgridsize_RA = gridsize_RA//DMbatches
         subgridsize_DEC = gridsize_DEC//DMbatches
@@ -2112,32 +2118,8 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     global default_PSF
     global default_PSF_params
     global PSF_dict
-    if kernel_size in PSF_dict.keys() and default_PSF_params != (kernel_size,PSF_dict[kernel_size]['declabels'][np.argmin(np.abs(PSF_dict[kernel_size]['declabels']-np.nanmean(DEC_axis)))]):
-        best_dec = PSF_dict[kernel_size]['declabels'][np.argmin(np.abs(PSF_dict[kernel_size]['declabels']-np.nanmean(DEC_axis)))]
-        printlog("loading PSF for kernelsize " + str(kernel_size) +", declination " + str(best_dec),output_file=processfile)
-        default_PSF = np.array(np.load(psf_dir + "gridsize_" + str(kernel_size) + "/PSF_" + str(kernel_size) + "_{d:.2f}".format(d=best_dec) + "_deg.npy"),dtype=np.float32)[:,:,np.newaxis,:].repeat(nsamps,axis=2)
-        default_PSF_params = (kernel_size,best_dec)
-    elif kernel_size not in PSF_dict.keys() and (default_PSF_params[0] != kernel_size or np.abs(default_PSF_params[1] - float("{d:.2f}".format(d=np.nanmean(DEC_axis))))>1.5):
-        printlog("making PSF for kernelsize " + str(kernel_size) + ", declination " + "{d:.2f}".format(d=np.nanmean(DEC_axis)),output_file=processfile)
-        default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),kernel_size//2,True,nsamps)
-        default_PSF_params = (kernel_size,float("{d:.2f}".format(d=np.nanmean(DEC_axis))))
-        os.system("mkdir " + psf_dir + "gridsize_" + str(kernel_size) )
-        np.save(psf_dir + "gridsize_" + str(kernel_size)+"/PSF_" + str(kernel_size) + "_{d:.2f}".format(d=np.nanmean(DEC_axis)) + "_deg.npy",default_PSF[:,:,0,:].astype(np.float32))
 
-        printlog("updating PSF dict...",output_file=processfile)
-        PSF_decs = []
-        psfnames = glob.glob(psf_dir+"gridsize_*")
-        for psfname in psfnames:
-            gsize = int(psfname[psfname.index("gridsize_")+9:])
-            PSF_dict[gsize] = dict()
-            PSF_decs = []
-            decnames = glob.glob(psfname+"/*npy")
-            for decname in decnames:
-                dec = float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")])
-                PSF_decs.append(float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")]))
-
-            PSF_dict[gsize]['declabels'] = np.array(np.sort(PSF_decs))
-
+    default_PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,kernel_size,fullimg.img_dec,default_PSF_params,default_PSF,nsamps=nsamps)
     canddict = dict()
 
     #print("starting process " + str(img_id) + "...")
@@ -2291,190 +2273,3 @@ def normalize_image(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_s
             fout.close()
         return image_tesseract/noisemap
 
-"""
-#code to cutout subimages
-def get_subimage(image_tesseract,ra_idx,dec_idx,dm=-1,freq_axis=freq_axis,tsamp=130,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=output_file,output_dir=cand_dir):
-    if output_file != "":
-        fout = open(output_file,"a")
-    else:
-        fout = sys.stdout
-    gridsize = image_tesseract.shape[0]
-    fname = output_dir + prefix + "_" + str(ra_idx) + "_" + str(dec_idx)
-    if subimgpix%2 == 0:
-        print("subimgpix must be odd",file=fout)
-        if output_file != "":
-            fout.close()
-        return None
-
-
-
-    #dedisperse if given a dm
-    if dm != -1:
-        fname = fname + "_dedisp" + str(dm) + ".npy"
-        image_tesseract_dm = copy.deepcopy(image_tesseract)
-        for i in range(gridsize):
-            for j in range(gridsize):
-                tdelays = dm*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
-                tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
-                tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
-                tdelays_frac = tdelays/tsamp - tdelays_idx_low
-
-                for k in range(nchans):
-                    #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
-                    arrlow =  np.pad(image_tesseract[i,j,:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
-                    arrhi =  np.pad(image_tesseract[i,j,:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
-
-                    image_tesseract_dm[i,j,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
-
-    else:
-        fname = fname + ".npy"
-        image_tesseract_dm = copy.deepcopy(image_tesseract)
-
-    #pad w/ nans
-    image_tesseract_dm = np.pad(image_tesseract_dm,((gridsize,gridsize),
-                                                   (gridsize,gridsize),
-                                                   (0,0),
-                                                   (0,0)),
-                                                   mode='constant',
-                                                   constant_values=np.nan)
-
-    #cut out subimage
-    minraidx = int(gridsize + ra_idx - subimgpix//2)#np.max([ra_idx - subimgpix//2,0])
-    maxraidx = int(gridsize + ra_idx + subimgpix//2 + 1)#np.min([ra_idx + subimgpix//2 + 1,gridsize-1])
-    mindecidx = int(gridsize + dec_idx - subimgpix//2)#np.max([dec_idx - subimgpix//2,0])
-    maxdecidx = int(gridsize + dec_idx + subimgpix//2 + 1)#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
-
-    #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
-    print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)
-
-    image_cutout = image_tesseract_dm[minraidx:maxraidx,mindecidx:maxdecidx,:,:]
-
-    if save:
-        np.save(fname,image_cutout)
-
-    if plot:
-        plt.figure(figsize=(12,12))
-        plt.imshow(image_cutout.mean((2,3)),aspect='auto')
-        plt.show()
-    if output_file != "":
-        fout.close()
-    return image_cutout
-
-
-
-
-
-#hdbscan clustering function; clusters in DM, width, RA, DEC space
-import hdbscan
-def hdbscan_cluster(cands,min_cluster_size=50,gridsize=gridsize,nDMtrials=nDMtrials,nwidths=nwidths,dmt=DM_trials,wt=widthtrials,SNRthresh=SNRthresh,plot=False,show=False):
-
-    print(str(len(cands)) + " candidates")
-
-    #make list for each param
-    raidxs = []
-    decidxs = []
-    dmidxs = []
-    widthidxs = []
-    snridxs = []
-    for i in range(len(cands)):
-        raidxs.append(cands[i][0])
-        decidxs.append(cands[i][1])
-        dmidxs.append(cands[i][3])
-        widthidxs.append(cands[i][2])
-        snridxs.append(cands[i][4])
-    raidxs = np.array(raidxs)
-    decidxs = np.array(decidxs)
-    dmidxs = np.array(dmidxs)
-    widthidxs = np.array(widthidxs)
-    snridxs = np.array(snridxs)
-
-    test_data=np.array([raidxs,decidxs,dmidxs,widthidxs]).transpose()
-
-
-    #create clusterer
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, gen_min_span_tree=True)
-
-    #cluster data
-    clusterer.fit(test_data)
-
-
-    #print number of noise points
-    noisepoints = np.sum(clusterer.labels_==-1)
-    print(str(noisepoints) + " noise points")
-
-    nclasses = len(np.unique(clusterer.labels_))
-    classnames = np.unique(clusterer.labels_)
-    classes = clusterer.labels_
-    if -1 in clusterer.labels_:
-        nclasses -= 1
-
-    print(str(nclasses) + " unique classes")
-
-
-    #get centroids
-    fcsv = open(cand_dir + "hdbscan_cluster_cands.csv","w")
-    csvwriter = csv.writer(fcsv)
-    centroid_ras = []
-    centroid_decs = []
-    centroid_dms = []
-    centroid_widths = []
-    centroid_snrs = []
-    for k in classnames:
-        if k != -1:
-            centroid_ras.append((np.nansum((snridxs*raidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_decs.append((np.nansum((snridxs*decidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_dms.append((np.nansum((snridxs*dmidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_widths.append((np.nansum((snridxs*widthidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_snrs.append(np.nansum((snridxs*snridxs)[classes==k])/np.nansum(snridxs[classes==k]))
-            csvwriter.writerow([centroid_ras[-1],centroid_decs[-1],centroid_widths[-1],centroid_dms[-1],centroid_snrs[-1]])            
-    fcsv.close()
-    centroid_ras = np.array(centroid_ras)
-    centroid_decs = np.array(centroid_decs)
-    centroid_dms = np.array(centroid_dms)
-    centroid_widths = np.array(centroid_widths)
-    centroid_snrs = np.array(centroid_snrs)
-
-    centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
-
-    if plot:
-        cands_noninf = []
-        for i in cands:
-            if not np.isinf(i[-1]): cands_noninf.append(i)
-        
-        plt.figure(figsize=(40,12))
-        plt.subplot(121)
-        for i in range(-1,len(np.unique(classes))-int(-1 in classes)):
-            if i == -1:
-                plt.scatter(np.array(cands_noninf)[classes==i,0],np.array(cands_noninf)[classes==i,1],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Not Classified',color='grey')
-            else:
-                c=plt.plot(centroid_ras[i],centroid_decs[i],'x',markersize=50,markerfacecolor="none",markeredgewidth=4)
-                plt.scatter(np.array(cands_noninf)[classes==i,0],np.array(cands_noninf)[classes==i,1],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Class ' + str(i),c=c[0].get_color())
-
-        plt.xlim(0,32)
-        plt.ylim(0,32)
-        plt.xlabel("RA index")
-        plt.ylabel("DEC index")
-        plt.legend(loc='upper right')
-
-        plt.subplot(122)
-        wtinterp = interp1d(np.arange(len(wt)),wt,fill_value='extrapolate')
-        dmtinterp = interp1d(np.arange(len(dmt)),dmt,fill_value='extrapolate')
-        for i in range(-1,len(np.unique(classes))-int(-1 in classes)):
-            if i == -1:
-                plt.scatter(wt[np.array(cands_noninf,dtype=int)[classes==i,2]],dmt[np.array(cands_noninf,dtype=int)[classes==i,3]],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Not Classified',color='grey')
-            else:
-                c=plt.plot(int(wtinterp(centroid_widths[i])),int(dmtinterp(centroid_dms[i])),'x',markersize=50,markerfacecolor="none",markeredgewidth=4)
-                plt.scatter(wt[np.array(cands_noninf,dtype=int)[classes==i,2]],dmt[np.array(cands_noninf,dtype=int)[classes==i,3]],alpha=0.5,s=1000*(np.array(cands_noninf)[classes==i,-1] - SNRthresh)/(2*SNRthresh - SNRthresh),label='Class ' + str(i),c=c[0].get_color())
-        plt.xlabel("Width (Samples)")
-        plt.ylabel("DM (pc/cc)")
-        plt.legend(loc='upper right',frameon=True)
-	
-
-        plt.savefig(cand_dir + "hdbscan_cluster_plot.png")
-        if show:        
-            plt.show()
-        else:
-            plt.close()
-
-    return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
-"""

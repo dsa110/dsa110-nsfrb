@@ -126,6 +126,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     if TOAflag:
         TOAs = np.array(TOAs)
 
+    printlog("Done creating arrays of test data",output_file=output_file)
     if TOAflag:
         test_data=np.array([raidxs,decidxs,dmidxs,widthidxs,TOAs]).transpose()
     else:
@@ -133,6 +134,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
 
     #create psf binary map
     PSFbin = PSF>np.nanpercentile(PSF,perc)
+    printlog("Done creating binary map",output_file=output_file)
 
     #for each candidate, see what other candidates included in psf 
     binned_dmidxs = []
@@ -143,6 +145,10 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     if TOAflag:
         binned_TOAs = []
     for i in range(len(cands)):
+        printlog(str(i) + " ; index: ",output_file=output_file)
+        printlog(int(PSF.shape[0]//2)+np.array(decidxs-decidxs[i],int), output_file=output_file)
+        printlog(int(PSF.shape[1]//2)+np.array(raidxs-raidxs[i],int),output_file=output_file)
+        printlog(PSFbin[int(PSF.shape[0]//2)+np.array(decidxs-decidxs[i],int),int(PSF.shape[1]//2)+np.array(raidxs-raidxs[i],int)],output_file=output_file)
         inc_idxs = np.arange(len(cands))[PSFbin[int(PSF.shape[0]//2)+np.array(decidxs-decidxs[i],int),int(PSF.shape[1]//2)+np.array(raidxs-raidxs[i],int)]]
         #take the unique widths, dms, and TOAs and sum the snrs
         if TOAflag:
@@ -156,7 +162,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
         if TOAflag:
             binned_TOAs = np.concatenate([binned_TOAs,unique_cands[2,:]])
 
-
+        printlog("finished making binned indices",output_file=output_file)
 
         snrs_i = np.zeros(unique_cands.shape[1])
         for j in range(unique_cands.shape[1]):
@@ -165,6 +171,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
                 condition = np.logical_and(condition,TOAs[inc_idxs]==unique_cands[2,j])
             snrs_i[j] += np.sum(snridxs[inc_idxs][condition])
         binned_snridxs = np.concatenate([binned_snridxs,snrs_i])
+        printlog("finished getting binned snrs",output_file=output_file)
         """
         if TOAflag:
             condition = np.array([(dmidxs[j] in unique_cands[0,:]) and 
@@ -385,16 +392,18 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
 #code to cutout subimages
 freq_axis = np.linspace(fmin,fmax,nchans)
 def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=cutterfile,output_dir=cand_dir,corr_shifts=corr_shifts_all_no_append,tdelays_frac=tdelays_frac_no_append,dm=None,dmidx=None,tsamp=tsamp,freq_axis=freq_axis):
+    """
     if output_file != "":
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
+    """
     gridsize = image_tesseract.shape[0]
     fname = output_dir + prefix + "_" + str(ra_idx) + "_" + str(dec_idx)
     if subimgpix%2 == 0:
-        print("subimgpix must be odd",file=fout)
-        if output_file != "":
-            fout.close()
+        printlog("subimgpix must be odd",output_file=output_file)
+        #if output_file != "":
+        #    fout.close()
         return None
 
 
@@ -438,7 +447,7 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
     maxdecidx = int(gridsize + dec_idx + subimgpix//2 + 1)#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
 
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
-    print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)
+    printlog(str((minraidx,maxraidx,mindecidx,maxdecidx)),output_file=output_file)
 
     image_cutout = image_tesseract_dm[mindecidx:maxdecidx,minraidx:maxraidx,:,:]
 
@@ -449,8 +458,8 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
         plt.figure(figsize=(12,12))
         plt.imshow(image_cutout.mean((2,3)),aspect='auto')
         plt.show()
-    if output_file != "":
-        fout.close()
+    #if output_file != "":
+    #fout.close()
     return image_cutout
 
 
@@ -605,6 +614,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         return
     RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
+    RA_axis = RA_axis[int((len(RA_axis)-image.shape[1])//2):int((len(RA_axis)-image.shape[1])//2) + image.shape[1]]
     #PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps)
 
     #get DM trials from file
@@ -617,7 +627,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     """
 
     #start clustering
-    if args['cluster']:
+    if args['cluster'] and len(finalidxs)>=args['mincluster']:
         printlog("clustering with HDBSCAN...",output_file=cutterfile)
         """
         #prune candidates with infinite signal-to-noise for clustering
@@ -639,7 +649,9 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         """
         #clustering with hdbscan
         if args['psfcluster']:
-            PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+            PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*image.shape[0])+1,dec_obs,nsamps=nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+            #PSF = PSF[:,int((PSF.shape[1]-image.shape[1])//2):int((PSF.shape[1]-image.shape[1])//2) + image.shape[1],:,:]
+            PSF = PSF.mean((2,3))
             printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
         else:
             PSF = None
@@ -672,9 +684,13 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
                 #don't need to dedisperse(?)
                 subimg = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args['subimgpix'])
                 if useTOA:
+                    printlog("using TOA...",output_file=cutterfile)
                     loc = int(finalcands[j][4])
+                    printlog("got loc...",output_file=cutterfile)
                     wid = widthtrials[int(finalcands[j][2])]
+                    printlog("got wid...",output_file=cutterfile)
                     data_array[j,:,:,:] = img_to_classifier_format(subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),:].mean(2),cand_isot+"_"+str(j),img_dir)
+                    printlog("img to classifier formatd done...",output_file=cutterfile)
                 else:
                     data_array[j,:,:,:] = img_to_classifier_format(subimg.mean(2),cand_isot+"_"+str(j),img_dir)  #.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
                 printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
