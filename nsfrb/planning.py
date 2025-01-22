@@ -1,4 +1,6 @@
 import numpy as np
+import glob
+
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
 from astropy.time import Time
@@ -618,4 +620,17 @@ def VLAC_find_cal(mjd_obs=None,obs_name=None,datasize=4,nbase=4656,nchan=384,npo
 
     return close_cals
 
-    
+
+def find_object_file(ra,dec,headersize=12,datasize=4,nsamps=2,nchan=2,Lon=Lon):
+    allfiles = np.sort(glob.glob(vis_dir + "/lxd110h03/*out"))[::-1]
+    for f in allfiles:
+        dat,sb,mjd,dec_f = read_raw_vis(f,headersize=headersize,datasize=datasize,gulp=0,nsamps=nsamps,nchan=nchan)
+        ra_f = Time(mjd,format='mjd').sidereal_time('apparent', longitude=Lon*u.deg).to(u.deg).value
+        print(mjd,ra_f,dec_f,f[-9:-4])
+        diff = ((ra*u.deg).to(u.hourangle).value - (ra_f*u.deg).to(u.hourangle).value)#/np.cos(dec*np.pi/180)
+        
+        print(diff,ra,ra_f)
+        print(np.abs(dec_f-dec)<1.5,(ra<180 and ra_f>=180 and np.abs(diff)%24<5/60),(diff >= 0 and diff<5/60))
+        if np.abs(dec_f-dec)<1.5 and ((ra<180 and ra_f>=180 and ((24+diff))<5/60) or (diff >= 0 and diff<5/60)):
+            return int(f[-9:-4])
+    return None

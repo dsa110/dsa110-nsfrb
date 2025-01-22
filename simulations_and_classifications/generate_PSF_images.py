@@ -71,8 +71,8 @@ def make_PSF_dict(PSF_dict=dict()):
         PSF_decs = []
         decnames = glob.glob(psfname+"/*npy")
         for decname in decnames:
-            dec = float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")])
-            PSF_decs.append(float(decname[decname.index("PSF_"+str(gsize))+8:decname.index("_deg")]))
+            dec = float(decname[decname.index("PSF_")+ 5 +len(str(gsize)):decname.index("_deg")])
+            PSF_decs.append(float(decname[decname.index("PSF_") + 5 + len(str(gsize)):decname.index("_deg")]))
 
         PSF_dict[gsize]['declabels'] = np.array(np.sort(PSF_decs))
     """
