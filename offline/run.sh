@@ -7,7 +7,13 @@ runfile=$1
 maxrun=$2
 ngulp=$3
 gulpoffset=$4
-filedir=$5
+inject=$5
+injectflag=" "
+if ([[ $inject > 0 ]]); then
+	injectflag=" --inject"
+fi
+
+filedir=$6
 echo "here"
 echo $filedir
 echo "here"
@@ -26,7 +32,7 @@ do
 	#get date file was created
 	labeldate=$(stat -c '%y' ${NSFRBDATA}dsa110-nsfrb-fast-visibilities/*/${labelinit})
 	labeldate=${labeldate:0:10}
-	echo $labelinit $labeldate
+	#echo $labelinit $labeldate
 		
 
 	#run imager if not already run for this isot and if specified
@@ -43,10 +49,10 @@ do
 			fi
 		done
 		if (( $prerun==0 )); then
-			if [ -z "$5" ]; then
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --save --search #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
+			if [ -z "$6" ]; then
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --save --search$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			else
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --filedir $filedir --save --search
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --filedir $filedir --save --search$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless 
 
 			fi
 			donefiles+=($label)

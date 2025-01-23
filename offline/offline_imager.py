@@ -70,7 +70,10 @@ def main(args):
 
     #randomly choose which gulp to inject burst in
     if args.inject:
-        inject_gulp = np.random.choice(np.arange(args.gulp_offset, args.gulp_offset + num_gulps,dtype=int))
+        num_inject = args.num_inject
+        if args.num_inject > num_gulps:
+            num_inject = num_gulps
+        inject_gulps = np.random.choice(np.arange(args.gulp_offset, args.gulp_offset + num_gulps,dtype=int),replace=False,size=num_inject)
 
     #parameters from etcd
     #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
@@ -153,23 +156,53 @@ def main(args):
             #use MJD to get pointing
             mjd = Time(timestamp,format='isot').mjd + ((gulp if filelabels[g]==args.filelabel else (maxrawsamps//args.num_time_samples)-1)*args.num_time_samples*tsamp/86400)
             time_start_isot = Time(mjd,format='mjd').isot
-            LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=Lon).to(u.hourangle).value
+            #LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=Lon).to(u.hourangle).value
+            print("DEC from file:",Dec)
+
+
+
+            pt_dec = Dec*np.pi/180.
+            if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
+            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+
+            #flagging andd baseline cut
+            dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
+            
+            U = UVW[0,:,0]
+            V = UVW[0,:,1]
+            W = UVW[0,:,2]
+            uv_diag=np.max(np.sqrt(U**2 + V**2))
+            pixel_resolution = (0.20 / uv_diag) / 3
+            if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
+            if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
+            if verbose: print(UVW)
+
+            print("Print bad channels:",np.isnan(dat.mean((0,1,3))))
+
+
+
             #pt_RA = LST*15*np.pi/180
             if verbose: print("Time:",time_start_isot)
-            if verbose: print("LST (hr):",LST)
+            #if verbose: print("LST (hr):",LST)
             if Dec is None:
 
-                RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas)
-                HA_axis = (LST*15) - RA_axis
+                RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas,uv_diag=uv_diag)
+                #HA_axis = (LST*15) - RA_axis
+                HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
                 print(HA_axis)
                 #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
                 RA = RA_axis[int(len(RA_axis)//2)]
                 HA = HA_axis[int(len(HA_axis)//2)]
                 Dec = Dec_axis[int(len(Dec_axis)//2)]
             else:
-                RA = get_ra(mjd,Dec) #LST*15
-                HA = 0
-                tmp,tmp,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas)
+                #RA = get_ra(mjd,Dec) #LST*15
+                #HA = 0
+                RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec)
+                #HA_axis = (LST*15) - RA_axis
+                HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
+                RA = RA_axis[int(len(RA_axis)//2)]
+                HA = HA_axis[int(len(HA_axis)//2)]
+                print(HA_axis[len(HA_axis)//2-10:len(HA_axis)//2+10])
             if verbose: print("Coordinates (deg):",RA,Dec)
             if verbose: print("Hour angle (deg):",HA)
 
@@ -191,6 +224,7 @@ def main(args):
             """
             #get UVW from etcd
             #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+            """
             pt_dec = Dec*np.pi/180.
             if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
             bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
@@ -199,7 +233,7 @@ def main(args):
             dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
         
             print("Print bad channels:",np.isnan(dat.mean((0,1,3))))
-        
+            """
         
             """
             #get indices of flagged visibilities
@@ -228,7 +262,7 @@ def main(args):
                 UVW = UVW[:,blen_mask,:]
                 dat = dat[:,blen_mask,:,:]
             """
-
+            """
             U = UVW[0,:,0]
             V = UVW[0,:,1]
             W = UVW[0,:,2]
@@ -238,7 +272,7 @@ def main(args):
             if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
             if verbose: print(UVW)
             #if verbose: print("core idxs",len(core_idxs),core_idxs)
-  
+            """
 
             """
             #use MJD to get RA,DEC axes
@@ -282,7 +316,8 @@ def main(args):
 
 
             #creating injection
-            if args.inject and (gulp == inject_gulp) and filelabels[g]==args.filelabel:
+            if args.inject and (gulp in inject_gulps) and filelabels[g]==args.filelabel:
+                print("Injecting pulse in gulp",gulp)
                 from inject import injecting
                 offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000)
                 #offsetRA = offsetDEC = 0
@@ -424,6 +459,7 @@ if __name__=="__main__":
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     parser.add_argument('--inject_noiseonly',action='store_true',default=False,help='Only inject noise; for use with false positive testing')
     parser.add_argument('--inject_noiseless',action='store_true',default=False,help='Only inject signal')
+    parser.add_argument('--num_inject',type=int,help='Number of injections, must be less than number of gulps',default=1)
     parser.add_argument('--sb',action='store_true',default=False,help='Use nsfrb_sbxx names')
     parser.add_argument('--num_chans',type=int,help='Number of channels',default=int(NUM_CHANNELS//AVERAGING_FACTOR))
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)

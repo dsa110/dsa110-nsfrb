@@ -77,15 +77,18 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     
    
     #estimate noise to inject from raw data
-    if not noiseless:
-        #imgnoise = np.nanmean(np.load(noise_dir + "raw_noise_300x300.npy"))
-        visnoise = np.nanmean(np.load(noise_dir + "raw_vis_noise_real.npy"))
-        scalenoise = vis_to_img_slope #imgnoise/visnoise
+    #if not noiseless:
+    #imgnoise = np.nanmean(np.load(noise_dir + "raw_noise_300x300.npy"))
+    visnoise = np.nanmean(np.load(noise_dir + "raw_vis_noise_real.npy"))
+    scalenoise = vis_to_img_slope #imgnoise/visnoise
         
-        injectnoise = PSFSUM/((snr/width)*scalenoise)
+    injectnoise = PSFSUM/((snr/width)*scalenoise)
+    if not noiseless:
         print("INJECTING NOISE:" + str(injectnoise),file=fout)
         print("RESCALEFACTOR:" + str(scalenoise),file=fout)
-    else:
+    vi_scale = visnoise/injectnoise
+    print("VISCALE:",vi_scale,file=fout)
+    if noiseless:
         injectnoise = 0
 
 
@@ -109,7 +112,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
 
 
     if not noiseless:
-        if not noiseonly: PSFimg *= visnoise/injectnoise
+        if not noiseonly: PSFimg *= vi_scale
         if offline:
             nn = nsamps+maxshift+maxshift
             if not noiseonly: nn -=width
@@ -131,14 +134,18 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         
         noiseimg1 = noiseimg[:,:,:int(loc*nsamps)+maxshift,:]
         noiseimg2 = noiseimg[:,:,int(loc*nsamps)+maxshift:,:]
-
-        #print(noiseimg1.shape,noiseimg2.shape,noiseimg.shape,PSFimg.shape,file=fout)
+        
+        print(noiseimg1.shape,noiseimg2.shape,noiseimg.shape,PSFimg.shape,vi_scale,file=fout)
         if noiseonly:
             PSFimg = noiseimg
         else:
             PSFimg = np.concatenate([noiseimg2,PSFimg,noiseimg1],axis=2)
     else:
-        PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps - int(loc*nsamps),nchans))],axis=2)[:,:,::-1,:]
+        nn = nsamps+maxshift
+        if not noiseonly: nn -= width
+        print(nn,PSFimg.shape,vi_scale,file=fout)
+        PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nn - (int(loc*nsamps)+maxshift),nchans))],axis=2)[:,:,::-1,:]*vi_scale
+        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps - int(loc*nsamps),nchans))],axis=2)[:,:,::-1,:]
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans))],axis=2)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans))],axis=2)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (maxshift-int(loc*nsamps)),nchans)),PSFimg,np.zeros((gridsize,gridsize,(-int(loc*nsamps)+maxshift),nchans))],axis=2)
