@@ -1,4 +1,5 @@
 from pathlib import Path
+import glob
 import argparse
 import csv
 import datetime
@@ -55,6 +56,7 @@ def main(args):
             rdr = csv.reader(csvfile,delimiter=",")
             i = 0
             for row in rdr:
+                if "nsfrb_sb01_59484.out" in row[0]: print(row)
                 delidx_labels[row[0]] = str(i+1)
                 i+= 1
         delidx = []
@@ -65,18 +67,26 @@ def main(args):
             f"{cutoff.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
         
         
+        #first see if any have already been removed
+        for n in delidx_labels.keys():
+            #print(str(operations_dir) + "/*/" + str(n))
+            if len(glob.glob(str(operations_dir) + "/*/" + str(n))) == 0:
+                print(str(operations_dir) + "/*/" + str(n))
+                delidx.append(delidx_labels[n])
         
 
         for subdir, pattern in subdirs_to_clear:
             for file in (operations_dir / subdir).glob(pattern):
-                print(os.path.basename(str(file)),type(file))
+                #print(os.path.basename(str(file)),type(file))
                 
-                
+
                 modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
                 # modtime is timezone naive, so we set it to utc
                 # lxc managed containers are all using utc
                 modtime = modtime.replace(tzinfo=cutoff.tzinfo)
+                if "59484" in str(file): print(modtime,cutoff,modtime<cutoff)
                 if modtime < cutoff:
+                    print(modtime,cutoff)
                     print(f'Removing {file}')
                     
                     try:

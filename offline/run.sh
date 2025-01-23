@@ -23,10 +23,15 @@ do
         label="${label: 0:-4}"
         count="${array[1]}"
 	
+	#get date file was created
+	labeldate=$(stat -c '%y' ${NSFRBDATA}dsa110-nsfrb-fast-visibilities/*/${labelinit})
+	labeldate=${labeldate:0:10}
+	echo $labelinit $labeldate
+		
 
 	#run imager if not already run for this isot and if specified
 	#echo $label $runfile
-	if ([[ "$runfile" == "all" ]] || [[ "$label" == "$runfile" ]]) && (( $count < $maxrun )); then
+	if ([[ "$runfile" == "all" ]] || [[ "$label" == "$runfile" ]] || [[ "$labeldate" == "$runfile" ]]) && (( $count < $maxrun )); then
 		prerun=0
 		for dfile in "${donefiles[@]}"
 		do
