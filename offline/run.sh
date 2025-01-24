@@ -38,6 +38,7 @@ do
 	#run imager if not already run for this isot and if specified
 	#echo $label $runfile
 	if ([[ "$runfile" == "all" ]] || [[ "$label" == "$runfile" ]] || [[ "$labeldate" == "$runfile" ]]) && (( $count < $maxrun )); then
+		echo $label
 		prerun=0
 		for dfile in "${donefiles[@]}"
 		do
@@ -50,9 +51,9 @@ do
 		done
 		if (( $prerun==0 )); then
 			if [ -z "$6" ]; then
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --save --search$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --search$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			else
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --filedir $filedir --save --search$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless 
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --filedir $filedir --search$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless 
 
 			fi
 			donefiles+=($label)

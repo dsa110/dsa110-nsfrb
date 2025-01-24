@@ -540,6 +540,7 @@ def img_to_classifier_format(img,candname,output_dir):
         filename = f'{candname}_{avg_freq:.2f}_MHz.png'
         plt.imsave(output_dir + filename,img[:,:,i],cmap='gray')
         newimg = Image.open(output_dir + filename).convert('L')
+        os.system("rm " + output_dir + filename)
 
         img_class_format[:,:,i] = transforms.ToTensor()(newimg)[0] 
     return img_class_format
@@ -863,8 +864,8 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
             printlog("done!",output_file=cutterfile)
     
     #move fast visibilities, should be labelled with ISOT timestamp
-    if not injection_flag:
-        os.system("mv " + vis_dir + "lxd110*/*" + cand_isot + "*.out " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
+    #if not injection_flag:
+    #    os.system("mv " + vis_dir + "lxd110*/*" + cand_isot + "*.out " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
 
 
     """

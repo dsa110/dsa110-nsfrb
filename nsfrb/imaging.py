@@ -472,7 +472,18 @@ def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
     """
     Gets RA, given the MJD and declination pointing
     """
-    return Time(mjd,format='mjd').sidereal_time("apparent",longitude=Lon*u.deg).to(u.deg).value
+    
+    RA_rad,DEC_rad = Direction('HADEC',
+            0.,
+            (dec*u.deg).to_value(u.rad),
+             mjd).J2000()
+    RA = (RA_rad*u.rad).to(u.deg)
+    DEC = (DEC_rad*u.rad).to(u.deg)
+    return RA
+
+    #return Time(mjd,format='mjd').sidereal_time("apparent",longitude=Lon*u.deg).to(u.deg).value
+    
+    
     """
     ovro =  EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)#(lat=37.2317 * u.deg, lon=-118.2951 * u.deg, height=1222 * u.m)
     time = Time(mjd,format='mjd')

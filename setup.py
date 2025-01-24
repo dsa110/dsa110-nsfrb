@@ -27,7 +27,7 @@ logfiles = ["error_log.txt",
             "candcutter_error_log.txt",
             "inject_log.txt",
             "time_log.txt"]
-for i in range(len(logfiles))[:-1]:
+for i in range(len(logfiles)):
     l = logfiles[i]
     os.system("touch ../dsa110-nsfrb-logfiles/" + l)
     os.system("> ../dsa110-nsfrb-logfiles/" + l)
