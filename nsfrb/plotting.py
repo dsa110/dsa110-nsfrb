@@ -1,4 +1,7 @@
 import matplotlib
+from astropy.time import Time
+from astropy import units as u
+from nsfrb.planning import nvss_cat,atnf_cat
 from nsfrb.config import tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -178,20 +181,27 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     gs = fig.add_gridspec(3,2)
     ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
+    ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
+    if searched_image is not None:
+        ax.contour(searched_image.max((2,3))[:,::-1],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
     if 'predicts' in canddict.keys():
         ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
         ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
     else:
         ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
-    #plt.contour(img.mean((2,3)),levels=3,colors='purple',linewidths=4)
-    ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
-    if searched_image is not None:
-        ax.contour(searched_image.max((2,3))[:,::-1],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
+    #nvss sources
+    nvsspos,tmp,tmp = nvss_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
+    ax.plot(nvsspos.ra.value,nvsspos.dec.value,'o',markerfacecolor='none',markeredgecolor='firebrick',markersize=20,markeredgewidth=4)
+    #pulsars
+    atnfpos,tmp = atnf_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
+    ax.plot(atnfpos.ra.value,atnfpos.dec.value,'s',markerfacecolor='none',markeredgecolor='firebrick',markersize=20,markeredgewidth=4)
     ax.axvline(RA_axis[gridsize//2],color='grey')
     ax.axhline(DEC_axis[gridsize//2],color='grey')
     ax.set_xlabel(r"RA ($^\circ$)")
     ax.set_ylabel(r"DEC ($^\circ$)")
     ax.invert_xaxis()
+    ax.set_xlim(np.max(RA_axis),np.min(RA_axis))
+    ax.set_ylim(np.min(DEC_axis),np.max(DEC_axis))
 
     ax = fig.add_subplot(gs[0,1])#ax=plt.subplot(3,2,2)
     if 'predicts' in canddict.keys():

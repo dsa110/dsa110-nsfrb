@@ -1,4 +1,5 @@
 import numpy as np
+from astropy.io import fits
 import glob
 
 from influxdb import DataFrameClient
@@ -634,3 +635,74 @@ def find_object_file(ra,dec,headersize=12,datasize=4,nsamps=2,nchan=2,Lon=Lon):
         if np.abs(dec_f-dec)<1.5 and ((ra<180 and ra_f>=180 and ((24+diff))<5/60) or (diff >= 0 and diff<5/60)):
             return int(f[-9:-4])
     return None
+
+
+
+#Vikram's functions to query NVSS sources
+# for NVSS stuff
+def read_nvss(fl="/home/ubuntu/vikram/browse_results.fits"):
+
+    data = fits.open(fl)[1].data
+    ra = data["RA"]
+    dec = data["DEC"]
+    flux = data["FLUX_20_CM"]
+    maxis = data["MAJOR_AXIS"]
+
+    coords = SkyCoord(ra,dec,unit=(u.deg,u.deg))
+
+    return coords,flux,maxis
+
+from nsfrb.config import Lat,Lon,Height
+def nvss_cat(mjd,dd,sep=2.0*u.deg,decstrip=False):
+
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    coords,flux,maxis = read_nvss()
+
+    if decstrip:
+        d2d = np.abs(c.dec - coords.dec)
+    else:
+        d2d = c.separation(coords)
+    idx = np.arange(len(coords))
+
+    idxs = idx[d2d<sep]
+
+    c = coords[idxs]; f = flux[idxs]; m = maxis[idxs]
+    return c[np.argsort(f)],f[np.argsort(f)],m[np.argsort(f)]
+
+def read_atnf(fl=table_dir + "ATNF_CATALOG.csv"):
+    names = []
+    ras = []
+    decs = []
+    with open(fl,"r") as csvfile:
+        rdr = csv.reader(csvfile,delimiter=';')
+        for row in rdr:
+            names.append(row[1])
+            if '*' in row[2] or '*' in row[3]:
+                ras.append(np.nan*u.deg)
+                decs.append(np.nan*u.deg)
+            else:
+                coord = SkyCoord(row[2]+row[3],unit=(u.hourangle,u.deg),frame='icrs')
+                ras.append(coord.ra)
+                decs.append(coord.dec)
+    coords = SkyCoord(ra=ras,dec=decs,frame='icrs')
+    names = np.array(names)
+    return coords,names
+
+def atnf_cat(mjd,dd,sep=2.0*u.deg):
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    coords,names = read_atnf()
+    idx = np.arange(len(coords))
+    
+    d2d = c.separation(coords)
+    idxs = idx[d2d<sep]
+
+    c = coords[idxs]
+    n = names[idxs]
+    return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)]
+

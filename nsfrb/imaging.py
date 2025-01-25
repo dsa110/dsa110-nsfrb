@@ -479,7 +479,7 @@ def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
              mjd).J2000()
     RA = (RA_rad*u.rad).to(u.deg)
     DEC = (DEC_rad*u.rad).to(u.deg)
-    return RA
+    return RA.value
 
     #return Time(mjd,format='mjd').sidereal_time("apparent",longitude=Lon*u.deg).to(u.deg).value
     
