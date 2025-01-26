@@ -30,14 +30,21 @@ do
         count="${array[1]}"
 	
 	#get date file was created
-	labeldate=$(stat -c '%y' ${NSFRBDATA}dsa110-nsfrb-fast-visibilities/*/${labelinit})
-	labeldate=${labeldate:0:10}
+	labeldateall=$(stat -c '%y' ${NSFRBDATA}dsa110-nsfrb-fast-visibilities/*/${labelinit})
+	labeldate=${labeldateall:0:10}
+	labelseconds=$(date -d "${labeldateall:0:19}" +%s)
 	#echo $labelinit $labeldate
-		
-
+	#echo $labelseconds $(date -d "${runfile}" +%s)
+	if ([[ "${runfile:0:1}" == "_" ]] && [[ "$label" == "$runfile" ]]); then
+		echo "here" "$label" "$runfile" "$count" "$maxrun"
+	fi
+	if ([[ "${runfile:0:1}" != "_" ]] && [[ "$labeldate" == "${runfile:0:10}" ]]); then # && [[ "$(date -d "${runfile}" +%s)" -lt "$labelseconds" ]]); then
+		echo "here" "$label" "$runfile" "$count" "$maxrun" "$labelseconds" "$(date -d "${runfile}" +%s)"
+	fi
 	#run imager if not already run for this isot and if specified
 	#echo $label $runfile
-	if ([[ "$runfile" == "all" ]] || [[ "$label" == "$runfile" ]] || [[ "$labeldate" == "$runfile" ]]) && (( $count < $maxrun )); then
+	if ([[ "$runfile" == "all" ]] || ([[ "${runfile:0:1}" == "_" ]] && [[ "$label" == "$runfile" ]]) || ([[ "${runfile:0:1}" != "_" ]] && [[ "$labeldate" == "${runfile:0:10}" ]] && [[ "$(date -d "${runfile}" +%s)" -lt "$labelseconds" ]])) && (( $count < $maxrun )); then
+	#if ([[ "$runfile" == "all" ]] || ([[ "${runfile:0:1}" == "_" ]] && [[ "$label" == "$runfile" ]]) || ([[ "${runfile:0:1}" != "_" ]] && (( "$(date -d "${runfile}" +%s)" < $labelseconds )) ) && [[ "$labeldate" == "$runfile" ]]) && (( $count < $maxrun )); then
 		echo $label
 		prerun=0
 		for dfile in "${donefiles[@]}"
