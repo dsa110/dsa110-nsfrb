@@ -1,8 +1,12 @@
 import matplotlib
+import matplotlib.animation as animation
+from nsfrb import imaging
+from nsfrb import pipeline
+from dsamfs import utils as pu
 from astropy.time import Time
 from astropy import units as u
-from nsfrb.planning import nvss_cat,atnf_cat
-from nsfrb.config import tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR
+from nsfrb.planning import nvss_cat,atnf_cat,find_fast_vis_label
+from nsfrb.config import tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 fsize=45
@@ -28,7 +32,7 @@ import numpy as np
 import sys
 import csv
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,bad_antennas
 
 """
 #f = open("../metadata.txt","r")
@@ -305,4 +309,115 @@ def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_
 
 
 
+#functions for imaging directly from files given candidate mjd
+sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+def make_image_from_vis(T_interval,cand_mjd,full_array=True,image_size=1001,gif=False,visfile_dir=vis_dir,gulpsize=nsamps,nchan=2,headersize=16,binsize=5,bmin=20,sbimg=None,output_dir=vis_dir,viewsize=2):
+    #visibility file
+    fnum,offset = find_fast_vis_label(cand_mjd)
+    print("file number: ",fnum)
+    offset_gulp = int(offset//gulpsize)
+    gulp_interval = int(T_interval//(tsamp*gulpsize))
+    start_gulp = np.max([offset_gulp - gulp_interval,0])
+    end_gulp = np.min([offset_gulp + gulp_interval,89])
+    n_gulp = end_gulp-start_gulp
+    print("gulps ",start_gulp,"-",end_gulp)
+    all_imgs = []
+    all_mjds = []
+    for gulp in range(start_gulp,end_gulp):
+        #read from file
+        dat = None
+        for i in range(len(corrs)):
+            if sbimg is None or sbimg==i:
+                try:
+                    if visfile_dir==vis_dir:
+                        dat_i,sb,mjd,dec = pipeline.read_raw_vis(visfile_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan,nsamps=gulpsize,gulp=gulp,headersize=headersize)
+                    else:
+                        dat_i,sb,mjd,dec = pipeline.read_raw_vis(visfile_dir + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan,nsamps=gulpsize,gulp=gulp,headersize=headersize)
+                    print(mjd,dec,sb)
+                except Exception as exc:
+                    print(exc)
+                    dat_i = np.nan*np.ones((gulpsize, 4656, 2, 2))
 
+                if dat is None:
+                    dat = dat_i
+                else:
+                    dat = np.concatenate([dat,dat_i],axis=2)
+        dat[np.isnan(dat)] = 0
+    
+        #flagging
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp_, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        pt_dec = dec*np.pi/180.
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+        if full_array:
+            dat, bname, blen, UVW, antenna_order = imaging.flag_vis(dat, bname, blen, UVW, antenna_order, bad_antennas, bmin=bmin)
+        else:
+            dat, bname, blen, UVW, antenna_order = imaging.flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=bmin)
+        U = UVW[0,:,0]
+        V = UVW[0,:,1]
+        W = UVW[0,:,2]
+        uv_diag=np.max(np.sqrt(U**2 + V**2))
+        ff = 1.53-np.arange(8192)*0.25/8192
+        fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+        fobs = np.reshape(fobs,(len(corrs)*2,int(NUM_CHANNELS/2/2))).mean(axis=1)
+
+        #imaging
+        for b in range(n_gulp*int(gulpsize//binsize)):
+            dirty_img = np.zeros((image_size,image_size))
+            for i in range(int(b*binsize),int((b+1)*binsize)):
+                for j in range(dat.shape[2]):
+                    for k in range(dat.shape[3]):
+                        if ~np.all(np.isnan(dat[i:i+1,:,j,k])):
+                            dirty_img += imaging.revised_robust_image(dat[i:i+1,:,j,k],
+                                                       U/(2.998e8/fobs[j if sbimg is None else sbimg]/1e9),
+                                                       V/(2.998e8/fobs[j if sbimg is None else sbimg]/1e9),
+                                                       image_size,robust=2)
+            all_imgs.append(dirty_img)
+            all_mjds.append(mjd + (start_gulp*gulpsize*tsamp/1000/86400) + ((b+0.5)*binsize*tsamp/1000/86400))
+        #make plot or gif
+        dec_range = (dec-viewsize,dec+viewsize)
+        ra_range = (imaging.get_ra(cand_mjd,dec)-viewsize,imaging.get_ra(cand_mjd,dec)+viewsize)
+        std0=np.nanstd(all_imgs[0][:int(image_size/10),:int(image_size/10)])
+        if not gif:
+            for i in range(len(all_imgs)):
+                srcs,fs,tmp = nvss_cat(all_mjds[i],dec)
+                psrs,names = atnf_cat(all_mjds[i],dec)
+                ra_grid_2D,dec_grid_2D,elev = imaging.uv_to_pix(all_mjds[i],image_size,two_dim=True,manual=False,manual_RA_offset=0,output_file="",uv_diag=uv_diag,DEC=dec)
+                
+                plt.figure(figsize=(12,12))
+                plt.scatter(ra_grid_2D[:,:].flatten(),dec_grid_2D[:,:].flatten(),c=(all_imgs[i]).flatten(),s=1,alpha=1,vmin=0,vmax=std0*5)
+                plt.scatter(srcs.ra.to(u.deg).value,srcs.dec.to(u.deg).value,marker='o',s=fs/30,facecolor='none',linewidth=1,c='red',alpha=0.5)
+                plt.plot(psrs.ra.to(u.deg).value,psrs.dec.to(u.deg).value,'s',markersize=20,markerfacecolor='none',markeredgewidth=4,linewidth=4,markeredgecolor='red')
+                plt.title(Time(all_mjds[i],format='mjd').isot)
+                plt.xlim(ra_range[1],ra_range[0])
+                plt.ylim(dec_range[0],dec_range[1])
+                plt.xlabel(r"RA ($^\circ$)")
+                plt.ylabel(r"DEC ($^\circ$)")
+                plt.savefig(output_dir + (Time(all_mjds[i],format='mjd').isot + ("_{:02d}".format(sbimg) if sbimg is not None else "") + ".png"))
+                plt.close()
+   
+        else:
+            def update(i):
+                srcs,fs,tmp = nvss_cat(all_mjds[i],dec)
+                psrs,names = atnf_cat(all_mjds[i],dec)
+                ra_grid_2D,dec_grid_2D,elev = imaging.uv_to_pix(all_mjds[i],image_size,two_dim=True,manual=False,manual_RA_offset=0,output_file="",uv_diag=uv_diag,DEC=dec)
+                
+                plt.gca()
+                plt.scatter(ra_grid_2D[:,:].flatten(),dec_grid_2D[:,:].flatten(),c=(all_imgs[i]).flatten(),s=1,alpha=1,vmin=0,vmax=std0*5)
+                plt.scatter(srcs.ra.to(u.deg).value,srcs.dec.to(u.deg).value,marker='o',s=fs/30,facecolor='none',linewidth=1,c='red',alpha=0.5)
+                plt.plot(psrs.ra.to(u.deg).value,psrs.dec.to(u.deg).value,'s',markersize=20,markerfacecolor='none',markeredgewidth=4,linewidth=4,markeredgecolor='red')
+                plt.title(Time(all_mjds[i],format='mjd').isot)
+                plt.xlim(ra_range[1],ra_range[0])
+                plt.ylim(dec_range[0],dec_range[1])
+                plt.xlabel(r"RA ($^\circ$)")
+                plt.ylabel(r"DEC ($^\circ$)")
+                return all_imgs[i],
+            
+            fig=plt.figure(figsize=(12,12))
+            animation_fig = animation.FuncAnimation(fig,update,frames=len(all_imgs),interval=tsamp*binsize)
+            animation_fig.save(output_dir + (Time(cand_mjd,format='mjd').isot + ("_{:02d}".format(sbimg) if sbimg is not None else "") + ".gif"))
+            plt.close()
+
+
+
+        return all_imgs,all_mjds

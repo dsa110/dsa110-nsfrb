@@ -1,7 +1,7 @@
 import numpy as np
 from astropy.io import fits
 import glob
-
+from nsfrb import pipeline
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
 from astropy.time import Time
@@ -15,7 +15,7 @@ from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
 from nsfrb.imaging import DSAelev_to_ASTROPYalt,get_ra
-from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset
+from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset,tsamp,nsamps
 from nsfrb.pipeline import read_raw_vis
 import pickle as pkl
 """
@@ -706,3 +706,13 @@ def atnf_cat(mjd,dd,sep=2.0*u.deg):
     n = names[idxs]
     return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)]
 
+#function to find visibility file label associated with candidates
+def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps):
+    #get list of all visibilities on h03
+    allvisfiles = glob.glob(vis_dir + "lxd110h03/*out")
+    for visfile in allvisfiles:
+        sb_f,mjd_f,dec_f = pipeline.read_raw_vis(visfile,headersize=16,get_header=True)
+        if (sb_f >= 0 and sb_f <= 15) and (dec_f>=-90 and dec_f<= 90) and ((mjd-mjd_f)*86400/60 >= 0) and ((mjd-mjd_f)*86400/60 <= (tsamp*nsamps*90/1000/60)):
+            #print((mjd-mjd)*86400/60, (tsamp*nsamps*90/1000/60))
+            break
+    return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp))

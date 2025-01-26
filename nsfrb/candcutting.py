@@ -1,4 +1,6 @@
 import numpy as np
+from nsfrb.planning import find_fast_vis_label
+from nsfrb import pipeline
 from dsaT4 import T4_manager as T4m
 from nsfrb.outputlogging import numpy_to_fits
 import os
@@ -545,6 +547,8 @@ def img_to_classifier_format(img,candname,output_dir):
         img_class_format[:,:,i] = transforms.ToTensor()(newimg)[0] 
     return img_class_format
 
+
+
 #main cand cutter task function
 def candcutter_task(fname,uv_diag,dec_obs,args):
     """
@@ -859,10 +863,16 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:
-            printlog("sending plot to slack...",output_file=cutterfile,end='')
+            printlog("sending plot to slack...",output_file=cutterfile)
             send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
             printlog("done!",output_file=cutterfile)
     
+    #cp fast visibilities
+    if not injection_flag:
+        fastvislabel,fastvisoffset = find_fast_vis_label(cand_mjd)
+        printlog("saving candidate visibilities labeled" + str(fastvislabel),output_file=cutterfile)
+        printlog("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/",output_file=cutterfile)
+        os.system("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/")
     #move fast visibilities, should be labelled with ISOT timestamp
     #if not injection_flag:
     #    os.system("mv " + vis_dir + "lxd110*/*" + cand_isot + "*.out " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")

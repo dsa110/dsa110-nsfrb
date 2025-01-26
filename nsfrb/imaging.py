@@ -477,6 +477,8 @@ def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
             0.,
             (dec*u.deg).to_value(u.rad),
              mjd).J2000()
+    if RA_rad < 0:
+        RA_rad = 2*np.pi + RA_rad
     RA = (RA_rad*u.rad).to(u.deg)
     DEC = (DEC_rad*u.rad).to(u.deg)
     return RA.value

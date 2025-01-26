@@ -187,7 +187,7 @@ def set_pflag(flag=None,on=True,reset=False):
     
 # functions for reading raw visibility data
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,headersize=16,oldformat=False):
+def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,headersize=16,oldformat=False,get_header=False):
     """
     Read raw visibility data from given file.
     fname: file name
@@ -231,6 +231,9 @@ def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,h
         else:
             print("Invalid headersize")
             return None
+    if get_header:
+        f.close()
+        return sbnum,mjd,dec
 
     if nsamps == -1:
         raw_data = np.frombuffer(f.read(),dtype=dtype) #default reads all time samples
