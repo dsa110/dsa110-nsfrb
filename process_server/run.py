@@ -375,9 +375,9 @@ def main(args):
         sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps-sl.maxshift,args.nchans)
 
     #initialize noise stats
-    if args.initnoise:
+    if args.initnoise or args.initnoisezero:
         printlog("Initializing noise statistics...",output_file=processfile)
-        init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
+        init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize,zero=args.initnoisezero)
         sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
 
     #initialize jax functions
@@ -740,7 +740,8 @@ if __name__=="__main__":
     parser.add_argument('--PyTorchDedispersion',action='store_true',help='Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
     parser.add_argument('--exportmaps',action='store_true',help='Output noise maps for each DM and width trial to the noise directory')
     parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
-    parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics for S/N estimates')
+    parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics from fast vis data for S/N estimates')
+    parser.add_argument('--initnoisezero',action='store_true',help='Initializes noise to 0')
     parser.add_argument('--savesearch',action='store_true',help='Saves the searched image as a numpy array')
     parser.add_argument('--fprtest',action='store_true',help='Saves only searched data and writes peak SNR to file')
     parser.add_argument('--fnrtest',action='store_true',help='Saves only searched data and writes peak SNR to file')

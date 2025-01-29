@@ -332,7 +332,8 @@ def get_RA_cutoff(dec,T=T,pixsize=pixsize):
     T: integration time in milliseconds
     """
     cutoff_as = (T/1000)*15/np.cos(dec*np.pi/180) #arcseconds
-    cutoff_pix = (cutoff_as/3600)//pixsize
+    cutoff_pix = np.abs((cutoff_as/3600)//pixsize)
+    print("New RA cutoff:",cutoff_pix)
     return int(cutoff_pix)
 default_cutoff = get_RA_cutoff(0)
 
@@ -1785,7 +1786,8 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
         print("Time for Prep" + str(time.time()-t1),file=fout)
         t1 = time.time()
-
+        print("NOISENUM:" + str(prev_noise_N),file=fout)
+        print("INPUT NOISE:" + str(prev_noise),file=fout)
         if DMbatches > 1:
             executor = ThreadPoolExecutor(DMbatches*DMbatches)#maxProcesses)
             task_list = []
@@ -2130,13 +2132,13 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=output_file,usefft=usefft,space_filter=space_filter,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2],pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])))
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2],pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials)
 
 
     #update noise stats
     if total_noise is not None:
         global current_noise
-        current_noise = (noise_update_all(total_noise,gridsize,gridsize,DM_trials,widthtrials),current_noise[1] + 1)
+        current_noise = (noise_update_all(total_noise,gridsize,gridsize,DM_trials,widthtrials,writeonly=True),current_noise[1] + 1)
 
     #update last frame
     if append_frame:

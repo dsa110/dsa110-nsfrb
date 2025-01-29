@@ -157,7 +157,7 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[]):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[],uv_diag=None,dec_obs=None):
     """
     Makes updated diagnostic plots for search system
     """
@@ -182,12 +182,33 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     fig=plt.figure(figsize=(40,40))
     if injection:
         fig.patch.set_facecolor('red')
-    gs = fig.add_gridspec(3,2)
+    gs = fig.add_gridspec(4,2)
     ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
-    ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
+    #ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
+    #get 2D grids
+    if uv_diag is not None and dec_obs is not None:
+        print("getting new RA,DEC 2D grid...")
+        ra_grid_2D,dec_grid_2D,elev = imaging.uv_to_pix(Time(isot,format='isot').mjd,
+                                        len(DEC_axis),DEC=dec_obs,
+                                        two_dim=True,manual=False,uv_diag=uv_diag)
+        print("done")
+
     if searched_image is not None:
-        ax.contour(searched_image.max((2,3))[:,::-1],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
+        
+        if uv_diag is not None and dec_obs is not None:
+            print("making scatter plot...",ra_grid_2D.shape,len(RA_axis))
+            ax.scatter(ra_grid_2D[:,:searched_image.shape[1]].flatten(),dec_grid_2D[:,:searched_image.shape[1]].flatten(),c=(searched_image.max((2,3))).flatten(),cmap='binary',vmin=vmin,vmax=vmax,alpha=0.1)
+            print("done")
+        else:
+            ax.imshow((searched_image.max((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)],vmin=vmin,vmax=vmax)
+        #ax.contour(searched_image.max((2,3))[:,::-1],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
+    else:
+        if uv_diag is not None:
+            ax.scatter(ra_grid_2D[:,:len(RA_axis)].flatten(),dec_grid_2D[:,:len(RA_axis)].flatten(),c=(img.mean((2,3))).flatten(),cmap='binary',alpha=0.1)
+        else:
+            ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
+    print("done with new stuff")
     if 'predicts' in canddict.keys():
         ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
         ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
@@ -195,10 +216,11 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     #nvss sources
     nvsspos,tmp,tmp = nvss_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
-    ax.plot(nvsspos.ra.value,nvsspos.dec.value,'o',markerfacecolor='none',markeredgecolor='firebrick',markersize=20,markeredgewidth=4)
+    ax.plot(nvsspos.ra.value,nvsspos.dec.value,'o',markerfacecolor='none',markeredgecolor='blue',markersize=20,markeredgewidth=4,label='NVSS Source')
     #pulsars
     atnfpos,tmp = atnf_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
-    ax.plot(atnfpos.ra.value,atnfpos.dec.value,'s',markerfacecolor='none',markeredgecolor='firebrick',markersize=20,markeredgewidth=4)
+    ax.plot(atnfpos.ra.value,atnfpos.dec.value,'s',markerfacecolor='none',markeredgecolor='blue',markersize=20,markeredgewidth=4,label='ATNF Pulsar')
+    ax.legend(loc='lower right',frameon=True,facecolor='lightgrey')
     ax.axvline(RA_axis[gridsize//2],color='grey')
     ax.axhline(DEC_axis[gridsize//2],color='grey')
     ax.set_xlabel(r"RA ($^\circ$)")
@@ -233,14 +255,24 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label="NSFRB"+names[i])
     ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
     ax.set_xlim(0,tsamp*img.shape[2]/1000)
-    ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,5)
+    ax.set_title("De-dispersed Timeseries")
+
+    #median subtracted timeseries
+    ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,3)
+    for i in range(len(timeseries)):
+        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label="NSFRB"+names[i])
+    #ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
+    ax.set_xlim(0,tsamp*img.shape[2]/1000)
+    ax.set_title("De-dispersed Median Subtracted Timeseries")
+    ax.set_ylim(ymin=0)
+
     #show dynamic spectrum for highest S/N burst
+    ax = fig.add_subplot(gs[3,:])#ax=plt.subplot(3,2,5)
     showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
     ax.set_title(showname)
     ax.imshow(img[int(showy),int(showx)].transpose(),origin="lower",extent=[0,tsamp*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto')
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (MHz)")
-
 
     t = "NSFRB" + isot
     if injection: t = t + " (injection)"
@@ -377,7 +409,7 @@ def make_image_from_vis(T_interval,cand_mjd,full_array=True,image_size=1001,gif=
         #make plot or gif
         dec_range = (dec-viewsize,dec+viewsize)
         ra_range = (imaging.get_ra(cand_mjd,dec)-viewsize,imaging.get_ra(cand_mjd,dec)+viewsize)
-        std0=np.nanstd(all_imgs[0][:int(image_size/10),:int(image_size/10)])
+        std0=np.nanstd(all_imgs[0][:,:])
         if not gif:
             for i in range(len(all_imgs)):
                 srcs,fs,tmp = nvss_cat(all_mjds[i],dec)
@@ -385,7 +417,7 @@ def make_image_from_vis(T_interval,cand_mjd,full_array=True,image_size=1001,gif=
                 ra_grid_2D,dec_grid_2D,elev = imaging.uv_to_pix(all_mjds[i],image_size,two_dim=True,manual=False,manual_RA_offset=0,output_file="",uv_diag=uv_diag,DEC=dec)
                 
                 plt.figure(figsize=(12,12))
-                plt.scatter(ra_grid_2D[:,:].flatten(),dec_grid_2D[:,:].flatten(),c=(all_imgs[i]).flatten(),s=1,alpha=1,vmin=0,vmax=std0*5)
+                plt.scatter(ra_grid_2D[:,:].flatten(),dec_grid_2D[:,:].flatten(),c=(all_imgs[i]).flatten(),s=1,alpha=1)
                 plt.scatter(srcs.ra.to(u.deg).value,srcs.dec.to(u.deg).value,marker='o',s=fs/30,facecolor='none',linewidth=1,c='red',alpha=0.5)
                 plt.plot(psrs.ra.to(u.deg).value,psrs.dec.to(u.deg).value,'s',markersize=20,markerfacecolor='none',markeredgewidth=4,linewidth=4,markeredgecolor='red')
                 plt.title(Time(all_mjds[i],format='mjd').isot)
@@ -403,7 +435,7 @@ def make_image_from_vis(T_interval,cand_mjd,full_array=True,image_size=1001,gif=
                 ra_grid_2D,dec_grid_2D,elev = imaging.uv_to_pix(all_mjds[i],image_size,two_dim=True,manual=False,manual_RA_offset=0,output_file="",uv_diag=uv_diag,DEC=dec)
                 
                 plt.gca()
-                plt.scatter(ra_grid_2D[:,:].flatten(),dec_grid_2D[:,:].flatten(),c=(all_imgs[i]).flatten(),s=1,alpha=1,vmin=0,vmax=std0*5)
+                plt.scatter(ra_grid_2D[:,:].flatten(),dec_grid_2D[:,:].flatten(),c=(all_imgs[i]).flatten(),s=1,alpha=1)
                 plt.scatter(srcs.ra.to(u.deg).value,srcs.dec.to(u.deg).value,marker='o',s=fs/30,facecolor='none',linewidth=1,c='red',alpha=0.5)
                 plt.plot(psrs.ra.to(u.deg).value,psrs.dec.to(u.deg).value,'s',markersize=20,markerfacecolor='none',markeredgewidth=4,linewidth=4,markeredgecolor='red')
                 plt.title(Time(all_mjds[i],format='mjd').isot)
@@ -414,7 +446,7 @@ def make_image_from_vis(T_interval,cand_mjd,full_array=True,image_size=1001,gif=
                 return all_imgs[i],
             
             fig=plt.figure(figsize=(12,12))
-            animation_fig = animation.FuncAnimation(fig,update,frames=len(all_imgs),interval=tsamp*binsize)
+            animation_fig = animation.FuncAnimation(fig,update,frames=len(all_imgs),interval=tsamp*binsize/1000)
             animation_fig.save(output_dir + (Time(cand_mjd,format='mjd').isot + ("_{:02d}".format(sbimg) if sbimg is not None else "") + ".gif"))
             plt.close()
 

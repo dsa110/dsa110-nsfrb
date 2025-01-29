@@ -632,6 +632,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     """
 
     #start clustering
+    useTOA=args['useTOA'] and len(finalcands[0])==6
     if args['cluster'] and len(finalidxs)>=args['mincluster']:
         printlog("clustering with HDBSCAN...",output_file=cutterfile)
         """
@@ -660,11 +661,10 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
             printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
         else:
             PSF = None
-        useTOA=args['useTOA'] and len(finalcands[0])==6
         if useTOA:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,useTOA=True)
+            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,useTOA=True,perc=args['psfpercentile'])
         else:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF)
+            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,perc=args['psfpercentile'])
         printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
         printlog(classes,output_file=cutterfile)
         printlog(cluster_cands,output_file=cutterfile)
@@ -672,6 +672,14 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         finalidxs = np.arange(len(cluster_cands),dtype=int)
         finalcands = cluster_cands
         
+    #cut by S/N if still too many
+    if len(finalcands) >args['maxcands_postcluster']:
+        printlog(cand_isot + "has too many candidates to process post-clustering (" + str(len(finalcands)) + ">" + str(args['maxcands_postcluster']) + ") limit...",output_file=cutterfile)
+        sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
+        finalcands = sortedcands[:int(args['maxcands_postcluster'])]
+        finalidxs = np.arange(len(finalcands),dtype=int)
+        printlog("done, cut to " + str(len(finalcands)) + " candidates",output_file=cutterfile)
+    
 
 
     if args['classify']:
@@ -859,7 +867,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
                                             DM_trials=DM_trials,widthtrials=widthtrials,
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/",show=False,s100=args['SNRthresh']/2,
                                             injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],
-                                            searched_image=searched_image,timeseries=timeseries)
+                                            searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,dec_obs=dec_obs)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:

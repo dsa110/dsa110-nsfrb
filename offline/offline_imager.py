@@ -409,6 +409,7 @@ def main(args):
         
             #save image to fits, numpy file
             if args.save and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                print("SAVING")
                 np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
                 numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
             

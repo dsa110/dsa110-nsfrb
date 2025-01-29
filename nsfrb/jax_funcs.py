@@ -137,6 +137,7 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract_point,PSFimg,corr_shifts_a
     #mask = ((image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
     #mask = ((image_tesseract_binned < noiseth*noise[:,np.newaxis,np.newaxis,:,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(truensamps,4)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
     mask = ((image_tesseract_binned - jnp.nanmedian(image_tesseract_binned,axis=4,keepdims=True) < noiseth*noise[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(nDM,3).repeat(truensamps,4)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
+    mask = mask.at[:].set((mask + ((noise==0)[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(nDM,3).repeat(truensamps,4)))>0)
     #compute noise and update
     noise = noise.at[:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
                                             jnp.nanmedian(
@@ -176,6 +177,7 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract_point,PSFimg,corr_shifts_a
 
 
     #image_tesseract_point
+    """
     image_tesseract_final = jnp.real(
                                 jnp.fft.fftshift(jnp.fft.ifft2(
                                     jnp.fft.fft2(image_tesseract_binned_new,
@@ -185,9 +187,9 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract_point,PSFimg,corr_shifts_a
                                             axes=(0,1),s=(gridsize_DEC,gridsize_RA))
                                     ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
                                 ,axes=(0,1)))#[gridsize_DEC//4:(gridsize_DEC//4) + gridsize_DEC//2,gridsize_RA//4:(gridsize_RA//4) + gridsize_RA//2,:,:]
-    
+    """
     del PSFimg
-    return jax.device_put(image_tesseract_final,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]),jax.device_put((image_tesseract_binned.argmax(4)).astype(jnp.uint8).transpose(1,2,0,3),jax.devices("cpu")[0])
+    return jax.device_put(image_tesseract_binned_new,jax.devices("cpu")[0]),jax.device_put(noise,jax.devices("cpu")[0]),jax.device_put((image_tesseract_binned.argmax(4)).astype(jnp.uint8).transpose(1,2,0,3),jax.devices("cpu")[0])
 
 """
 matched filter
