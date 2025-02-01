@@ -45,9 +45,11 @@ vis_to_img_slope = 0.0025062597643136777 #same, but with PSF smoothing; noise in
 
 #outrigger flagging and short baseline flagging
 bmin=20 #meters
-flagged_antennas = [48,103,104,105,106,107,108,109,110,111,112,113,114,115,116]
+#flagged_antennas = [48,103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 outrigger_antennas = [103,104,105,106,107,108,109,110,111,112,113,114,115,116]
+flagged_corrs = []
 bad_antennas = [48]
+flagged_antennas = bad_antennas+outrigger_antennas
 
 import numpy as np
 noise_data_type = np.float64

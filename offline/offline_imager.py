@@ -22,7 +22,8 @@ my_cnf = cnf.Conf(use_etcd=True)
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize
-from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,flag_vis,get_ra
+from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,get_ra
+from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
@@ -37,7 +38,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs
 
 
 """
@@ -166,7 +167,12 @@ def main(args):
             bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
 
             #flagging andd baseline cut
-            dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
+            fcts = []
+            if args.flagSWAVE:
+                fcts.append(fct_SWAVE)
+            if args.flagBPASS:
+                fcts.append(fct_BPASS)
+            dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs, flag_channel_templates = fcts)
             
             U = UVW[0,:,0]
             V = UVW[0,:,1]
@@ -186,7 +192,7 @@ def main(args):
             #if verbose: print("LST (hr):",LST)
             if Dec is None:
 
-                RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas,uv_diag=uv_diag)
+                RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag)
                 #HA_axis = (LST*15) - RA_axis
                 HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
                 print(HA_axis)
@@ -197,7 +203,7 @@ def main(args):
             else:
                 #RA = get_ra(mjd,Dec) #LST*15
                 #HA = 0
-                RA_axis,Dec_axis,elev = uv_to_pix(mjd,IMAGE_SIZE,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec)
+                RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec)
                 #HA_axis = (LST*15) - RA_axis
                 HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
                 RA = RA_axis[int(len(RA_axis)//2)]
@@ -319,7 +325,7 @@ def main(args):
             if args.inject and (gulp in inject_gulps) and filelabels[g]==args.filelabel:
                 print("Injecting pulse in gulp",gulp)
                 from inject import injecting
-                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=IMAGE_SIZE,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000)
+                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000)
                 #offsetRA = offsetDEC = 0
 
                 if args.snr_inject > 0:
@@ -343,17 +349,17 @@ def main(args):
                 #SNR = 10000
                 #width = 2
                 #offsetRA = offsetDEC = 0
-                inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=IMAGE_SIZE,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
+                inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
 
                 if args.flat_field:
                     inject_img = np.ones_like(inject_img)
                 elif args.gauss_field:
-                    xx,yy = np.meshgrid(np.linspace(-2,2,IMAGE_SIZE),np.linspace(-2,2,IMAGE_SIZE))
+                    xx,yy = np.meshgrid(np.linspace(-2,2,args.gridsize),np.linspace(-2,2,args.gridsize))
                     inject_img = multivariate_normal(mean=[0,0],cov=0.5).pdf(np.dstack((xx,yy)))
                     inject_img = inject_img[:,:,np.newaxis,np.newaxis].repeat(dat.shape[0],2).repeat(args.num_chans,3)
                 elif args.point_field:
                     inject_img = np.zeros_like(inject_img)
-                    inject_img[int(IMAGE_SIZE//2)+offsetDEC,int(IMAGE_SIZE//2)+offsetRA] = 1
+                    inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
                 #report injection in log file
                 with open(inject_file,"a") as csvfile:
                     wr = csv.writer(csvfile,delimiter=',')
@@ -362,13 +368,13 @@ def main(args):
 
 
             else:
-                inject_img = np.zeros((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
+                inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
             dat[np.isnan(dat)]= 0 
         
             #imaging
             print("Start imaging")
             if args.wstack: print("W-stacking with ",args.Nlayers," layers")
-            dirty_img = np.nan*np.ones((IMAGE_SIZE,IMAGE_SIZE,dat.shape[0],args.num_chans))
+            dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
             for i in range(dat.shape[0]):
                 for j in range(args.num_chans):
                     for k in range(dat.shape[-1]):
@@ -390,14 +396,14 @@ def main(args):
                         for jj in range(args.nchans_per_node):
                             if args.briggs:
                                 if k == 0 and jj == 0:
-                                    dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                                    dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                                 else:
-                                    dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                                    dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
                             else:
                                 if k == 0 and jj == 0:
-                                    dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
+                                    dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
                                 else:
-                                    dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),IMAGE_SIZE,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
+                                    dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
                         #print("")
             print("Imaging complete")            
             print(dirty_img)
@@ -473,6 +479,9 @@ if __name__=="__main__":
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     parser.add_argument('--wstack',action='store_true',help='If set use w-stacking algorithm with --Nlayers layers')
     parser.add_argument('--Nlayers',type=int,help='Number of layers for w-stacking',default=18)
+    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
+    parser.add_argument('--flagSWAVE',action='store_true',help='Flag channels when SWAVE template RFI is detected, which manifests as a 2 Hz sin wave over ~5 minutes of data')
+    parser.add_argument('--flagBPASS',action='store_true',help='Flag channels when BPASS template RFI is detected, which is simpl comparison to bandpass mean in visibilities')
     args = parser.parse_args()
     main(args)
 

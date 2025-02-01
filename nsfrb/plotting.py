@@ -198,22 +198,41 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         
         if uv_diag is not None and dec_obs is not None:
             print("making scatter plot...",ra_grid_2D.shape,len(RA_axis))
-            ax.scatter(ra_grid_2D[:,:searched_image.shape[1]].flatten(),dec_grid_2D[:,:searched_image.shape[1]].flatten(),c=(searched_image.max((2,3))).flatten(),cmap='binary',vmin=vmin,vmax=vmax,alpha=0.1)
+            ax.scatter(ra_grid_2D[:,-searched_image.shape[1]:].flatten(),dec_grid_2D[:,-searched_image.shape[1]:].flatten(),c=(searched_image.max((2,3))).flatten(),cmap='binary',vmin=vmin/2,vmax=vmax,alpha=0.1)
             print("done")
         else:
-            ax.imshow((searched_image.max((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)],vmin=vmin,vmax=vmax)
+            ax.imshow((searched_image.max((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)],vmin=vmin/2,vmax=vmax)
         #ax.contour(searched_image.max((2,3))[:,::-1],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
     else:
         if uv_diag is not None:
-            ax.scatter(ra_grid_2D[:,:len(RA_axis)].flatten(),dec_grid_2D[:,:len(RA_axis)].flatten(),c=(img.mean((2,3))).flatten(),cmap='binary',alpha=0.1)
+            ax.scatter(ra_grid_2D[:,-len(RA_axis):].flatten(),dec_grid_2D[:,-len(RA_axis):].flatten(),c=(img.mean((2,3))).flatten(),cmap='pink_r',alpha=0.1)
         else:
-            ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
+            ax.imshow((img.mean((2,3)))[:,::-1],cmap='pink_r',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
     print("done with new stuff")
-    if 'predicts' in canddict.keys():
-        ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
-        ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+
+
+
+    if uv_diag is not None and dec_obs is not None:
+        ra_grid_2D_cut = ra_grid_2D[:,-searched_image.shape[1]:]
+        dec_grid_2D_cut = dec_grid_2D[:,-searched_image.shape[1]:]
+        if 'predicts' in canddict.keys():
+            ra_grid_2D_cut = ra_grid_2D[:,-searched_image.shape[1]:]
+            dec_grid_2D_cut = dec_grid_2D[:,-searched_image.shape[1]:]
+            ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
+                    dec_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
+                    c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+            ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
+                    dec_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
+                    c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='limegreen')
+        else:
+            ax.scatter(ra_grid_2D_cut[decs,ras].flatten(),
+                    dec_grid_2D_cut[decs,ras].flatten(),c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
     else:
-        ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+        if 'predicts' in canddict.keys():
+            ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+            ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+        else:
+            ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     #nvss sources
     nvsspos,tmp,tmp = nvss_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
     ax.plot(nvsspos.ra.value,nvsspos.dec.value,'o',markerfacecolor='none',markeredgecolor='blue',markersize=20,markeredgewidth=4,label='NVSS Source')

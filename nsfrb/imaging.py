@@ -22,62 +22,13 @@ import numba
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
 
-def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin):
-    """
-    Removes visibilities containing flagged antennas and below minimum 
-    baseline length
-    
-    dat: visibility data (time x baseline x channel x pol)
-    bname: baseline names
-    blen: baseline lengths (baseline x 3)
-    UVW: U,V,W, coordinates (baseline x 3)
-    antenna_order: antenna ordering
-    flagged_antennas: number of antennas to be flagged
-    bmin: minimum baseline length in meters
-
-    """
-    flagged_vis = []
-    for i in flagged_antennas:
-        #print(i)
-        for j in np.array(antenna_order):
-            #print("--",j)
-            if str(i) + "-" + str(j) in list(bname):
-                flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
-            elif str(j) + "-" + str(i) in list(bname):
-                flagged_vis.append(list(bname).index(str(j) + "-" + str(i)))
-                
-        """
-        for j in np.array(antenna_order)[:antenna_order.index(i)]:
-            flagged_vis.append(list(bname).index(str(j) + "-" + str(i)))
-        for j in np.array(antenna_order)[antenna_order.index(i):]:
-            flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
-        """
-    flagged_vis = np.array(flagged_vis,dtype=int)
-    print("Flagged visibilities:",np.array(list(bname))[flagged_vis])
-    unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)),dtype=int)
-    print("Unflagged visibilities:",np.array(list(bname))[unflagged_vis])
-    antenna_order = list(set(antenna_order)-set(flagged_antennas))
-    bname = bname[unflagged_vis]
-    blen = blen[unflagged_vis]
-    UVW = UVW[:,unflagged_vis,:]
-    dat = dat[:,unflagged_vis,:,:]
-
-    #print(dat)
-    #remove short baselines
-    if bmin > 0:
-        blen_mask = np.sqrt(np.sum(blen**2,axis=1))>=bmin
-        bname = bname[blen_mask]
-        blen = blen[blen_mask]
-        UVW = UVW[:,blen_mask,:]
-        dat = dat[:,blen_mask,:,:]
-    return dat, bname, blen, UVW, antenna_order
 
 def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: np.ndarray = None, robust: float = 0.0,pixel_resolution=None) -> np.ndarray:
     """

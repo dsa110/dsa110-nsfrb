@@ -75,7 +75,7 @@ def matched_filter_dedisp_snr_fft_jit_init(image_tesseract_point,corr_shifts_all
 matched filter + DM + SNR combined
 """
 @jax.jit
-def matched_filter_dedisp_snr_fft_jit(image_tesseract_point,PSFimg,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth):
+def matched_filter_dedisp_snr_fft_jit(image_tesseract_input,PSFimg,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth):
     """
     This function replaces pytorch with JAX so that JIT computation can be invoked
     """
@@ -104,11 +104,25 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract_point,PSFimg,corr_shifts_a
                                     ,axes=(0,1),s=(gridsize_DEC,gridsize_RA))
                                 ,axes=(0,1)))[gridsize_DEC//4:(gridsize_DEC//4) + gridsize_DEC//2,gridsize_RA//4:(gridsize_RA//4) + gridsize_RA//2,:,:]
     """
-    gridsize_DEC,gridsize_RA = image_tesseract_point.shape[:2]
+    gridsize_DEC,gridsize_RA = image_tesseract_input.shape[:2]
     
     #del image_tesseract
     #del PSFimg
     #del image_tesseract
+
+
+    #median subtraction
+    print(truensamps,image_tesseract_input.shape)
+    image_tesseract_point1 = image_tesseract_input[:,:,:-truensamps,:] - jnp.nanmedian(image_tesseract_input[:,:,:-truensamps,:],axis=2,keepdims=True)
+    image_tesseract_point2 = image_tesseract_input[:,:,-truensamps:,:] - jnp.nanmedian(image_tesseract_input[:,:,-truensamps:,:],axis=2,keepdims=True)
+    print(image_tesseract_point1.shape,image_tesseract_point2.shape)
+    image_tesseract_point = jnp.concatenate([image_tesseract_point1,image_tesseract_point2],axis=2)
+
+    #image_tesseract_point = image_tesseract_point.at[:,:,:-truensamps,:].set(image_tesseract_point[:,:,:-truensamps,:] - jnp.nanmedian(image_tesseract_point[:,:,:-truensamps,:],axis=2,keepdims=True))
+    #image_tesseract_point = image_tesseract_point.at[:,:,-truensamps:,:].set(image_tesseract_point[:,:,-truensamps:,:] - jnp.nanmedian(image_tesseract_point[:,:,-truensamps:,:],axis=2,keepdims=True))
+
+
+
 
     #dedispersion
     nsamps = image_tesseract_point.shape[-2]
