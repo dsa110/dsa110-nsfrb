@@ -271,7 +271,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     #timeseries
     ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
-        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label="NSFRB"+names[i])
+        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
     ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
     ax.set_xlim(0,tsamp*img.shape[2]/1000)
     ax.set_title("De-dispersed Timeseries")
@@ -279,7 +279,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     #median subtracted timeseries
     ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
-        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label="NSFRB"+names[i])
+        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
     #ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
     ax.set_xlim(0,tsamp*img.shape[2]/1000)
     ax.set_title("De-dispersed Median Subtracted Timeseries")
@@ -293,7 +293,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (MHz)")
 
-    t = "NSFRB" + isot
+    t = "NSFRB " + isot
     if injection: t = t + " (injection)"
     plt.suptitle(t)
     plt.savefig(output_dir + isot + "_NSFRBcandplot.png")

@@ -752,7 +752,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     sysstdout = sys.stdout
     for j in finalidxs:#range(len(finalidxs)):
         with open(cutterfile,"a") as sys.stdout:
-            lastname = names.increment_name(cand_mjd,lastname=lastname)
+            lastname = names.increment_name(cand_mjd,lastname=names.get_lastname())
         sys.stdout = sysstdout
         if args['classify']:
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
@@ -802,8 +802,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
             os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
             np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/" + lastname + ".npy",subimg)
 
-    #send candidates to slack
-    if len(finalidxs) > 0:
+        #send candidates to slack if len(finalidxs) > 0:
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=cutterfile,end='')
         canddict = dict()
@@ -851,8 +850,8 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
                 snr=canddict['snrs'][i]
                 width=int(widthtrials[int(canddict['wid_idxs'][i])])
                 dm=int(DM_trials[int(canddict['dm_idxs'][i])])
-                ra=RA_axis[int(canddict['ra_idxs'][i])]
-                dec=DEC_axis[int(canddict['dec_idxs'][i])]
+                ra=RA_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #RA_axis[int(canddict['ra_idxs'][i])]
+                dec=DEC_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #DEC_axis[int(canddict['dec_idxs'][i])]
                 trigname = canddict['names'][i]
                 printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
                 if useTOA:
