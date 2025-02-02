@@ -37,7 +37,7 @@ import numpy as np
 import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
-from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol
+from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir
 from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter,default_PSF
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
@@ -741,7 +741,13 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
 
     #write final candidates to csv
     prefix = "NSFRB"
-    lastname = None     #once we have etcd, change to 'names.get_lastname()'
+    with open(table_dir+"nsfrb_lastname.txt","r") as lnamefile:
+        lastname = (lnamefile.read()).strip()
+        if lastname == "None": 
+            lastname = None
+    lnamefile.close()
+
+    #lastname =      #once we have etcd, change to 'names.get_lastname()'
     allcandnames = []
     csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
@@ -752,7 +758,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     sysstdout = sys.stdout
     for j in finalidxs:#range(len(finalidxs)):
         with open(cutterfile,"a") as sys.stdout:
-            lastname = names.increment_name(cand_mjd,lastname=names.get_lastname())
+            lastname = names.increment_name(cand_mjd,lastname=lastname)
         sys.stdout = sysstdout
         if args['classify']:
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
@@ -761,6 +767,13 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         allcandnames.append(prefix + lastname)
     csvfile.close()
 
+    with open(table_dir+"nsfrb_lastname.txt","w") as lnamefile:
+        if lastname is not None:
+            lnamefile.write(lastname)
+        else:
+            lnamefile.write("None")
+    lnamefile.close()
+    printlog("done naming stuff",output_file=cutterfile)
 
     #make subdirectories for candidates
     for j in finalidxs:
@@ -802,7 +815,8 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
             os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
             np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/" + lastname + ".npy",subimg)
 
-        #send candidates to slack if len(finalidxs) > 0:
+    #send candidates to slack 
+    if len(finalidxs) > 0:
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=cutterfile,end='')
         canddict = dict()
