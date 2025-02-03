@@ -6,7 +6,7 @@ import datetime
 import time
 import os
 import shutil
-
+import numpy as np
 
 """
 This script waits for visibilities to pass their 1-day expiration, then deletes them
@@ -38,6 +38,7 @@ vis_file = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/vis_files.c
 def main(args):
     
 
+    """
     if args.populate:
         with open(vis_file,"w") as csvfile:
             for subdir, pattern in subdirs_to_clear:
@@ -46,7 +47,19 @@ def main(args):
                     wr.writerow([os.path.basename(str(file)),int(0),""])
         print("Populated csv, returning")
         return 0
+    """
 
+    if args.populate:
+        with open(vis_file,"w") as csvfile:
+            for subdir, pattern in subdirs_to_clear:
+                files = np.sort(glob.glob(os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/" + subdir + "/" + pattern))
+                for f in files:
+                    wr = csv.writer(csvfile,delimiter=',')
+                    wr.writerow([os.path.basename(str(f)),int(0),""])
+                    #print(os.path.basename(str(f)))
+            
+        print("Populated csv, returning")
+        return 0
 
     while True:
         
