@@ -501,7 +501,7 @@ def quick_snr_fft(image_pixel,width):
 
 
 #checks injection file to see if a candidate is an injection
-def is_injection(isot,inject_file=inject_file):
+def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps):
     #check if the candidate is an injection
     injection = False
     with open(inject_file,"r") as csvfile:
@@ -509,7 +509,7 @@ def is_injection(isot,inject_file=inject_file):
         i = 0
         for row in re:
             if i != 0:
-                if row[0] == isot:
+                if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
                     injection = True
                     break
             i += 1
