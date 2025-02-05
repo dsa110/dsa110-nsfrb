@@ -619,10 +619,10 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         return
     RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
-    RA_axis = RA_axis[-image.shape[1]:]
+    RA_axis = RA_axis[-searched_image.shape[1]:]
     RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)
-    RA_axis_2D = RA_axis_2D[:,-image.shape[1]:]
-    DEC_axis_2D = DEC_axis_2D[:,-image.shape[1]:]
+    RA_axis_2D = RA_axis_2D[:,-searched_image.shape[1]:]
+    DEC_axis_2D = DEC_axis_2D[:,-searched_image.shape[1]:]
 
     #RA_axis = RA_axis[int((len(RA_axis)-image.shape[1])//2):int((len(RA_axis)-image.shape[1])//2) + image.shape[1]]
     #PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps)
