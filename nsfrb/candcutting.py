@@ -751,8 +751,9 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     allcandnames = []
     csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
-    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"]
+    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
     if useTOA: hdr += ["TOA"]
+    hdr += ["SNR"]
     if args['classify']: hdr += ["PROB"]
     wr.writerow(hdr)
     sysstdout = sys.stdout
