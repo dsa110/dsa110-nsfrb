@@ -338,7 +338,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     printlog("Done gathering centroids",output_file)
 
     if TOAflag:
-        centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i],centroid_TOAs[i]) for i in range(len(centroid_ras))]
+        centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_TOAs[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
     else:
         centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
     printlog("Done gathering centroid cands",output_file)
@@ -826,12 +826,14 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         canddict['wid_idxs'] = [finalcands[j][2] for j in finalidxs]
         canddict['dm_idxs'] = [finalcands[j][3] for j in finalidxs]
         canddict['snrs'] = [finalcands[j][-1] for j in finalidxs]
+        printlog("SNRS:" + str(canddict['snrs']),output_file=cutterfile)
         canddict['names'] = allcandnames
         if args['classify']:
             canddict['probs'] = probabilities
             canddict['predicts'] = predictions
         if useTOA: 
             canddict['TOAs'] = [finalcands[j][4] for j in finalidxs]
+            printlog("TOAS:" + str(canddict['TOAs']),output_file=cutterfile)
         #RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
 
         # dedisperse to each unique dm candidate
