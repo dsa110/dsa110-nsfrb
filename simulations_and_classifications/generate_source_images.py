@@ -7,12 +7,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm  
-from nsfrb.simulating import compute_uvw, add_complex_gaussian_noise, get_core_coordinates, apply_spectral_index, apply_phase_shift
+from nsfrb.simulating import compute_uvw, add_complex_gaussian_noise, get_all_coordinates, get_core_coordinates, apply_spectral_index, apply_phase_shift
 from nsfrb.imaging import revised_uniform_image,uniform_image
-from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
+from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, flagged_antennas
 
 
-def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1):
+def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1,flagged_antennas=flagged_antennas):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -44,7 +44,10 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
     """
     dataset_dir = os.path.join(dataset_dir, 'src_examples')
 
-    x_core, y_core, z_core = get_core_coordinates()
+    #if core:
+    #    x_core, y_core, z_core = get_core_coordinates(flagged_antennas=flagged_antennas)
+    #else:
+    x_core, y_core, z_core = get_all_coordinates(flagged_antennas=flagged_antennas)
     #pixel_resolution = (0.20 / np.max(np.sqrt(x_core**2 + y_core**2))) / 3
 
     ANTENNA_COUNT = len(x_core)  # Assuming x_core length represents the antenna count

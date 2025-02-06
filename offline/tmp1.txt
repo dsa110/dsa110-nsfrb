@@ -1,4 +1,1 @@
-opening connection using: ssh h03.pro.pvt rsync --server --sender -vvlogDtpre.iLsfxC --remove-source-files . "./data/nsfrb_*.out"  (9 args)
-receiving incremental file list
-delta-transmission enabled
-nsfrb_sb00_161034.out
+opening connection using: ssh h11.pro.pvt rsync --server --sender -vvlogDtpre.iLsfxC --remove-source-files . "./data/nsfrb_*.out"  (9 args)

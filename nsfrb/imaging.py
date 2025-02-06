@@ -499,7 +499,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
     
 
     if uv_diag is None:
-        x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas) #meters
+        x_m,y_m,z_m = simulating.get_all_coordinates(flagged_antennas) #meters
         U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,DEC*np.pi/180) #meters
         uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
     pixel_resolution = (ref_wav / uv_diag) / 3
@@ -633,7 +633,7 @@ def uv_to_pix_manual(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangem
     #create offset grid using pixel size and max UV diagonal distance
 
     if uv_diag is None:
-        x_m,y_m,z_m = simulating.get_core_coordinates(flagged_antennas) #meters
+        x_m,y_m,z_m = simulating.get_all_coordinates(flagged_antennas) #meters
         U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
         uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
     pixel_resolution = (ref_wav / uv_diag) / 3
