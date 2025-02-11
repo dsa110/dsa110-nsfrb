@@ -218,6 +218,7 @@ if __name__=="__main__":
     parser.add_argument('--trigger',action='store_true',help='Send T4 trigger to copy visibility buffer and voltages for each candidate event')
     parser.add_argument('--useTOA',action='store_true',help='Include TOAs in clustering algorithm')
     parser.add_argument('--psfcluster',action='store_true',help='PSF-based spatial clustering')
+    parser.add_argument('--clusteriters',type=int,help='Number of clustering iterations; minimum cluster size reduced on each iteration; default=1',default=1)
     args = parser.parse_args()
     main(args)
     """

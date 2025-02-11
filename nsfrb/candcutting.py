@@ -666,14 +666,19 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
             printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
         else:
             PSF = None
-        if useTOA:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,useTOA=True,perc=args['psfpercentile'])
-        else:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,perc=args['psfpercentile'])
-        printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
-        printlog(classes,output_file=cutterfile)
-        printlog(cluster_cands,output_file=cutterfile)
+        for i in range(args['clusteriters']):
+            mincluster = int(np.max([args['mincluster']//(i+1),2]))
 
+            printlog("Cluster iteration " + str(i+1) + "/" + str(args['clusteriters']) + " with min cluster size " + str(mincluster),output_file=cutterfile)
+            if useTOA:
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),useTOA=True,perc=args['psfpercentile'])
+            else:
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),perc=args['psfpercentile'])
+            printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
+            printlog(classes,output_file=cutterfile)
+            printlog(cluster_cands,output_file=cutterfile)
+             
+            cands_noninf = cluster_cands
         finalidxs = np.arange(len(cluster_cands),dtype=int)
         finalcands = cluster_cands
         

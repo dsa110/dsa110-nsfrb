@@ -58,9 +58,9 @@ do
 		done
 		if (( $prerun==0 )); then
 			if [ -z "$6" ]; then
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless --search --gridsize 301 --flagBPASS #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2$injectflag --num_inject $inject --snr_inject 100000000 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless --search --gridsize 301 --flagBPASS --sleeptime 0 #>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
 			else
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --filedir $filedir$injectflag --num_inject $inject --snr_inject 100000000 --dm_inject 0 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless --search --gridsize 301 --flagBPASS
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 2 --filedir $filedir$injectflag --num_inject $inject --snr_inject 100000000 --width_inject 2 --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless --search --gridsize 301 --flagBPASS --sleeptime 0
 
 			fi
 			donefiles+=($label)

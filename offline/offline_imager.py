@@ -23,7 +23,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize
 from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,get_ra
-from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS
+from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
@@ -173,6 +173,8 @@ def main(args):
                 fcts.append(fct_SWAVE)
             if args.flagBPASS:
                 fcts.append(fct_BPASS)
+            if args.flagFRCBAND:
+                fcts.append(fct_FRCBAND)
             dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs, flag_channel_templates = fcts)
             
             U = UVW[0,:,0]
@@ -483,6 +485,7 @@ if __name__=="__main__":
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
     parser.add_argument('--flagSWAVE',action='store_true',help='Flag channels when SWAVE template RFI is detected, which manifests as a 2 Hz sin wave over ~5 minutes of data')
     parser.add_argument('--flagBPASS',action='store_true',help='Flag channels when BPASS template RFI is detected, which is simpl comparison to bandpass mean in visibilities')
+    parser.add_argument('--flagFRCBAND',action='store_true',help='Flag channels in FRC miltiary allocation 1435-1525 MHz')
     args = parser.parse_args()
     main(args)
 

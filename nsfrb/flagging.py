@@ -85,6 +85,14 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagg
 
     return dat, bname, blen, UVW, antenna_order
 
+def fct_FRCBAND(dat):
+    """
+    Removes visibilities in 1435-1525 MHz military allocation (top 6 subbands)
+
+    dat: visibility data (time x baseline x channel x pol)
+    """
+    nchans_per_node = int(dat.shape[2]//int(NUM_CHANNELS//AVERAGING_FACTOR))
+    return ((int(NUM_CHANNELS//AVERAGING_FACTOR))*nchans_per_node) - np.arange(int(6*nchans_per_node)) - 1
 
 def fct_BPASS(dat,noise_dir=noise_dir,weights=[1,1]):
     """
