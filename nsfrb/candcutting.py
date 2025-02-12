@@ -674,13 +674,18 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
                 classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),useTOA=True,perc=args['psfpercentile'])
             else:
                 classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),perc=args['psfpercentile'])
-            printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
-            printlog(classes,output_file=cutterfile)
-            printlog(cluster_cands,output_file=cutterfile)
+            if np.all(np.array(classes)==-1):
+                printlog("Minimum number of clusters reached",output_file=cutterfile)
+                break
+            else:
+                printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
+                printlog(classes,output_file=cutterfile)
+                printlog(cluster_cands,output_file=cutterfile)
              
-            cands_noninf = cluster_cands
-        finalidxs = np.arange(len(cluster_cands),dtype=int)
-        finalcands = cluster_cands
+                cands_noninf = cluster_cands
+            
+        finalidxs = np.arange(len(cands_noninf),dtype=int)
+        finalcands = cands_noninf
         
     #cut by S/N if still too many
     if len(finalcands) >args['maxcands_postcluster']:
@@ -790,28 +795,31 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
 
     #get image cutouts and write to file
-    if args['cutout'] or args['train']:
+    if (args['cutout'] or args['train'] or (args['traininject'] and injection_flag)):
         for j in finalidxs:#range(len(finalidxs)):
             if args['subimgpix'] != image.shape[0]:
                 subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])#[:,:,int(finalcands[j][2]),:]
             else:
                 subimg = image
+            #median subtract
+            subimg -= np.nanmedian(subimg,(2,3),keepdims=True)
+
             lastname = allcandnames[j]
 
-            if args['train']:
+            if args['train'] or (args['traininject'] and injection_flag):
                 printlog(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j),output_file=cutterfile)
                 for k in range(subimg.shape[3]):
                     filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
                     printlog(filepath,output_file=cutterfile)
-                    if useTOA:
-                        loc = int(finalcands[j][4])
-                        wid = widthtrials[int(finalcands[j][2])]
-                        plt.imsave(filepath, subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),k].mean(2), cmap='gray')
-                    else:
-                        plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
+                    #if useTOA:
+                    #    loc = int(finalcands[j][4])
+                    #    wid = widthtrials[int(finalcands[j][2])]
+                    #    plt.imsave(filepath, subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),k].mean(2), cmap='gray')
+                    #else:
+                    plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
                 np.save(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + ".npy",subimg)
 
-                f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.txt","a")
+                f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.csv","a")
                 f.write(cand_isot + "_" + str(j) + ",-1,end\n")
                 f.close()
 

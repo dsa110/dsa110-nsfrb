@@ -328,7 +328,7 @@ def main(args):
             if args.inject and (gulp in inject_gulps) and filelabels[g]==args.filelabel:
                 print("Injecting pulse in gulp",gulp)
                 from inject import injecting
-                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000)
+                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=10000000,SNRmax=100000000)
                 #offsetRA = offsetDEC = 0
 
                 if args.snr_inject > 0:

@@ -215,6 +215,7 @@ if __name__=="__main__":
     parser.add_argument('--psfpercentile',type=float,help='Percentile to use for PSF clustering, default 70th',default=70.0)
     parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
     parser.add_argument('--train',action='store_true',help='Save candidate cutouts to the training set for the ML classifier')
+    parser.add_argument('--traininject',action='store_true',help='Save injection cutouts to the training set for the ML classifier')
     parser.add_argument('--trigger',action='store_true',help='Send T4 trigger to copy visibility buffer and voltages for each candidate event')
     parser.add_argument('--useTOA',action='store_true',help='Include TOAs in clustering algorithm')
     parser.add_argument('--psfcluster',action='store_true',help='PSF-based spatial clustering')

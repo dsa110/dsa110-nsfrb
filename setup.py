@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, Extension
 from version import get_git_version
 
 setup(name='dsa110-nsfrb',
@@ -8,7 +8,14 @@ setup(name='dsa110-nsfrb',
       python_requires='>3.8',
 #      requirements=['seaborn', 'astropy', 'hdbscan', 'progress'],
       packages=['nsfrb','simulations_and_classifications','inject','dsaT4'],
-      zip_safe=False)
+      zip_safe=False,
+      ext_modules=[
+          Extension(
+              name="rtreader",
+              sources=["realtime/rtreader/rtreader.c"],
+          ),
+      ]
+)
 
 #get local nsfrb directory
 import os
