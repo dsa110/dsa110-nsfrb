@@ -504,6 +504,7 @@ def quick_snr_fft(image_pixel,width):
 def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps):
     #check if the candidate is an injection
     injection = False
+    postinjection = False
     with open(inject_file,"r") as csvfile:
         re = csv.reader(csvfile,delimiter=',')
         i = 0
@@ -511,10 +512,12 @@ def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps):
             if i != 0:
                 if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
                     injection = True
+                    if row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
+                        postinjection = True
                     break
             i += 1
     csvfile.close()
-    return injection
+    return injection,postinjection
 
 
 def read_candfile(fname):
@@ -557,7 +560,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     #for each candidate get the isot and find the corresponding image
     cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
     cand_mjd = Time(cand_isot,format='isot').mjd
-    injection_flag = is_injection(cand_isot)
+    injection_flag,postinjection_flag = is_injection(cand_isot)
     
     #read cand file
     raw_cand_names,finalcands = read_candfile(fname)
@@ -795,7 +798,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
 
     #get image cutouts and write to file
-    if (args['cutout'] or args['train'] or (args['traininject'] and injection_flag)):
+    if (args['cutout'] or args['train'] or (args['traininject'] and injection_flag and not postinjection_flag)):
         for j in finalidxs:#range(len(finalidxs)):
             if args['subimgpix'] != image.shape[0]:
                 subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])#[:,:,int(finalcands[j][2]),:]
@@ -806,7 +809,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
 
             lastname = allcandnames[j]
 
-            if args['train'] or (args['traininject'] and injection_flag):
+            if args['train'] or (args['traininject'] and injection_flag and not postinjection_flag):
                 printlog(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j),output_file=cutterfile)
                 for k in range(subimg.shape[3]):
                     filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"

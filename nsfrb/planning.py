@@ -366,12 +366,61 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
 
 dec_limit = -52
 gl_limits = np.array([275,330])
-def make_gl_grid(gl_res,gl_limits=gl_limits):
+def make_gl_grid(gl_res,gl_limits=gl_limits,gb_offset=0):
     """
     This function takes the desired angular spacing of GP tracking pointings andd returns a regular grid of Galactic longitudes.
     """
     
-    return np.concatenate([np.arange(0,gl_limits[0],gl_res),np.arange(gl_limits[1],360.0,gl_res)])
+    gl_grid = np.concatenate([np.arange(0,gl_limits[0],gl_res),np.arange(gl_limits[1],360.0,gl_res)])
+    return gl_grid
+
+def lock_to_time_grid(fixed_tstep_hr,mjd_steps,twait_steps,tslew_steps,elev_steps,gl_steps,gb_steps,ra_steps,dec_steps,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,subresolution=1000,el_slew_rate=0.5368867455531618,gb_offset=0):
+    """
+    less strict than lock_to_grid; checks if time between steps is greater than required fixed timestep. Ifso, sets the mjd to that timestep. If not, delays the step and re-finds intersection with the plane...somehow
+    """
+    max_slew_time = 90/el_slew_rate #s
+    loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m) #default is ovro
+    for i in range(1,len(mjd_steps)):
+        if mjd_steps[i-1]-mjd_steps[i] >= (fixed_tstep_hr/24):
+            print("Timestep ",i,"ok")
+            twait_steps[i] += ((mjd_steps[i-1]-mjd_steps[i]) - (fixed_tstep_hr/24))*86400
+            mjd_steps[i] = mjd_steps[i-1] + (fixed_tstep_hr/24)
+        else:
+            #first see if there's excess wait time we can use
+            if twait_steps[i] >= (fixed_tstep_hr*3600):
+                print("Timestep ",i,"pulling from wait time")
+                twait_steps[i] -= ((fixed_tstep_hr/24) - (mjd_steps[i-1]-mjd_steps[i]))*86400
+                mjd_steps[i] = mjd_steps[i-1] + (fixed_tstep_hr/24)
+            else:
+                #if not, we need to re-find the nearest GP crossing
+                print("Timestep ",i, "invalid, recomputing...",end="")
+                mjd_steps[i] = mjd_steps[i-1] + (fixed_tstep_hr/24)
+                tsamps = np.linspace(0,100*max_slew_time,subresolution) #s
+                elsamps = (elev_steps[i-1] + el_slew_rate*tsamps)%180
+                altsamps,azsamps = DSAelev_to_ASTROPYalt(elsamps,az_offset)
+
+                antpos = AltAz(obstime=Time(mjd_steps[i] + (tsamps/86400),format='mjd'),location=loc,az=azsamps*u.deg,alt=altsamps*u.deg)
+                icrs = antpos.transform_to(ICRS())
+                coord = SkyCoord(ra=icrs.ra,dec=icrs.dec,frame='icrs')
+                
+                #best one is the one that brings us closest to plane with extra time to spare
+                bestidx = np.argmin(np.abs(coord.galactic.b.value - gb_offset))
+
+                #update
+                tslew_steps[i] = tsamps[bestidx]
+                twait_steps[i] = 0
+                ra_steps[i] = coord[bestidx].ra.value
+                dec_steps[i] = coord[bestidx].dec.value
+                gl_steps[i] = coord[bestidx].galactic.l.value
+                gb_steps[i]= coord[bestidx].galactic.b.value
+                elev_steps[i] = elsamps[bestidx]
+                print("New step:",mjd_steps[i],elev_steps[i],gl_steps[i],gb_steps[i])
+
+    new_obs_time = (mjd_steps[-1]-mjd_steps[0])*24
+    new_obs_deg = (gl_steps[-1]-gl_steps[0] if gl_steps[-1]>gl_steps[0] else gl_steps[-1] + (360-gl_steps[0]))
+
+    return mjd_steps,elev_steps,ra_steps,dec_steps,gl_steps,gb_steps,new_obs_time,new_obs_deg,twait_steps,tslew_steps
+
 
 
 def lock_to_grid(mjd_steps,elev_steps,gl_grid,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset):
@@ -423,7 +472,7 @@ def lock_to_grid(mjd_steps,elev_steps,gl_grid,Lat=Lat,Lon=Lon,Height=Height,az_o
     return new_mjd_steps,new_elev_steps,new_alt_steps,new_ra_steps,new_dec_steps,new_gl_steps,new_gb_steps,new_obs_time,new_obs_deg
 
 
-def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolution=1000,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,gl_grid=None,plan_dir=plan_dir):
+def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolution=1000,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,gl_grid=None,plan_dir=plan_dir,outputdec=False,fixed_tstep_hr=None):
     """
     This function generates an observing plan to track the Galactic Plane given the current mjd and elevation, as a list of mjds and elevations. The plan is output as numpy arrays and written to a csv.
     """
@@ -491,6 +540,13 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
         mjd_steps,elev_steps,alt_steps,ra_steps,dec_steps,gl_steps,gb_steps,obs_time,obs_deg = lock_to_grid(mjd_steps,elev_steps,gl_grid,az_offset=az_offset)
         #flipped_steps = flipped_steps[:-1]
         #az_steps = az_steps[:-1]
+
+
+    #if specified, make sure that time between observations matches fixed_tsep_hr
+    if fixed_tstep_hr is not None:
+        mjd_steps,elev_steps,ra_steps,dec_steps,gl_steps,gb_steps,obs_time,obs_deg,t_waits,t_slews = lock_to_time_grid(fixed_tstep_hr,mjd_steps,t_waits,t_slews,elev_steps,gl_steps,gb_steps,ra_steps,dec_steps,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,subresolution=subresolution,el_slew_rate=el_slew_rate,gb_offset=gb_offset)
+        
+
     print("Total Number of Observations:",len(mjd_steps))
     print("Total Observing Time:",obs_time,'hours')
     print("Total Galactic Longitude coverage:",obs_deg,'deg')
@@ -526,10 +582,15 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
         with open(fname,"w") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             for i in range(len(mjd_steps)):
-                wr.writerow([mjd_steps[i],elev_steps[i]])
+                if outputdec:
+                    wr.writerow([mjd_steps[i],dec_steps[i]])
+                else:
+                    wr.writerow([mjd_steps[i],elev_steps[i]])
                 
-    
-    return mjd_steps,elev_steps
+    if outputdec:
+        return mjd_steps,dec_steps
+    else:
+        return mjd_steps,elev_steps
 
 
 

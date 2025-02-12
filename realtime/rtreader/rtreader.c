@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <sys/shm.h>
 
 /*
  * This module is a C-implemented Python module which reads data from a stream and outputs it as a
@@ -16,42 +17,33 @@ static PyObject *rtreader_read(PyObject *self, PyObject *args)
 {
 	// parsing Python arguments
 	//FILE *fptr;
-	const char *address;
+	const char *shmid_str;
 	//int *fdptr;
 	//int sts;
 
-	if (!PyArg_ParseTuple(args, "s", &address))
+	if (!PyArg_ParseTuple(args, "s", &shmid_str))
 		return NULL;
-	long int address_int = strtol(address,NULL,0);
-	//int fd = fdptr[0];
-	printf("Pointer Address: %ld\n",address_int);
-	// printf("File decriptor: %d\n",fd);
+	int shmid = atoi(shmid_str);
+	
+	//printf("%p\n",shmid_ptr);
+	//printf("%d\n",shmid_ptr);
+	//int shmid = *shmid_ptr;
+	printf("%d\n",shmid);
+	fflush(stdout);
 
-	//cast to pointer
-	char *memaddr = (char *)address_int;
-	//FILE *fptr = (FILE *)address_int;
-	printf("Memory Address: %p\n",memaddr);
+	//attach
+	char *memaddr = shmat(shmid, NULL, SHM_RDONLY);
 
-	//make memory map
-	int PROT_FLAG = PROT_READ;
-        int MAP_FLAG = MAP_SHARED | MAP_ANONYMOUS | MAP_FIXED;
-	size_t buffersize = 11;
-	memaddr = mmap(memaddr, buffersize, PROT_FLAG, MAP_FLAG, -1, 0);
+	//print
+	printf("Contents: %s\n",memaddr);
 
-	//copy from memory
-        char buffer2[buffersize];
-	memcpy(buffer2,memaddr,buffersize);
+	//detach
+        shmdt(memaddr);
+	shmctl(shmid,IPC_RMID,NULL);
 
-	//open and read
-	//size_t buffersize = 11;
-	//char buffer2[buffersize];
-	//fread(buffer2,1,buffersize,fptr);
-	printf("Contents: %s\n",buffer2);
-	//fclose(fptr);
-
-	//sts = system(command);
-	// printf("%s",command);
-	return PyLong_FromLong(address_int);
+	
+	
+	return PyLong_FromLong(shmid);
 }
 
 //Method table

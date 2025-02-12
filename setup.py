@@ -65,6 +65,7 @@ os.system("mkdir ../dsa110-nsfrb-PSF/")
 os.system("mkdir ../dsa110-nsfrb-plans/")
 import csv
 
+"""
 with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')
     wr.writerow(['ISOT','DM','WIDTH','SNR'])
@@ -73,7 +74,7 @@ with open("../dsa110-nsfrb-injections/recoveries.csv","w") as csvfile:
     wr = csv.writer(csvfile,delimiter=',')
     wr.writerow(['ISOT','DM','WIDTH','SNR','PREDICT','PROB'])
 csvfile.close()
-
+"""
 """
 with open(os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/fpr_test.csv","w") as csvfile:
     csvfile.write("ISOT,SNR")
