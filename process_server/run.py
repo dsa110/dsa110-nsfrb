@@ -380,6 +380,7 @@ def main(args):
         init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize,zero=args.initnoisezero)
         sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
         np.save(noise_dir + "running_vis_mean.npy",None)
+        np.save(noise_dir + "running_vis_mean_burst.npy",None)
 
     #initialize jax functions
     if args.usejax:

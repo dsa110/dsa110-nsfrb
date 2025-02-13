@@ -94,6 +94,35 @@ def fct_FRCBAND(dat):
     nchans_per_node = int(dat.shape[2]//int(NUM_CHANNELS//AVERAGING_FACTOR))
     return ((int(NUM_CHANNELS//AVERAGING_FACTOR))*nchans_per_node) - np.arange(int(6*nchans_per_node)) - 1
 
+
+def fct_BPASSBURST(dat,noise_dir=noise_dir,weights=[1,1]):
+    """
+    Removes visibilities in particular channel if surpassing 50x the accumulated 
+    average in any timestep.
+
+    dat: visibility data (time x baseline x channel x pol)
+    """
+
+    #compute new mean
+    dat_test = np.nanmax(np.abs(np.nanmean(dat,axis=3)),axis=0) -  np.nanmedian(np.abs(np.nanmean(dat,axis=3)),axis=0) 
+    dat_mean = np.nanmedian(np.nanmean(np.abs(dat_test),0))#np.nanmean(np.nanmedian(np.abs(np.nanmean(dat,axis=3)),0))
+
+    #get the current running mean
+    dat_run_mean = np.load(noise_dir+"running_vis_mean_burst.npy",allow_pickle=True)
+
+    #create new mean
+    if np.sum(dat_run_mean) is not None:
+        dat_new_mean = (dat_mean*weights[0] + dat_run_mean*weights[1])/np.sum(weights)
+    else:
+        dat_new_mean = dat_mean
+    np.save(noise_dir+"running_vis_mean_burst.npy",dat_new_mean)
+    
+
+    #compare to threshold
+    flag_channels= np.arange(dat.shape[2])[np.nanmean(np.abs(dat_test),0)>5*dat_mean]
+    return flag_channels
+
+
 def fct_BPASS(dat,noise_dir=noise_dir,weights=[1,1]):
     """
     Removes visibilities in particular channel if surpassing 10x the accumulated 
