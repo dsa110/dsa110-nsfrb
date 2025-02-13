@@ -238,7 +238,7 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
         
         if fixed_tstep_hr is not None:
             #step in RA evenly
-            ra_steps.append(ra_steps[i-1-lastskips] + ((fixed_tstep_hr*15)/np.cos(dec_steps[i-1-lastskips])))
+            ra_steps.append(ra_steps[i-1-lastskips] + ((fixed_tstep_hr*15)))#/np.cos(dec_steps[i-1-lastskips])))
             dec_steps.append(interpGPwrapped(ra_steps[-1]))
             cc = SkyCoord(ra=ra_steps*u.deg,dec=dec_steps*u.deg,frame='icrs')
             gl_steps.append(cc.galactic.l.value)
@@ -263,7 +263,7 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
         if fixed_tstep_hr is not None:
             GPpasstime_mjd = mjd_steps[i-1-lastskips] + (fixed_tstep_hr/24)
         else:
-            GPpasstime_mjd = mjd_steps[i-1-lastskips] + ((resolution/15/24)/np.cos(dec_steps[i-1-lastskips]*np.pi/180))
+            GPpasstime_mjd = mjd_steps[i-1-lastskips] + ((resolution/15/24))#/np.cos(dec_steps[i-1-lastskips]*np.pi/180))
         #print(mjd,GPpasstime.mjd)
         
         #sample the time up to this mjd and the elevation in either direction
@@ -486,10 +486,60 @@ def lock_to_grid(mjd_steps,elev_steps,gl_grid,Lat=Lat,Lon=Lon,Height=Height,az_o
     return new_mjd_steps,new_elev_steps,new_alt_steps,new_ra_steps,new_dec_steps,new_gl_steps,new_gb_steps,new_obs_time,new_obs_deg
 
 
-def generate_plane_timetile(mjd,elev,fixed_tstep_hr,el_slew_rate=0.5368867455531618,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,plan_dir=plan_dir,outputdec=False,dec_limit=0):
+
+def find_source_pass(mjd_now,ra_target_deg,dec_target_deg):
+    """
+    This function finds the mjd of a target's next pass iteratively and 
+    the estimated position error in arcseconds
+    """
+    ra_target = ra_target_deg/15
+    dec_target = dec_target_deg
+    mjd_day = mjd_now + np.linspace(0,1,24)
+    ra_day = []
+    for m in mjd_day:
+        ra_day.append(get_ra(m,dec_target)/15)
+    ra_day = np.array(ra_day)
+    mjd_hr = mjd_day[np.argmin(np.abs(ra_day-ra_target))] + np.linspace(-0.5,0.5,60)/24
+    mjd_hr = mjd_hr[mjd_hr>=mjd_now]
+    ra_hr = []
+    for m in mjd_hr:
+        ra_hr.append(get_ra(m,dec_target)/15)
+    ra_hr = np.array(ra_hr)
+    mjd_m = mjd_hr[np.argmin(np.abs(ra_hr-ra_target))] + np.linspace(-0.5,0.5,60)/24/60
+    mjd_m = mjd_m[mjd_m>=mjd_now]
+    ra_m = []
+    for m in mjd_m:
+        ra_m.append(get_ra(m,dec_target)/15)
+    ra_m = np.array(ra_m)
+
+    best_mjd = mjd_m[np.argmin(np.abs(ra_m-ra_target))]
+    best_ra = ra_m[np.argmin(np.abs(ra_m-ra_target))]
+    diff = (SkyCoord(ra=best_ra*u.deg,dec=dec_target*u.deg,frame='icrs').separation(SkyCoord(ra=ra_target*u.deg,dec=dec_target*u.deg,frame='icrs'))).value*3600
+
+    return best_mjd,diff
+
+
+
+
+
+
+
+def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_rate=0.5368867455531618,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,plan_dir=plan_dir,outputdec=False,dec_limit=0):
     """
     This function generates an observing plan to track the Galactic Plane given the current mjd and elevation, as a list of mjds and elevations. The plan is output as numpy arrays and written to a csv.
     """
+
+
+    #find mjd of source pass
+    if start_target is not None:
+        #check if target is within plane
+        start_target_c = SkyCoord(ra=start_target[0]*u.deg,dec=start_target[1]*u.deg,frame='icrs')
+        if (start_target_c.galactic.b.value - gb_offset) >= 3:
+            print("WARNING: target is not within the plane")
+        
+        mjd,diff = find_source_pass(mjd,start_target[0],start_target[1])
+        print("Starting Plane Tracking with source",start_target_c,"at",Time(mjd,format='mjd').isot)
+
     if plot:
         #make a high-res interpolation for plane
         raGP,decGP = GP_curve(np.linspace(0,360,100000),gb_offset)
@@ -506,11 +556,15 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,el_slew_rate=0.5368867455531
 
         plt.subplot(3,1,1)
         plt.plot(np.linspace(0,360,1000)/15,interpGP(np.linspace(0,360,1000)))
+        if start_target is not None:
+            plt.plot(start_target_c.ra.to(u.hourangle).value,start_target_c.dec.to(u.deg).value,'*',markersize=20,alpha=0.5,color='purple')
         plt.xlabel("RA")
         plt.ylabel("DEC")
 
         plt.subplot(3,1,2)
         plt.axhline(0)
+        if start_target is not None:
+            plt.plot(start_target_c.galactic.l.value,start_target_c.galactic.b.value,'*',markersize=20,alpha=0.5,color='purple')
         plt.xlabel("GL")
         plt.ylabel("GB")
         plt.xlim(0,360)
