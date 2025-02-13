@@ -202,7 +202,7 @@ if __name__=="__main__":
     parser.add_argument('--minsamples',type=int,help='Minimum number of candidates to be core point,default=2',default=2)
     parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
-    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights_20250212.pth")
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)

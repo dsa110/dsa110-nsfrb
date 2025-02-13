@@ -172,7 +172,7 @@ def find_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=3,Lat=Lat,Lon
 
     return mjd_int,ra_int,dec_int,az_int,elev_int,ra_steps,dec_steps,dec_plane,elev_steps,az_steps,alt_steps,mjd_steps,gb_steps,gl_steps#ra_plane,dec_plane,dec_steps,best_step
 
-def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolution=10000,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=10,verbose=False,gb_offset=0): #slew rate 0.1 deg/s from https://www.antesky.com/project/4-5m-cku-dual-bands-tvro-antenna/
+def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolution=10000,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=10,verbose=False,gb_offset=0,fixed_tstep_hr=None): #slew rate 0.1 deg/s from https://www.antesky.com/project/4-5m-cku-dual-bands-tvro-antenna/
     """
     This function takes the time and elevation at which the DSA-110 points to the Galactic plane and returns an observing plan for tracking the plane until no-longer visible
     """
@@ -236,12 +236,20 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
     for i in range(1,nsteps):
         if verbose: print(lastskips)
         
-        #step in galactic longitude evenly
-        gl_steps.append((gl_steps[i-1-lastskips] + resolution)%360)#(gl + np.arange(nsteps)*resolution)%360
-        gb_steps.append(gb)
-        cc = SkyCoord(l=gl_steps[i]*u.deg,b=gb_steps[i]*u.deg,frame='galactic')
-        ra_steps.append(cc.icrs.ra.value)
-        dec_steps.append(cc.icrs.dec.value)
+        if fixed_tstep_hr is not None:
+            #step in RA evenly
+            ra_steps.append(ra_steps[i-1-lastskips] + ((fixed_tstep_hr*15)/np.cos(dec_steps[i-1-lastskips])))
+            dec_steps.append(interpGPwrapped(ra_steps[-1]))
+            cc = SkyCoord(ra=ra_steps*u.deg,dec=dec_steps*u.deg,frame='icrs')
+            gl_steps.append(cc.galactic.l.value)
+            gb_steps.append(cc.galactic.b.value)
+        else:
+            #step in galactic longitude evenly
+            gl_steps.append((gl_steps[i-1-lastskips] + resolution)%360)#(gl + np.arange(nsteps)*resolution)%360
+            gb_steps.append(gb)
+            cc = SkyCoord(l=gl_steps[i]*u.deg,b=gb_steps[i]*u.deg,frame='galactic')
+            ra_steps.append(cc.icrs.ra.value)
+            dec_steps.append(cc.icrs.dec.value)
 
         
         #print(ra_steps[i-1],ra_steps[i])
@@ -252,7 +260,10 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
         #GPpasstime = antpos_observer.target_meridian_transit_time(Time(mjd_steps[i-1],format='mjd'),
         #                                                       SkyCoord(ra=ra_steps[i]*u.deg,dec=dec_steps[i]*u.deg,frame='icrs'),
         #                                                      which='next')
-        GPpasstime_mjd = mjd_steps[i-1-lastskips] + (resolution/15/24)/np.cos(dec_steps[i-1-lastskips]*np.pi/180)
+        if fixed_tstep_hr is not None:
+            GPpasstime_mjd = mjd_steps[i-1-lastskips] + (fixed_tstep_hr/24)
+        else:
+            GPpasstime_mjd = mjd_steps[i-1-lastskips] + ((resolution/15/24)/np.cos(dec_steps[i-1-lastskips]*np.pi/180))
         #print(mjd,GPpasstime.mjd)
         
         #sample the time up to this mjd and the elevation in either direction
@@ -261,16 +272,6 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
         #if already at 180 or 0, need to wrap elevation
         tsamps = np.concatenate([np.linspace(0,max_slew_time,subresolution),
                                  -np.linspace(0,max_slew_time,subresolution)]) #s
-        """if (np.around(elev_steps[i-1-lastskips])==180):# and np.abs(180-elev_steps[i-1])<resolution) or (len(elev_steps)>3 and elev_steps[i-2]==elev_steps[i-1]):
-            flipped = True
-            if verbose: print("flipped 180-->0")
-            flipped_steps.append(True)
-        elif (np.around(elev_steps[i-1-lastskips])==0):# and np.abs(0-elev_steps[i-1])<resolution) or (len(elev_steps)>3 and elev_steps[i-2]==elev_steps[i-1]):
-            flipped = True
-            if verbose: print("flipped 0-->180")
-            flipped_steps.append(True)
-        else:
-            flipped_steps.append(False)"""
         flipped_steps.append(False)
         elsamps = (elev_steps[i-1-lastskips] + el_slew_rate*tsamps)%180
         altsamps,azsamps = DSAelev_to_ASTROPYalt(elsamps,az_offset)#elsamps - 90
@@ -278,7 +279,11 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
         #find which one brings us closest to the plane point
         #print(elev_steps[i-1])
         #print(elsamps)
-        antpos_i = AltAz(obstime=Time(mjd_steps[i-1-lastskips] + (tsamps/86400),format='mjd'),location=loc,az=azsamps*u.deg,alt=altsamps*u.deg)
+        if fixed_tstep_hr is not None:
+            #need to use the fixed time step as the starting point for slew
+            antpos_i = AltAz(obstime=Time(mjd_steps[i-1-lastskips] + (fixed_tstep_hr/24) + (tsamps/86400),format='mjd'),location=loc,az=azsamps*u.deg,alt=altsamps*u.deg)
+        else:
+            antpos_i = AltAz(obstime=Time(mjd_steps[i-1-lastskips] + (tsamps/86400),format='mjd'),location=loc,az=azsamps*u.deg,alt=altsamps*u.deg)
         icrs_i = antpos_i.transform_to(ICRS())
         coord_i = SkyCoord(ra=icrs_i.ra,dec=icrs_i.dec,frame='icrs')
         #plt.subplot(3,1,1)
@@ -295,7 +300,10 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
         
         elsamps_wait = elsamps[bestidx]*np.ones_like(tsamps)
         altsamps_wait,azsamps_wait = DSAelev_to_ASTROPYalt(elsamps_wait,az_offset)#elsamps_wait - 90
-        antpos_wait_i = AltAz(obstime=Time(mjd_steps[i-1-lastskips] + (t_slew_i/86400) +  (tsamps/86400),format='mjd'),location=loc,az=azsamps_wait*u.deg,alt=altsamps_wait*u.deg)
+        if fixed_tstep_hr is not None:
+            antpos_wait_i = AltAz(obstime=Time(mjd_steps[i-1-lastskips] + (fixed_tstep_hr/24) + (t_slew_i/86400) +  (tsamps/86400),format='mjd'),location=loc,az=azsamps_wait*u.deg,alt=altsamps_wait*u.deg)
+        else:
+            antpos_wait_i = AltAz(obstime=Time(mjd_steps[i-1-lastskips] + (t_slew_i/86400) +  (tsamps/86400),format='mjd'),location=loc,az=azsamps_wait*u.deg,alt=altsamps_wait*u.deg)
         icrs_wait_i = antpos_wait_i.transform_to(ICRS())
         coord_wait_i = SkyCoord(ra=icrs_wait_i.ra,dec=icrs_wait_i.dec,frame='icrs')
         bestidx_wait = np.argmin(SkyCoord(ra=ra_steps[i]*u.deg,dec=dec_steps[i]*u.deg,frame='icrs').separation(coord_wait_i))
@@ -316,10 +324,16 @@ def track_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolut
         #print(ra_steps[i],dec_steps[i],coord_i[bestidx],coord_i)
         
         #final results
-        mjd_steps.append(mjd_steps[i-1-lastskips] + (t_slew_i + t_wait_i)/86400) #np.abs(tsamps[bestidx])/86400)
+        if fixed_tstep_hr is not None:
+            mjd_steps.append(mjd_steps[i-1-lastskips] + (fixed_tstep_hr/24))
+        else:
+            mjd_steps.append(mjd_steps[i-1-lastskips] + (t_slew_i + t_wait_i)/86400) #np.abs(tsamps[bestidx])/86400)
         t_slews.append(t_slew_i)
         t_waits.append(t_wait_i)
-        t_steps.append(t_slew_i+t_wait_i)
+        if fixed_tstep_hr is not None:
+            t_steps.append((fixed_tstep_hr/24))
+        else:
+            t_steps.append(t_slew_i+t_wait_i)
         elev_steps.append(elsamps[bestidx])
         alt_steps.append(DSAelev_to_ASTROPYalt(elsamps[bestidx],az_offset)[0])#elsamps[bestidx]-90)
         az_steps.append(DSAelev_to_ASTROPYalt(elsamps[bestidx],az_offset)[1])
@@ -472,6 +486,139 @@ def lock_to_grid(mjd_steps,elev_steps,gl_grid,Lat=Lat,Lon=Lon,Height=Height,az_o
     return new_mjd_steps,new_elev_steps,new_alt_steps,new_ra_steps,new_dec_steps,new_gl_steps,new_gb_steps,new_obs_time,new_obs_deg
 
 
+def generate_plane_timetile(mjd,elev,fixed_tstep_hr,el_slew_rate=0.5368867455531618,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,plan_dir=plan_dir,outputdec=False,dec_limit=0):
+    """
+    This function generates an observing plan to track the Galactic Plane given the current mjd and elevation, as a list of mjds and elevations. The plan is output as numpy arrays and written to a csv.
+    """
+    if plot:
+        #make a high-res interpolation for plane
+        raGP,decGP = GP_curve(np.linspace(0,360,100000),gb_offset)
+        interpGP = interp1d(raGP,decGP,fill_value='extrapolate')
+        interpGP_inv1 = interp1d(decGP[raGP>180],raGP[raGP>180],fill_value='extrapolate')
+        interpGP_inv2 = interp1d(decGP[raGP<=180],raGP[raGP<=180],fill_value='extrapolate')
+        def interpGPwrapped(raGP):
+            return interpGP(raGP%360)
+        def interpGP_invwrapped(decGP):
+            return interpGP_inv1(((decGP+90)%180) - 90),interpGP_inv2(((decGP+90)%180) - 90)
+
+
+        plt.figure(figsize=(18,30))
+
+        plt.subplot(3,1,1)
+        plt.plot(np.linspace(0,360,1000)/15,interpGP(np.linspace(0,360,1000)))
+        plt.xlabel("RA")
+        plt.ylabel("DEC")
+
+        plt.subplot(3,1,2)
+        plt.axhline(0)
+        plt.xlabel("GL")
+        plt.ylabel("GB")
+        plt.xlim(0,360)
+        plt.ylim(-90,90)
+
+        plt.subplot(3,1,3)
+        plt.ylim(0,180)
+        plt.xlabel("Time (MJD)")
+        plt.ylabel("Elevation")
+
+        loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m) #default is ovro
+        alt,az = DSAelev_to_ASTROPYalt(elev,az_offset)#elev-90
+        #az = az_offset
+        antpos = AltAz(obstime=Time(mjd,format='mjd'),location=loc,az=az*u.deg,alt=alt*u.deg)
+        icrspos = antpos.transform_to(ICRS())
+        ra = icrspos.ra.value
+        dec = icrspos.dec.value
+    
+
+    #basically want to find plane every fixed_tstep_hr hours
+    mjd_steps = []
+    elev_steps = []
+    ra_steps = []
+    dec_steps = []
+    step = 0
+    while np.all(np.array(dec_steps)>dec_limit):
+        mjd_now = (mjd if step == 0 else mjd_steps[-1])
+        elev_now = (elev if step == 0 else elev_steps[-1])
+        
+        mjd_int,ra_int,dec_int,az_int,elev_int,ra_steps_,dec_steps_,dec_plane,elev_steps_,az_steps_,alt_steps_,mjd_steps_,gb_steps_,gl_steps_ = find_plane(mjd_now,elev_now,el_slew_rate=el_slew_rate,resolution=fixed_tstep_hr*15/3600,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset)
+        if step == 0: 
+            mjd_steps.append(mjd)
+        
+        
+            print("Start UTC:",Time(mjd_int,format='mjd').isot)
+            print("Start Elevation:",elev_int,'degrees')
+            print("GP Offset:",gb_offset,'degrees')
+
+        
+            if plot:
+                plt.subplot(3,1,1)
+                c=plt.plot(ra/15,dec,'o',markersize=20,alpha=1)
+                plt.plot(ra_steps_[0]/15,dec_steps_[0],'o',markersize=10,alpha=1,color=c[0].get_color())
+                plt.plot(ra_steps_/15,dec_steps_,'.-',color=c[0].get_color())
+
+
+
+        
+        
+        
+        elev_steps.append(elev_int) 
+        ra_steps.append(ra_int)
+        dec_steps.append(dec_int)
+        
+        
+        if dec_int<=dec_limit:
+            break
+        else:
+            step += 1
+            mjd_steps.append(mjd + step*(fixed_tstep_hr/24))
+    print("Number of steps: ",len(mjd_steps))
+    mjd_steps = np.array(mjd_steps)
+    elev_steps = np.array(elev_steps)
+    ra_steps = np.array(ra_steps)
+    dec_steps = np.array(dec_steps)
+    cc = SkyCoord(ra=ra_steps*u.deg,dec=dec_steps*u.deg,frame='icrs')
+    gl_steps = cc.galactic.l.value
+    gb_steps = cc.galactic.b.value
+
+
+
+    if plot:
+
+        plt.subplot(3,1,1)
+        c=plt.plot(ra_steps/15,dec_steps,'o',markersize=10,alpha=0.5)
+        #plt.plot(ra_steps[flipped_steps]/15,dec_steps[flipped_steps],'x',markersize=20,alpha=0.5,color='red')
+
+        plt.subplot(3,1,2)
+        plt.plot(gl_steps,gb_steps,'o')
+
+
+        plt.subplot(3,1,3)
+        plt.plot(mjd_steps,elev_steps,'o')
+        fnameplot=plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".png"
+        if savefile:
+            print("Saving summary plot to ",fnameplot)
+            plt.savefig(fnameplot)
+        if show: plt.show()
+        else: plt.close()
+
+    #output to file
+    if savefile:
+        fname=plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".csv"
+        print("Writing observing plan to ",fname)
+        with open(fname,"w") as csvfile:
+            wr = csv.writer(csvfile,delimiter=',')
+            for i in range(len(mjd_steps)):
+                if outputdec:
+                    wr.writerow([mjd_steps[i],dec_steps[i]])
+                else:
+                    wr.writerow([mjd_steps[i],elev_steps[i]])
+
+    if outputdec:
+        return mjd_steps,dec_steps
+    else:
+        return mjd_steps,elev_steps
+
+
 def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subresolution=1000,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,gl_grid=None,plan_dir=plan_dir,outputdec=False,fixed_tstep_hr=None):
     """
     This function generates an observing plan to track the Galactic Plane given the current mjd and elevation, as a list of mjds and elevations. The plan is output as numpy arrays and written to a csv.
@@ -533,7 +680,7 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
         
     
     #then iterate with equal steps in gl
-    mjd_steps,ra_steps,dec_steps,az_steps,elev_steps,gl_steps,gb_steps,flipped_steps,obs_time,obs_deg,t_waits,t_slews = track_plane(mjd_int,elev_int,el_slew_rate=el_slew_rate,resolution=resolution,subresolution=subresolution,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset)
+    mjd_steps,ra_steps,dec_steps,az_steps,elev_steps,gl_steps,gb_steps,flipped_steps,obs_time,obs_deg,t_waits,t_slews = track_plane(mjd_int,elev_int,el_slew_rate=el_slew_rate,resolution=resolution,subresolution=subresolution,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset,fixed_tstep_hr=fixed_tstep_hr)
     
     #lock to the grid points if needed
     if gl_grid is not None:
@@ -543,9 +690,10 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
 
 
     #if specified, make sure that time between observations matches fixed_tsep_hr
+    """
     if fixed_tstep_hr is not None:
         mjd_steps,elev_steps,ra_steps,dec_steps,gl_steps,gb_steps,obs_time,obs_deg,t_waits,t_slews = lock_to_time_grid(fixed_tstep_hr,mjd_steps,t_waits,t_slews,elev_steps,gl_steps,gb_steps,ra_steps,dec_steps,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,subresolution=subresolution,el_slew_rate=el_slew_rate,gb_offset=gb_offset)
-        
+    """ 
 
     print("Total Number of Observations:",len(mjd_steps))
     print("Total Observing Time:",obs_time,'hours')
