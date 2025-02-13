@@ -5,7 +5,8 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <sys/shm.h>
-#include "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/rtwriter/rtwriter.h"
+#include "rtwriter.h"
+
 /*
  * Test script
  */

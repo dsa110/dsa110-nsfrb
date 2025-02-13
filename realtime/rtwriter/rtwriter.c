@@ -22,7 +22,7 @@ struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwri
         {
 		//struct rtwriter_obj *rtobj;
 		printf("Creating new Shared Memory Block\n");
-                rtobj->shmid = shmget(IPC_PRIVATE, datasize, IPC_CREAT);
+                rtobj->shmid = shmget(IPC_PRIVATE, datasize, 0x0777);
 		printf("Error: %s\n",strerror(errno));
 		
         
@@ -30,6 +30,7 @@ struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwri
 
         	//attach to mem address
         	rtobj->memaddr = shmat(rtobj->shmid, NULL, 0);
+		printf("Error: %s\n",strerror(errno));
         	printf("Memory Address: %p\n",rtobj->memaddr);
         	printf("%ld\n",(long int)(rtobj->memaddr));
         	printf("Error: %s\n",strerror(errno));
@@ -64,29 +65,4 @@ struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwri
 
 }
 
-int main()
-{
-
-	// create a buffer
-	size_t buffersize = 11;
-	char *buffer = "helloworld";
-	//strcpy(buffer,"helloworld");
-
-	struct rtwriter_obj *rtobj = malloc(sizeof *rtobj);
-       	printf("%p\n",rtobj);
-	rtobj->init = 0;
-	printf("%d\n",rtobj->init);
-	
-	rtobj=rtwrite(buffer, buffersize, 0, rtobj);//SHMID_INIT, buffersize, 0);
-	printf("%d\n",rtobj->shmid);
-
-	sleep(10);
-
-	rtobj=rtwrite(buffer, buffersize, 1, rtobj); // shmid, buffersize, 1);
-        printf("%d\n",rtobj->done);
-	free(rtobj);
-
-	return 0;
-
-}
 

@@ -21,5 +21,4 @@ struct rtwriter_obj {
 
 struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwriter_obj *rtobj);
 
-//int rtwrite(char *data, int shmid, size_t datasize, int done);
 #endif
