@@ -1,4 +1,5 @@
 import numpy as np
+import json
 from astropy.io import fits
 import glob
 from nsfrb import pipeline
@@ -634,7 +635,13 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
     gl_steps = cc.galactic.l.value
     gb_steps = cc.galactic.b.value
 
+    #get the total observing time
+    obs_time = (np.max(mjd_steps)-np.min(mjd_steps[0]))*24 #hrs
+    print("Total observing time:",obs_time," hours")
 
+    #get total plane coverage
+    obs_deg = (gl_steps[-1]-np.min(gl_steps)) + (gl_steps[np.argmin(gl_steps[-1])-1]-gl_steps[0])
+    print("Total observing range:",obs_deg," deg")
 
     if plot:
 
@@ -666,6 +673,27 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
                     wr.writerow([mjd_steps[i],dec_steps[i]])
                 else:
                     wr.writerow([mjd_steps[i],elev_steps[i]])
+        
+
+        fname=plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".json"
+        print("Writing plan metadata to ",fname)
+        metadata = dict()
+        metadata['start_mjd'] = mjd
+        metadata['start_isot'] = Time(mjd,format='mjd').isot
+        metadata['plan_file'] = plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".csv"
+        metadata['start_elev'] = elev_steps[0]
+        metadata['start_dec'] = dec_steps[0]
+        metadata['start_ra'] = ra_steps[0]
+        metadata['full_obs_time[hr]'] = obs_time
+        metadata['full_obs_range[deg]'] = obs_deg
+        metadata['stop_mjd'] = mjd_steps[-1]
+        metadata['stop_isot'] = Time(mjd_steps[-1],format='mjd').isot
+        metadata['plan_format'] = "MJD," + str("DEC" if outputdec else "ELEV")
+        metadata['plan_tiling'] = str(fixed_tstep_hr) + " hr timesteps"
+        f =open(fname,'w')
+        json.dump(metadata,f)
+        f.close()
+
 
     if outputdec:
         return mjd_steps,dec_steps
@@ -788,7 +816,26 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
                     wr.writerow([mjd_steps[i],dec_steps[i]])
                 else:
                     wr.writerow([mjd_steps[i],elev_steps[i]])
-                
+    
+        fname=plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".json"
+        print("Writing plan metadata to ",fname)
+        metadata = dict()
+        metadata['start_mjd'] = mjd
+        metadata['start_isot'] = Time(mjd,format='mjd').isot
+        metadata['plan_file'] = plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".csv"
+        metadata['start_elev'] = elev_steps[0]
+        metadata['start_dec'] = dec_steps[0]
+        metadata['start_ra'] = ra_steps[0]
+        metadata['full_obs_time[hr]'] = obs_time
+        metadata['full_obs_range[deg]'] = obs_deg
+        metadata['stop_mjd'] = mjd_steps[-1]
+        metadata['stop_isot'] = Time(mjd_steps[-1],format='mjd').isot
+        metadata['plan_format'] = "MJD," + str("DEC" if outputdec else "ELEV")
+        metadata['plan_tiling'] = str(resolution) + " deg steps"
+        f =open(fname,'w')
+        json.dump(metadata,f)
+        f.close()
+
     if outputdec:
         return mjd_steps,dec_steps
     else:
