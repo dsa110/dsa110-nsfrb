@@ -811,15 +811,17 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
 
             if args['train'] or (args['traininject'] and injection_flag and not postinjection_flag):
                 printlog(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j),output_file=cutterfile)
-                for k in range(subimg.shape[3]):
-                    filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
-                    printlog(filepath,output_file=cutterfile)
-                    #if useTOA:
-                    #    loc = int(finalcands[j][4])
-                    #    wid = widthtrials[int(finalcands[j][2])]
-                    #    plt.imsave(filepath, subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),k].mean(2), cmap='gray')
-                    #else:
-                    plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
+                for i in range(subimg.shape[2]):
+                    for k in range(subimg.shape[3]):
+                        filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
+                        printlog(filepath,output_file=cutterfile)
+                        #if useTOA:
+                        #    loc = int(finalcands[j][4])
+                        #    wid = widthtrials[int(finalcands[j][2])]
+                        #    plt.imsave(filepath, subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),k].mean(2), cmap='gray')
+                        #else:
+                        #plt.imsave(filepath,subimg[:,:,:,k].mean(2),cmap='gray')
+                        plt.imsave(filepath, subimg[:,:,i,k], cmap='gray')
                 np.save(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + ".npy",subimg)
 
                 f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.csv","a")

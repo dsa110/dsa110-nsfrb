@@ -16,34 +16,41 @@
 static PyObject *rtreader_read(PyObject *self, PyObject *args)
 {
 	// parsing Python arguments
-	//FILE *fptr;
-	const char *shmid_str;
-	//int *fdptr;
-	//int sts;
-
-	if (!PyArg_ParseTuple(args, "s", &shmid_str))
-		return NULL;
-	int shmid = atoi(shmid_str);
+	//const char *shmid_str;
+	long shmid;
+	long buffersize;
 	
+	//if (!PyArg_ParseTuple(args, "s", &shmid_str))
+	//	return NULL;
+	//int shmid = atoi(shmid_str);
+	if (!PyArg_ParseTuple(args,"ll", &shmid, &buffersize))
+		return NULL;
+	printf("SHMID: %ld\n",shmid);
+	printf("BUFFERSIZE: %ld\n",buffersize);
+
 	//printf("%p\n",shmid_ptr);
 	//printf("%d\n",shmid_ptr);
 	//int shmid = *shmid_ptr;
-	printf("%d\n",shmid);
 	fflush(stdout);
 
 	//attach
 	char *memaddr = shmat(shmid, NULL, SHM_RDONLY);
+	
+	//copy to buffer
+	//size_t buffersize = sizeof(memaddr)/sizeof(char);
+	char buffer[buffersize];
+	memcpy(buffer,memaddr,buffersize);
 
 	//print
-	printf("Contents: %s\n",memaddr);
-
+	//printf("Contents: %s\n",memaddr);
+	//printf("Copied: %s\n",buffer);
 	//detach
         shmdt(memaddr);
 	shmctl(shmid,IPC_RMID,NULL);
 
 	
 	
-	return PyLong_FromLong(shmid);
+	return PyByteArray_FromStringAndSize(buffer,buffersize);//PyBytes_FromString(buffer); //PyLong_FromLong(shmid);
 }
 
 //Method table

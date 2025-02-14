@@ -15,7 +15,7 @@ import astropy.units as u
 from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
-from nsfrb.imaging import DSAelev_to_ASTROPYalt,get_ra
+from nsfrb.imaging import DSAelev_to_ASTROPYalt,get_ra,ASTROPYalt_to_DSAelev,uv_to_pix
 from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset,tsamp,nsamps
 from nsfrb.pipeline import read_raw_vis
 import pickle as pkl
@@ -520,9 +520,112 @@ def find_source_pass(mjd_now,ra_target_deg,dec_target_deg):
     return best_mjd,diff
 
 
+from nsfrb.config import tsamp,nsamps,IMAGE_SIZE
+def GP_PLOTS(planisot,fast_vis_interval_min=90*tsamp*nsamps/1000/60,plan_dir=plan_dir,image_size=IMAGE_SIZE,el_slew_rate=0.5368867455531618,show=False):
+    """
+    Shows detailed GP plan
+    """
+    #read plan
+    with open(plan_dir+"GP_observing_plan_" + planisot + ".json","r") as jsonfile:
+        plan_metadata = json.load(jsonfile)
+    mjd_steps = []
+    ra_steps = []
+    gl_steps = []
+    gb_steps = []
+    elev_steps = []
+    dec_steps = []
+    loc=EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
+    with open(plan_dir+"GP_observing_plan_" + planisot + ".csv","r") as csvfile:
+        rdr = csv.reader(csvfile,delimiter=',')
+        for row in rdr:
+            mjd_steps.append(float(row[0]))
+            if 'ELEV' in plan_metadata['plan_format']:
+                elev_steps.append(float(row[1]))
+                alt_i,az_i = DSAelev_to_ASTROPYalt(elev_steps[-1])
+                antpos = AltAz(obstime=Time(mjd_steps[-1],format='mjd'),location=loc,az=float(az_i)*u.deg,alt=float(alt_i)*u.deg)
+                c = antpos.transform_to(ICRS())
+                ra_steps.append(c.ra.value)
+                dec_steps.append(c.dec.value)
+                c = antpos.transform_to(Galactic())
+                gl_steps.append(c.l.value)
+                gb_steps.append(c.b.value)
+            else:
+                dec_steps.append(float(row[1]))
+                ra_steps.append(get_ra(float(row[0]),float(row[1])))
+                c = SkyCoord(ra=ra_steps[-1]*u.deg,dec=dec_steps[-1]*u.deg,frame='icrs',loc=loc,obstime=Time(mjd_steps[-1],format='mjd'))
+                gl_steps.append(c.galactic.l.value)
+                gb_steps.append(c.galactic.b.value)
+                a = c.transform_to(AltAz)
+                elev_steps.append(a.alt.value,a.az.value)
 
 
+    #make a high-res interpolation for plane
+    raGP,decGP = GP_curve(np.linspace(0,360,100000))
+    interpGP = interp1d(raGP,decGP,fill_value='extrapolate')
+    interpGP_inv1 = interp1d(decGP[raGP>180],raGP[raGP>180],fill_value='extrapolate')
+    interpGP_inv2 = interp1d(decGP[raGP<=180],raGP[raGP<=180],fill_value='extrapolate')
+    def interpGPwrapped(raGP):
+        return interpGP(raGP%360)
+    def interpGP_invwrapped(decGP):
+        return interpGP_inv1(((decGP+90)%180) - 90),interpGP_inv2(((decGP+90)%180) - 90)
 
+
+    plt.figure(figsize=(18,30))
+
+    #ra vs dec with cutouts
+    plt.subplot(3,1,1)
+    plt.plot(np.linspace(0,360,1000)/15,interpGP(np.linspace(0,360,1000)))
+    #gb vs gl with cutouts
+    plt.subplot(3,1,2)
+    plt.axhline(0)
+    for i in range(len(mjd_steps)):
+        tslew = np.abs((0 if i==0 else (elev_steps[i]-elev_steps[i-1])/el_slew_rate)/86400)
+        ragrid,decgrid,tmp = uv_to_pix(mjd_steps[i]+tslew,image_size,DEC=dec_steps[i],two_dim=True,manual=False)
+        plt.subplot(3,1,1)
+        plt.plot(ragrid.flatten()/15,decgrid.flatten(),'.',color='red',alpha=0.5)
+
+        plt.subplot(3,1,2)
+        cgrid = SkyCoord(ra=ragrid.flatten()*u.deg,dec=decgrid.flatten()*u.deg,frame='icrs')
+        plt.plot(cgrid.galactic.l.value,cgrid.galactic.b.value,'.',color='red',alpha=0.5)
+
+        if i < len(mjd_steps)-1:
+            npoint = int(np.floor((mjd_steps[i+1]-(mjd_steps[i]+tslew))/(fast_vis_interval_min/60/24)))
+            for j in range(npoint):
+                ragrid,decgrid,tmp = uv_to_pix(mjd_steps[i] + tslew + j*(fast_vis_interval_min/60/24),image_size,DEC=dec_steps[i],two_dim=True,manual=False)
+                plt.subplot(3,1,1)
+                plt.plot(ragrid.flatten()/15,decgrid.flatten(),'.',color='blue',alpha=0.25)
+
+                plt.subplot(3,1,2)
+                cgrid = SkyCoord(ra=ragrid.flatten()*u.deg,dec=decgrid.flatten()*u.deg,frame='icrs')
+                plt.plot(cgrid.galactic.l.value,cgrid.galactic.b.value,'.',color='blue',alpha=0.25)
+    plt.subplot(3,1,1)
+    plt.xlabel("RA")
+    plt.ylabel("DEC")
+
+    plt.subplot(3,1,2)
+    plt.xlabel("GL")
+    plt.ylabel("GB")
+    plt.xlim(0,360)
+    plt.ylim(-90,90)
+    
+    #elev vs time
+    plt.subplot(3,1,3)
+    plt.ylim(0,180)
+    plt.plot(mjd_steps,elev_steps,'o',color='red')
+    for i in range(len(mjd_steps)):
+        tslew = np.abs((0 if i==0 else (elev_steps[i]-elev_steps[i-1])/el_slew_rate)/86400)
+        if i >0:
+            plt.plot([mjd_steps[i],mjd_steps[i]+tslew],[elev_steps[i-1],elev_steps[i]],color='blue')
+        if i < len(mjd_steps)-1:
+            plt.plot([mjd_steps[i]+tslew,mjd_steps[i+1]],[elev_steps[i],elev_steps[i]],color='blue')
+    plt.xlabel("Time (MJD)")
+    plt.ylabel("Elevation")
+    plt.savefig(plan_dir+"GP_DETAILED_PLOT_"+planisot+".png")
+    if show:
+        plt.show()
+    else:
+        plt.close()
+    return
 
 
 def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_rate=0.5368867455531618,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,plan_dir=plan_dir,outputdec=False,dec_limit=0):
@@ -690,6 +793,7 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
         metadata['stop_isot'] = Time(mjd_steps[-1],format='mjd').isot
         metadata['plan_format'] = "MJD," + str("DEC" if outputdec else "ELEV")
         metadata['plan_tiling'] = str(fixed_tstep_hr) + " hr timesteps"
+        metadata['gb_offset']= gb_offset
         f =open(fname,'w')
         json.dump(metadata,f)
         f.close()
@@ -832,6 +936,7 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
         metadata['stop_isot'] = Time(mjd_steps[-1],format='mjd').isot
         metadata['plan_format'] = "MJD," + str("DEC" if outputdec else "ELEV")
         metadata['plan_tiling'] = str(resolution) + " deg steps"
+        metadata['gb_offset']= gb_offset
         f =open(fname,'w')
         json.dump(metadata,f)
         f.close()

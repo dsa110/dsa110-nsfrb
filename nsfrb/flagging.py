@@ -119,7 +119,7 @@ def fct_BPASSBURST(dat,noise_dir=noise_dir,weights=[1,1]):
     
 
     #compare to threshold
-    flag_channels= np.arange(dat.shape[2])[np.nanmean(np.abs(dat_test),0)>5*dat_mean]
+    flag_channels= np.arange(dat.shape[2])[np.nanmean(np.abs(dat_test),0)>10*dat_mean]
     return flag_channels
 
 
@@ -146,7 +146,7 @@ def fct_BPASS(dat,noise_dir=noise_dir,weights=[1,1]):
     np.save(noise_dir+"running_vis_mean.npy",dat_new_mean)
 
     #compare to threshold
-    flag_channels= np.arange(dat.shape[2])[np.nanmean(np.abs(dat_test),0)>5*dat_mean]
+    flag_channels= np.arange(dat.shape[2])[np.nanmean(np.abs(dat_test),0)>10*dat_mean]
     return flag_channels
 
 def fct_SWAVE(dat,RMS_THRESHOLD=1.0,STD_THRESHOLD=0.2,SLOPE_FIT=945.4546757820716):

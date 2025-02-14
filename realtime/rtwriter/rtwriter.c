@@ -10,6 +10,18 @@
  * Opens a memory stream, writes data to it, and returns a pointer to the stream
  */
 
+int rtwriter_to_etcd(int shmid, size_t datasize)
+{
+	char *etcdcmd = malloc(200);
+	sprintf(etcdcmd,"bash -c \'source ~/.bashrc; source /home/ubuntu/msherman_nsfrb/miniconda/etc/profile.d/conda.sh; conda activate casa310nsfrb; python %s/realtime/rtwriter/rtwriter_toetcd.py %d %ld\'",NSFRBDIR,shmid,datasize);
+	printf("%s\n",etcdcmd);
+	int status;
+	
+	status=system(etcdcmd);
+	free(etcdcmd);
+	return status;
+
+}
 
 struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwriter_obj *rtobj) //, int shmid, size_t datasize, int done, char *memaddr)
 {
@@ -42,9 +54,14 @@ struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwri
 	
 	printf("Memory Address: %p\n",rtobj->memaddr);
         //write data to memory
-        strcpy(rtobj->memaddr, data);
+        //strcpy(rtobj->memaddr, data);
+	memcpy(rtobj->memaddr, data, datasize);
 	printf("Data written %s\n",rtobj->memaddr);
 
+
+	int status;
+	status = rtwriter_to_etcd(rtobj->shmid,rtobj->datasize);
+	printf("etcd status:%d\n",status);
         //sleep(30);
 
         //detach

@@ -418,6 +418,15 @@ def DSAelev_to_ASTROPYalt(elev,az=az_offset):
     az[elev<=90] = 180 + az[elev<=90]
     return alt,az
 
+def ASTROPYalt_to_DSAelev(alt,az):
+    alt = np.array(alt)
+    az = np.array(np.around(az,0))
+    elev = copy.deepcopy(alt)
+
+    #if az is 360, need to shift by 180
+    elev[az==360] = 180 - elev[az==360]
+    return elev
+
 #credit: Vikram Ravi
 def get_ra(mjd,dec,Lon=Lon,Lat=Lat,Height=Height):
     """

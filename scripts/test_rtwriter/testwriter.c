@@ -16,10 +16,13 @@
 int main()
 {
 
+
+	
+
+
 	// create a buffer
 	size_t buffersize = 11;
-	char *buffer = "helloworld";
-	//strcpy(buffer,"helloworld");
+	char buffer[] = {0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x77, 0x6F, 0x72, 0x6C, 0x64, 0x0A};
 
 	struct rtwriter_obj *rtobj = malloc(sizeof *rtobj);
        	printf("%p\n",rtobj);
@@ -38,4 +41,3 @@ int main()
 	return 0;
 
 }
-
