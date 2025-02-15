@@ -22,7 +22,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize
-from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,get_ra
+from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
@@ -401,9 +401,9 @@ def main(args):
                         for jj in range(args.nchans_per_node):
                             if args.briggs:
                                 if k == 0 and jj == 0:
-                                    dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                                    dirty_img[:,:,i,j] = revised_robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
                                 else:
-                                    dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
+                                    dirty_img[:,:,i,j] += revised_robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
                             else:
                                 if k == 0 and jj == 0:
                                     dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
