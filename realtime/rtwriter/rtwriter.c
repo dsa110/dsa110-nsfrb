@@ -26,6 +26,16 @@ int rtwriter_to_etcd(int shmid, size_t datasize)
 struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwriter_obj *rtobj) //, int shmid, size_t datasize, int done, char *memaddr)
 {
 
+	//destroy if prompted
+        if (done==1)
+        {
+                rtobj->done = 1;
+                printf("Deleting Shared Memory %d\n",rtobj->shmid);
+                //detach
+                shmdt(rtobj->memaddr);
+                shmctl(rtobj->shmid,IPC_RMID,NULL);
+                return rtobj;
+        }
 
         //create shared memory segment if not already created
 	printf("%d\n",rtobj->init);
@@ -44,19 +54,17 @@ struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwri
         	rtobj->memaddr = shmat(rtobj->shmid, NULL, 0);
 		printf("Error: %s\n",strerror(errno));
         	printf("Memory Address: %p\n",rtobj->memaddr);
-        	printf("%ld\n",(long int)(rtobj->memaddr));
-        	printf("Error: %s\n",strerror(errno));
 		
 		rtobj->datasize = datasize;
 		rtobj->done = 0;
 		rtobj->init = 1;
 	}
 	
-	printf("Memory Address: %p\n",rtobj->memaddr);
+	//printf("Memory Address: %p\n",rtobj->memaddr);
         //write data to memory
         //strcpy(rtobj->memaddr, data);
 	memcpy(rtobj->memaddr, data, datasize);
-	printf("Data written %s\n",rtobj->memaddr);
+	//printf("Data written %s\n",rtobj->memaddr);
 
 
 	int status;
@@ -67,16 +75,6 @@ struct rtwriter_obj *rtwrite(char *data, size_t datasize, int done, struct rtwri
         //detach
         //shmdt(rtobj->memaddr);
 
-        //destroy if prompted
-        if (done==1)
-        {
-		rtobj->done = 1;
-                printf("Deleting Shared Memory %d\n",rtobj->shmid);
-		//detach
-        	shmdt(rtobj->memaddr);
-                shmctl(rtobj->shmid,IPC_RMID,NULL);
-                return rtobj;
-        }
 
         return rtobj;
 

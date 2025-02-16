@@ -628,7 +628,7 @@ def GP_PLOTS(planisot,fast_vis_interval_min=90*tsamp*nsamps/1000/60,plan_dir=pla
     return
 
 
-def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_rate=0.5368867455531618,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,plan_dir=plan_dir,outputdec=False,dec_limit=0):
+def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_rate=0.5368867455531618,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=0,savefile=True,plot=False,show=False,gb_offset=0,plan_dir=plan_dir,outputdec=False,dec_min=0,dec_max=60):
     """
     This function generates an observing plan to track the Galactic Plane given the current mjd and elevation, as a list of mjds and elevations. The plan is output as numpy arrays and written to a csv.
     """
@@ -694,7 +694,7 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
     ra_steps = []
     dec_steps = []
     step = 0
-    while np.all(np.array(dec_steps)>dec_limit):
+    while np.all(np.array(dec_steps)>dec_min) and np.all(np.array(dec_steps)<dec_max) :
         mjd_now = (mjd if step == 0 else mjd_steps[-1])
         elev_now = (elev if step == 0 else elev_steps[-1])
         
@@ -724,16 +724,17 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
         dec_steps.append(dec_int)
         
         
-        if dec_int<=dec_limit:
+        if dec_int>=dec_max or dec_int<=dec_min:
             break
         else:
             step += 1
             mjd_steps.append(mjd + step*(fixed_tstep_hr/24))
     print("Number of steps: ",len(mjd_steps))
-    mjd_steps = np.array(mjd_steps)
-    elev_steps = np.array(elev_steps)
-    ra_steps = np.array(ra_steps)
-    dec_steps = np.array(dec_steps)
+    cdt = np.logical_and(np.array(dec_steps)>=dec_min,np.array(dec_steps)<=dec_max)
+    mjd_steps = np.array(mjd_steps)[cdt]
+    elev_steps = np.array(elev_steps)[cdt]
+    ra_steps = np.array(ra_steps)[cdt]
+    dec_steps = np.array(dec_steps)[cdt]
     cc = SkyCoord(ra=ra_steps*u.deg,dec=dec_steps*u.deg,frame='icrs')
     gl_steps = cc.galactic.l.value
     gb_steps = cc.galactic.b.value

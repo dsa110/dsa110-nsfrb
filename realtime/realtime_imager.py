@@ -1,4 +1,5 @@
 import argparse
+from nsfrb.outputlogging import printlog
 import glob
 import csv
 from matplotlib import pyplot as plt
@@ -84,9 +85,8 @@ def rt_etcd_to_queue(etcd_dict,queue=QQUEUE):
     """
     ETCD watch callback function for /mon/nsfrb/fastvis
     """
-    if not etcd_dict['ready']: return
     queue.put(etcd_dict['shmid'])
-    queue.put(etcd_datasize['datasize'])
+    queue.put(etcd_dict['datasize'])
     return
 
 
@@ -105,8 +105,10 @@ def main(args):
         datasize = QQUEUE.get()
         dat_bytes = rtreader.read(shmid,datasize)
 
-
-
+        print(len(dat_bytes.hex()))
+        
+        del dat_bytes
+    """
 
 
 
@@ -258,111 +260,6 @@ def main(args):
             if verbose: print("Coordinates (deg):",RA,Dec)
             if verbose: print("Hour angle (deg):",HA)
 
-            #get antenna positions coordinates
-            #x_m,y_m,z_m,antenna_names = get_all_coordinates(flagged_antennas,return_names=True) #meters
-      
-            """
-            #re-order based on antenna order from etcd
-            my_cnf = cnf.Conf(use_etcd=True)
-            corr_cnf = my_cnf.get('corr')
-            antenna_order = list(OrderedDict(sorted(corr_cnf['antenna_order'].items())).values())
-            mfs_cnf = my_cnf.get('fringe')
-            refmjd = mfs_cnf['refmjd']
-
-
-            #get UVWs
-            #U,V,W = compute_uvw(x_m,y_m,z_m,HA,Dec) #meters
-            bname, blen, UVW = pu.baseline_uvw(antenna_order, Dec*np.pi/180, refmjd, casa_order=False,autocorrs=True) #include autocorrelations
-            """
-            #get UVW from etcd
-            #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
-            """
-            pt_dec = Dec*np.pi/180.
-            if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
-            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-        
-            #flagging andd baseline cut
-            dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin)
-        
-            print("Print bad channels:",np.isnan(dat.mean((0,1,3))))
-            """
-        
-            """
-            #get indices of flagged visibilities
-            flagged_vis = []
-            for i in flagged_antennas:
-                for j in np.array(antenna_order)[:antenna_order.index(i)]:
-                    flagged_vis.append(list(bname).index(str(j) + "-" + str(i)))
-                for j in np.array(antenna_order)[antenna_order.index(i):]:
-                    flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
-            flagged_vis = np.array(flagged_vis)
-            print("Flagged visibilities:",bname[flagged_vis])
-            unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)))
-            print("Unflagged visibilities:",bname[unflagged_vis])
-            antenna_order = list(set(antenna_order)-set(flagged_antennas))
-            bname = bname[unflagged_vis]
-            blen = blen[unflagged_vis]
-            UVW = UVW[:,unflagged_vis,:]
-            dat = dat[:,unflagged_vis,:,:]
-
-            print(dat)
-            #remove short baselines
-            if args.bmin > 0:
-                blen_mask = np.sqrt(np.sum(blen**2,axis=1))>=args.bmin
-                bname = bname[blen_mask]
-                blen = blen[blen_mask]
-                UVW = UVW[:,blen_mask,:]
-                dat = dat[:,blen_mask,:,:]
-            """
-            """
-            U = UVW[0,:,0]
-            V = UVW[0,:,1]
-            W = UVW[0,:,2]
-            uv_diag=np.max(np.sqrt(U**2 + V**2))
-            pixel_resolution = (0.20 / uv_diag) / 3
-            if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
-            if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
-            if verbose: print(UVW)
-            #if verbose: print("core idxs",len(core_idxs),core_idxs)
-            """
-
-            """
-            #use MJD to get RA,DEC axes
-            mjd = Time(timestamp,format='isot').mjd + (gulp*args.num_time_samples*tsamp/86400)
-            time_start_isot = Time(mjd,format='mjd').isot
-            LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=Lon).to(u.hourangle).value
-            pt_RA = LST*15*np.pi/180
-            if verbose: print("Time:",time_start_isot)
-            if verbose: print("LST (hr):",LST)
-            RA_axis,Dec_axis = uv_to_pix(mjd,IMAGE_SIZE,Lat=Lat,Lon=Lon,RA=pt_RA*180/np.pi,DEC=pt_dec*180/np.pi,uv_diag=uv_diag)
-            HA_axis = (LST*15) - RA_axis
-            print(HA_axis)
-            #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
-            RA = RA_axis[int(len(RA_axis)//2)]
-            HA = HA_axis[int(len(HA_axis)//2)]
-            Dec = Dec_axis[int(len(Dec_axis)//2)]
-            if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
-            if verbose: print("Coordinates (deg):",RA,Dec)
-            if verbose: print("Hour angle (deg):",HA)
-            """
-
-
-            """
-            #fringe stopping
-            if args.fringestop:
-                ra_ax,dec_ax = uv_to_pix(mjd,dat.shape[0],Lat=37.23,Lon=-118.2851)
-                ra_center,dec_center = ra_ax[0],dec_ax[0]
-                for i in range(len(ra_ax)):
-                    ra_point,dec_point = ra_ax[i],dec_ax[i]
-                    if verbose: print("Pointing:",ra_point,dec_point)
-                    for j in range(num_chans):
-                        for k in range(dat.shape[-1]):
-                            phaseterms = cal.make_phase_table(U/wavs[j],V/wavs[j],W/wavs[j],ra_center,dec_center,ra_point,dec_point,verbose=False)
-                            print(dat[i,:,j,k])
-                            print(phaseterms)
-                            dat[i,:,j,k] *= phaseterms
-    
-            """
             #calibrating
             #*** TO DO: INSERT NIKITA'S CALIBRATION CODE HERE***#
 
@@ -425,20 +322,6 @@ def main(args):
                 for j in range(args.num_chans):
                     for k in range(dat.shape[-1]):
                     
-                        """
-                        if i == 0 and j == 2 and k == 0:
-                            plt.figure(figsize=(12,12))
-                            plt.plot(np.real(dat[i, :, j, k]),np.real(inverse_uniform_image(uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,return_complex=True),U,V)),'o')
-                            plt.xscale("log")
-                            plt.yscale("log")
-                            plt.plot(np.linspace(0,1e5),np.linspace(0,1e5))
-                            plt.xlim(1,1e5)
-                            plt.ylim(1,1e5)
-                            plt.savefig("tmp4.png")
-
-                            plt.close()
-                        """
-                        #print(i,j,k)
                         for jj in range(args.nchans_per_node):
                             if args.briggs:
                                 if k == 0 and jj == 0:
@@ -483,6 +366,7 @@ def main(args):
                     print("Writing to last_frame.npy")
                     np.save(frame_dir + "last_frame.npy",dirty_img)
         time.sleep(args.sleeptime)
+    """
     return
 
 
