@@ -1,4 +1,5 @@
 import argparse
+from inject import injecting
 from nsfrb.outputlogging import printlog
 import glob
 import csv
@@ -23,7 +24,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize
-from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, robust_image,get_ra
+from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
@@ -87,6 +88,9 @@ def rt_etcd_to_queue(etcd_dict,queue=QQUEUE):
     """
     queue.put(etcd_dict['shmid'])
     queue.put(etcd_dict['datasize'])
+    queue.put(etcd_dict['mjd'])
+    queue.put(etcd_dict['sb'])
+    queue.put(etcd_dict['dec'])
     return
 
 
@@ -97,289 +101,182 @@ def main(args):
     #attach callback to etcdkey
     printlog("Adding ETCD watch on key "+ETCDKEY,output_file=logfile)
     ETCD.add_watch(ETCDKEY,rt_etcd_to_queue)
+
+
+    #make a running count and inject a burst every 90x25sample gulps
+    if args.inject:
+        inject_count = 0
+
     while True:
 
-        #wait for shmid to be added to queue
-        printlog("Waiting for fast vis data in queue:" + str(QQUEUE),output_file=logfile)
-        shmid = QQUEUE.get()
-        datasize = QQUEUE.get()
-        dat_bytes = rtreader.read(shmid,datasize)
+        #read and reshape into np array (25 times x 4656 baselines x 8 chans x 2 pols, complex)
+        dat = None
+        while (dat is None) or dat.shape[0]<args.num_time_samples:
+            #wait for shmid to be added to queue
+            printlog("Waiting for fast vis data in queue:" + str(QQUEUE),output_file=logfile)
+            shmid = QQUEUE.get()
+            datasize = QQUEUE.get()
+            mjd = QQUEUE.get()
+            sb = QQUEUE.get()
+            Dec = QQUEUE.get()
+            print(mjd,sb,Dec)
+            #check this is the right data
+            assert(sb==args.sb)
 
-        print(len(dat_bytes.hex()))
-        
-        del dat_bytes
-    """
-
-
-
-
-    num_gulps = 1#int(dat_all.shape[0]//args.num_time_samples)
-    if args.num_gulps != -1:
-        num_gulps = args.num_gulps#np.min([args.num_gulps,num_gulps])
-
-    #randomly choose which gulp to inject burst in
-    if args.inject:
-        num_inject = args.num_inject
-        if args.num_inject > num_gulps:
-            num_inject = num_gulps
-        inject_gulps = np.linspace(args.gulp_offset,args.gulp_offset + num_gulps,num_inject,dtype=int)
-    
-    #get timestamp
-    if len(args.timestamp) != 0:
-        timestamp = args.timestamp
-
-    for gulp in range(args.gulp_offset - (1 if args.gulp_offset>0 and args.search else 0),args.gulp_offset + num_gulps):
-        
-        #if searching, also need to find the previous integration set so we can initialize previous frame
-        filelabels = [args.filelabel]
-        if args.search and gulp==0:
-            fnum = int(args.filelabel[1:])-1
-            #look for previous label
-            while len(glob.glob(args.path + "/lxd110h03/" + ("nsfrb_sb00" if args.sb else "h03") + "_" + str(fnum) + ".out")) == 0 and (int(args.filelabel[1:])-fnum)<10:
-                fnum -=1
-                continue
-            if len(glob.glob(args.path + "/lxd110h03/" + ("nsfrb_sb00" if args.sb else "h03") + "_" + str(fnum) + ".out")) > 0:
-                print("Using _" + str(fnum) + " for last frame initialization") 
-                filelabels = ["_" + str(fnum)] + filelabels
-                if len(args.filedir) > 0:
-                    print("Copying files " + "_" + str(fnum) + " to " + args.path + "/" + args.filedir) 
-                    os.system("cp " + args.path + "/lxd110h*/" + ("nsfrb_sb*" if args.sb else "h*") + "_" + str(fnum) + ".out " + args.path + "/" + args.filedir)
-            else:
-                print("Couldn't find previous file, cannot initialize last frame")
-        
-        #read raw data for each corr node
-        for g in range(len(filelabels)):
-
-            #parameters from etcd
-            test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
-            ff = 1.53-np.arange(8192)*0.25/8192
-            fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
-            fobs = np.reshape(fobs,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1)
-            #dat = dat_all[gulp*args.num_time_samples:(gulp+1)*args.num_time_samples,:,:,:]
-
-
-            if filelabels[g] != args.filelabel:
-                print("Making image to initialize last frame")
-            dat = None
-            Dec = None
-            for i in range(len(corrs)):
-                corr = corrs[i]
-                sb = sbs[i]
-
-                if len(args.filedir) == 0:
-                    fname = args.path + "/lxd110"+ corr + "/" + ("nsfrb_" + sb if args.sb else corr) + filelabels[g] + ".out"
-                else:
-                    fname =  args.path + "/" + args.filedir + "/" + ("nsfrb_" + sb if args.sb else corr) + filelabels[g] + ".out"
-                print(fname)
-                #fname = args.path + "/lxd110"+ corr + "/" + corr + args.filelabel + ".out"
-                #fname = args.path + "/3C286_vis/" + corr + args.filelabel + ".out"
-                try:
-                    #tmp = cal.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples)
-                    #print("tmp",tmp)
-
-                    dat_corr,sbnum,tstamp_mjd,Dec = pipeline.read_raw_vis(fname,datasize=args.datasize,nsamps=args.num_time_samples,gulp=(gulp if filelabels[g]==args.filelabel else (maxrawsamps//args.num_time_samples)-1),nchan=int(args.nchans_per_node),headersize=16)
-                    if len(args.timestamp) == 0: 
-                        timestamp = Time(tstamp_mjd,format='mjd').isot
+            dat_hex = rtreader.read(shmid,datasize)
+            print("DATA HEX:",dat_hex.hex()[-64:])
+            dat_i = np.frombuffer(dat_hex,dtype=np.float32)
             
-                    #dat_corr = np.nanmean(dat_corr,axis=2,keepdims=True)
-                    if verbose: print(dat_corr.shape)
-                    if dat is None:
-                        dat = np.nan*np.ones(dat_corr.shape,dtype=dat_corr.dtype).repeat(len(corrs),axis=2)
-                    #print(dat_all.shape,dat_corr.shape)
-                    dat[:,:,i*args.nchans_per_node:(i+1)*args.nchans_per_node,:] = dat_corr
-                    #print("tmp2",dat_all[:,:,i,:],dat_corr)
-                except Exception as exc:
-                    if verbose: print("No data for " + corr)
-                    if verbose: print(exc)
-        
-
-            print("Are any values nan?:",np.any(np.isnan(dat))) 
-            #print(list(np.isnan(dat.mean((0,1,3)))))
-            if verbose: print("Gulp size:",dat.shape)
-
-        
-            #use MJD to get pointing
-            mjd = Time(timestamp,format='isot').mjd + ((gulp if filelabels[g]==args.filelabel else (maxrawsamps//args.num_time_samples)-1)*args.num_time_samples*tsamp/86400)
-            time_start_isot = Time(mjd,format='mjd').isot
-            #LST = Time(mjd,format='mjd').sidereal_time("mean",longitude=Lon).to(u.hourangle).value
-            print("DEC from file:",Dec)
-
-
-
-            pt_dec = Dec*np.pi/180.
-            if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
-            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-
-            #flagging andd baseline cut
-            fcts = []
-            if args.flagSWAVE:
-                fcts.append(fct_SWAVE)
-            if args.flagBPASS:
-                fcts.append(fct_BPASS)
-            if args.flagFRCBAND:
-                fcts.append(fct_FRCBAND)
-            if args.flagBPASSBURST:
-                fcts.append(fct_BPASSBURST)
-            dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs, flag_channel_templates = fcts)
+            ntimes = int(len(dat_i)/args.nbase/args.nchans_per_node/2/2)
+            dat_i = dat_i.reshape((ntimes,args.nbase,args.nchans_per_node,2,2))
             
-            U = UVW[0,:,0]
-            V = UVW[0,:,1]
-            W = UVW[0,:,2]
-            uv_diag=np.max(np.sqrt(U**2 + V**2))
-            pixel_resolution = (0.20 / uv_diag) / 3
-            if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
-            if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
-            if verbose: print(UVW)
-
-            print("Print bad channels:",np.isnan(dat.mean((0,1,3))))
-
-
-
-            #pt_RA = LST*15*np.pi/180
-            if verbose: print("Time:",time_start_isot)
-            #if verbose: print("LST (hr):",LST)
-            if Dec is None:
-
-                RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag)
-                #HA_axis = (LST*15) - RA_axis
-                HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
-                print(HA_axis)
-                #HA_axis = RA_axis - RA_axis[int(len(RA_axis)//2)] #want to image the central RA, so the hour angle should be 0 here, right?
-                RA = RA_axis[int(len(RA_axis)//2)]
-                HA = HA_axis[int(len(HA_axis)//2)]
-                Dec = Dec_axis[int(len(Dec_axis)//2)]
+            if dat is None:
+                dat = np.zeros(dat_i.shape[:-1],dtype=np.complex64)
+                dat[:,:,:,:] = dat_i[:,:,:,:,0] + 1j*dat_i[:,:,:,:,1]
             else:
-                #RA = get_ra(mjd,Dec) #LST*15
-                #HA = 0
-                RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec)
-                #HA_axis = (LST*15) - RA_axis
-                HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
-                RA = RA_axis[int(len(RA_axis)//2)]
-                HA = HA_axis[int(len(HA_axis)//2)]
-                print(HA_axis[len(HA_axis)//2-10:len(HA_axis)//2+10])
-            if verbose: print("Coordinates (deg):",RA,Dec)
-            if verbose: print("Hour angle (deg):",HA)
+                dat = np.concatenate([dat,dat_i[:,:,:,:,0] + 1j*dat_i[:,:,:,:,1]],axis=0,dtype=np.complex64)
 
-            #calibrating
-            #*** TO DO: INSERT NIKITA'S CALIBRATION CODE HERE***#
-
-
-            #creating injection
-            if args.inject and (gulp in inject_gulps) and filelabels[g]==args.filelabel:
-                print("Injecting pulse in gulp",gulp)
-                from inject import injecting
-                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=10000000,SNRmax=100000000)
-                #offsetRA = offsetDEC = 0
-
-                if args.snr_inject > 0:
-                    SNR = args.snr_inject
-                if args.dm_inject != -1 and args.dm_inject >= 0:
-                    DM = args.dm_inject
-                if args.width_inject > 0:
-                    width = args.width_inject
-                offsetRA = args.offsetRA_inject
-                offsetDEC = args.offsetDEC_inject
-                print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
-                print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
-                noiseless=False
-                if args.solo_inject or args.flat_field or args.gauss_field:
-                    #noiseless=False
-                    dat[:,:,:,:] = 0
-                if args.inject_noiseless:
-                    noiseless=True
-                #noiseless = True
-                #DM = 0
-                #SNR = 10000
-                #width = 2
-                #offsetRA = offsetDEC = 0
-                inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
-
-                if args.flat_field:
-                    inject_img = np.ones_like(inject_img)
-                elif args.gauss_field:
-                    xx,yy = np.meshgrid(np.linspace(-2,2,args.gridsize),np.linspace(-2,2,args.gridsize))
-                    inject_img = multivariate_normal(mean=[0,0],cov=0.5).pdf(np.dstack((xx,yy)))
-                    inject_img = inject_img[:,:,np.newaxis,np.newaxis].repeat(dat.shape[0],2).repeat(args.num_chans,3)
-                elif args.point_field:
-                    inject_img = np.zeros_like(inject_img)
-                    inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
-                #report injection in log file
-                with open(inject_file,"a") as csvfile:
-                    wr = csv.writer(csvfile,delimiter=',')
-                    wr.writerow([time_start_isot,DM,width,SNR])
-                csvfile.close()
-
-
-            else:
-                inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
-            dat[np.isnan(dat)]= 0 
+            print(dat.shape)
         
-            #imaging
-            print("Start imaging")
-            if args.wstack: print("W-stacking with ",args.Nlayers," layers")
-            dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
-            for i in range(dat.shape[0]):
-                for j in range(args.num_chans):
-                    for k in range(dat.shape[-1]):
+        np.save(img_dir + "2025-02-16T20:36:48.010_rtvis.npy",dat)
+
+        if verbose: print("Collected 25 samples, imaging...")
+        #get timestamp
+        timestamp = Time(mjd,format='mjd').isot
+
+        #parameters from etcd
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        ff = 1.53-np.arange(8192)*0.25/8192
+        fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+        fobs = np.reshape(fobs,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1)
+        print("FREQS(",len(fobs),"): ",len(fobs),fobs)
+
+        #use MJD to get pointing
+        time_start_isot = Time(mjd,format='mjd').isot
+        print("DEC from file:",Dec)
+        pt_dec = Dec*np.pi/180.
+        if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+
+
+        #flagging andd baseline cut
+        fcts = []
+        if args.flagSWAVE:
+            fcts.append(fct_SWAVE)
+        if args.flagBPASS:
+            fcts.append(fct_BPASS)
+        if args.flagFRCBAND:
+            fcts.append(fct_FRCBAND)
+        if args.flagBPASSBURST:
+            fcts.append(fct_BPASSBURST)
+        dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs, flag_channel_templates = fcts, realtime=True, sb=args.sb)
+            
+        U = UVW[0,:,0]
+        V = UVW[0,:,1]
+        W = UVW[0,:,2]
+        uv_diag=np.max(np.sqrt(U**2 + V**2))
+        pixel_resolution = (0.20 / uv_diag) / 3
+        if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
+        if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
+        if verbose: print(UVW)
+
+        print("Print bad channels:",np.isnan(dat.mean((0,1,3))))
+
+        RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec)
+        HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
+        RA = RA_axis[int(len(RA_axis)//2)]
+        HA = HA_axis[int(len(HA_axis)//2)]
+        print(HA_axis[len(HA_axis)//2-10:len(HA_axis)//2+10])
+        if verbose: print("Time:",time_start_isot)
+        if verbose: print("Coordinates (deg):",RA,Dec)
+        if verbose: print("Hour angle (deg):",HA)
+
+
+        #creating injection
+        if args.inject and (inject_count>=90):
+            inject_count = 0
+            print("Injecting pulse")
+            offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=10000000,SNRmax=100000000)
+            #offsetRA = offsetDEC = 0
+
+            if args.snr_inject > 0:
+                SNR = args.snr_inject
+            if args.dm_inject != -1 and args.dm_inject >= 0:
+                DM = args.dm_inject
+            if args.width_inject > 0:
+                width = args.width_inject
+            offsetRA = args.offsetRA_inject
+            offsetDEC = args.offsetDEC_inject
+            print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
+            print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
+            noiseless=False
+            if args.solo_inject or args.flat_field or args.gauss_field:
+                #noiseless=False
+                dat[:,:,:,:] = 0
+            if args.inject_noiseless:
+                noiseless=True
+            inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
+            if args.flat_field:
+                inject_img = np.ones_like(inject_img)
+            elif args.gauss_field:
+                xx,yy = np.meshgrid(np.linspace(-2,2,args.gridsize),np.linspace(-2,2,args.gridsize))
+                inject_img = multivariate_normal(mean=[0,0],cov=0.5).pdf(np.dstack((xx,yy)))
+                inject_img = inject_img[:,:,np.newaxis,np.newaxis].repeat(dat.shape[0],2).repeat(args.num_chans,3)
+            elif args.point_field:
+                inject_img = np.zeros_like(inject_img)
+                inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
+            #report injection in log file
+            with open(inject_file,"a") as csvfile:
+                wr = csv.writer(csvfile,delimiter=',')
+                wr.writerow([time_start_isot,DM,width,SNR])
+            csvfile.close()
+        else:
+            inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
+        dat[np.isnan(dat)]= 0 
+
+        #imaging
+        print("Start imaging")
+        if args.wstack: print("W-stacking with ",args.Nlayers," layers")
+        dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,dat.shape[0],1))
+        for i in range(dat.shape[0]):
+            for k in range(dat.shape[-1]):
                     
-                        for jj in range(args.nchans_per_node):
-                            if args.briggs:
-                                if k == 0 and jj == 0:
-                                    dirty_img[:,:,i,j] = robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
-                                else:
-                                    dirty_img[:,:,i,j] += robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,args.robust,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field))
-                            else:
-                                if k == 0 and jj == 0:
-                                    dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
-                                else:
-                                    dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers)
-                        #print("")
-            print("Imaging complete")            
-            print(dirty_img)
-        
-        
-        
-        
-        
-        
-            #save image to fits, numpy file
-            if args.save and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
-                print("SAVING")
-                np.save(args.outpath + "/" + time_start_isot + ".npy",dirty_img)
-                numpy_to_fits(np.nanmean(dirty_img,(2,3)),args.outpath + "/" + time_start_isot + ".fits")
-            
-                if args.inject:
-                    np.save(args.outpath + "/" + time_start_isot + "_response.npy",dirty_img/inject_img)
-                    numpy_to_fits(np.nanmean(dirty_img,(2,3))/np.nanmean(inject_img,(2,3)),args.outpath + "/" + time_start_isot + "_response.fits")        
+                for jj in range(args.nchans_per_node):
+                    if args.briggs:
+                        if k == 0 and jj == 0:
+                            dirty_img[:,:,i,0] = revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                        else:
+                            dirty_img[:,:,i,0] += revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                    else:
+                        if k == 0 and jj == 0:
+                            dirty_img[:,:,i,0] = revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                        else:
+                            dirty_img[:,:,i,0] += revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
 
-            #send to proc server
-            if args.search:
+
+        print("Imaging complete")            
+        print(dirty_img)
+
+
+        #send to proc server
+        if args.save:
+            np.save(img_dir + time_start_isot + "_rtimage.npy",dirty_img)
+        if args.search:
                 
-                if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
-                    for i in range(args.num_chans):
-                        #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-                        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
-                        if args.verbose: print(msg)
-                        time.sleep(1)
+            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,0] ,verbose=args.verbose,retries=5,keepalive_time=10)
+            if args.verbose: print(msg)
                 
-                else: #if filelabels[g] != args.filelabel or gulp < args.gulp_offset:#else:
-                    print("Writing to last_frame.npy")
-                    np.save(frame_dir + "last_frame.npy",dirty_img)
-        time.sleep(args.sleeptime)
-    """
+        if args.inject:
+            inject_count += 1
     return
 
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Form and send dirty images extracting visibilities from raw data (.out) file.')
-    parser.add_argument('filelabel')           # positional argument
+    #parser.add_argument('filelabel')           # positional argument
+    parser.add_argument('sb',type=int)
     parser.add_argument('--timestamp',type=str,help='Timestamp in ISOT format (e.g. 2024-06-12T21:35:49); if not given, timestamp is retrieved from sb00 file with os.path.getctime() or from time of rsync',default='')
-    parser.add_argument('--filedir',type=str,help='Path to fast visibilities; if not given, the /dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/lxd110h**/ paths are used',default='')
-    parser.add_argument('--num_gulps', type=int, help='Number of gulps, default -1 for all ',default=-1)
-    parser.add_argument('--gulp_offset',type=int,help='Gulp offset to start from, default = 0', default=0)
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
-    #parser.add_argument('--fringestop', action='store_true', default=False, help='Fringe stop manually')
-    #parser.add_argument('--fringetable',type=str,help='Fringe stop manually with specified table in the dsa110-nsfrb-fast-visibilities dir',default='')
     parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=raw_datasize)
     parser.add_argument('--path',type=str,help='Path to raw data files',default=vis_dir[:-1])
     parser.add_argument('--outpath',type=str,help='Output path for images',default=imgpath)
@@ -397,7 +294,6 @@ if __name__=="__main__":
     parser.add_argument('--inject_noiseonly',action='store_true',default=False,help='Only inject noise; for use with false positive testing')
     parser.add_argument('--inject_noiseless',action='store_true',default=False,help='Only inject signal')
     parser.add_argument('--num_inject',type=int,help='Number of injections, must be less than number of gulps',default=1)
-    parser.add_argument('--sb',action='store_true',default=False,help='Use nsfrb_sbxx names')
     parser.add_argument('--num_chans',type=int,help='Number of channels',default=int(NUM_CHANNELS//AVERAGING_FACTOR))
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)
     parser.add_argument('--flat_field',action='store_true',help='Illuminate all pixels uniformly')
@@ -414,6 +310,7 @@ if __name__=="__main__":
     parser.add_argument('--flagBPASS',action='store_true',help='Flag channels when BPASS template RFI is detected, which is simpl comparison to bandpass mean in visibilities')
     parser.add_argument('--flagFRCBAND',action='store_true',help='Flag channels in FRC miltiary allocation 1435-1525 MHz')
     parser.add_argument('--flagBPASSBURST',action='store_true',help='Flag channel when BPASS template RFI is detected in any timestep, i.e. should detect pulsed narrowband RFI')
+    parser.add_argument('--nbase',type=int,help='Expected number of baselines',default=4656)
     args = parser.parse_args()
     main(args)
 

@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,tsamp
 
 
-def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs=np.array([]),flag_channel_templates=[]):
+def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0):
     """
     Removes visibilities containing flagged antennas and below minimum 
     baseline length
@@ -73,9 +73,14 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagg
 
     #flag corrs
     if len(flagged_corrs) > 0:
-        nchans_per_node = int(dat.shape[2]//int(NUM_CHANNELS//AVERAGING_FACTOR))
-        for c in flagged_corrs:
-            dat[:,:,c*nchans_per_node:(c+1)*nchans_per_node,:] = np.nan
+        if realtime:
+            nchans_per_node = dat.shape[2]
+            if sb in flagged_corrs:
+                dat[:,:,:,:] = np.nan
+        else:
+            nchans_per_node = int(dat.shape[2]//int(NUM_CHANNELS//AVERAGING_FACTOR))
+            for c in flagged_corrs:
+                dat[:,:,c*nchans_per_node:(c+1)*nchans_per_node,:] = np.nan
     if len(flag_channel_templates) > 0:
         for fct in flag_channel_templates:
             flag_channels = fct(dat)

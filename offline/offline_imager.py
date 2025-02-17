@@ -384,19 +384,6 @@ def main(args):
                 for j in range(args.num_chans):
                     for k in range(dat.shape[-1]):
                     
-                        """
-                        if i == 0 and j == 2 and k == 0:
-                            plt.figure(figsize=(12,12))
-                            plt.plot(np.real(dat[i, :, j, k]),np.real(inverse_uniform_image(uniform_image(dat[i:i+1, :, j, k],U,V,IMAGE_SIZE,return_complex=True),U,V)),'o')
-                            plt.xscale("log")
-                            plt.yscale("log")
-                            plt.plot(np.linspace(0,1e5),np.linspace(0,1e5))
-                            plt.xlim(1,1e5)
-                            plt.ylim(1,1e5)
-                            plt.savefig("tmp4.png")
-
-                            plt.close()
-                        """
                         #print(i,j,k)
                         for jj in range(args.nchans_per_node):
                             if args.briggs:

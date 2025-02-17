@@ -34,6 +34,7 @@ def GP_curve(longitude,lat_offset=0):
 
 
 
+        
 
 def find_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=3,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,maxtime=(180/0.5368867455531618)/3600,sys_time_offset=10*60,verbose=False,gb_offset=0): #slew rate 0.1 deg/s from https://www.antesky.com/project/4-5m-cku-dual-bands-tvro-antenna/
     """
