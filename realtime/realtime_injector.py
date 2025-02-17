@@ -41,7 +41,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,inject_log_file
 
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
@@ -118,8 +118,8 @@ def main(args):
             width = args.width_inject
         offsetRA = args.offsetRA_inject
         offsetDEC = args.offsetDEC_inject
-        print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
-        print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
+        #print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
+        #print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
         noiseless=False
         if args.inject_noiseless:
             noiseless=True
@@ -141,7 +141,7 @@ def main(args):
         csvfile.close()
         """
         #generate random 10 digit identifier
-        print("finished injection",inject_img.shape)
+        printlog("finished injection" + str(inject_img.shape),output_file=inject_log_file)
         ID = str(random.randint(10**10,10**(11) - 1))
         for j in range(args.num_chans):
             np.save(inject_dir + "realtime_staging/" + "injection_" + str(ID) + "_sb" +str("0" if j<10 else "")+ str(j) + ".npy",inject_img[:,:,:,j])
@@ -169,8 +169,9 @@ def main(args):
                     wr.writerow([injection_dict['ISOT'],DM,width,SNR])
                 csvfile.close()
                 if not np.all(injection_dict['injected']):
-                    print("Injection",injection_dict['ISOT'],"missing channels:",np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))])
+                    printlog("Injection" + injection_dict['ISOT'] + " missing channels:" + str(np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))]),output_file=inject_log_file)
                 #delete injection
+                printlog("Removing injection " + str(ID),output_file=inject_log_file)
                 os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
                 break
 

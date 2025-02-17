@@ -82,7 +82,7 @@ ETCDKEY = f'/mon/nsfrb/fastvis'
 ETCDKEY_INJECT = f'/mon/nsfrb/inject'
 QQUEUE = Queue()
 
-logfile = ""
+logfile = "realtime_imager_log.txt"
 def rt_etcd_to_queue(etcd_dict,queue=QQUEUE):
     """
     ETCD watch callback function for /mon/nsfrb/fastvis
@@ -118,12 +118,12 @@ def main(args):
             mjd = QQUEUE.get()
             sb = QQUEUE.get()
             Dec = QQUEUE.get()
-            print(mjd,sb,Dec)
+            printlog(str((mjd,sb,Dec)),output_file=logfile)
             #check this is the right data
             assert(sb==args.sb)
 
             dat_hex = rtreader.read(shmid,datasize)
-            print("DATA HEX:",dat_hex.hex()[-64:])
+            printlog("DATA HEX:" + str(dat_hex.hex()[-64:]),output_file=logfile)
             dat_i = np.frombuffer(dat_hex,dtype=np.float32)
             
             ntimes = int(len(dat_i)/args.nbase/args.nchans_per_node/2/2)
@@ -135,11 +135,11 @@ def main(args):
             else:
                 dat = np.concatenate([dat,dat_i[:,:,:,:,0] + 1j*dat_i[:,:,:,:,1]],axis=0,dtype=np.complex64)
 
-            print(dat.shape)
+            printlog(dat.shape,output_file=logfile)
         
         np.save(img_dir + "2025-02-16T20:36:48.010_rtvis.npy",dat)
 
-        if verbose: print("Collected 25 samples, imaging...")
+        if verbose: printlog("Collected 25 samples, imaging...",output_file=logfile)
         #get timestamp
         timestamp = Time(mjd,format='mjd').isot
 
@@ -148,13 +148,12 @@ def main(args):
         ff = 1.53-np.arange(8192)*0.25/8192
         fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
         fobs = np.reshape(fobs,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1)
-        print("FREQS(",len(fobs),"): ",len(fobs),fobs)
 
         #use MJD to get pointing
         time_start_isot = Time(mjd,format='mjd').isot
-        print("DEC from file:",Dec)
+        printlog("DEC from file:" + str(Dec),output_file=logfile)
         pt_dec = Dec*np.pi/180.
-        if verbose: print("Pointing dec (deg):",pt_dec*180/np.pi)
+        if verbose: printlog("Pointing dec (deg):" + str(pt_dec*180/np.pi),output_file=logfile)
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
 
 
@@ -175,31 +174,31 @@ def main(args):
         W = UVW[0,:,2]
         uv_diag=np.max(np.sqrt(U**2 + V**2))
         pixel_resolution = (0.20 / uv_diag) / 3
-        if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
-        if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
-        if verbose: print(UVW)
+        if verbose: printlog(str(antenna_order)+ str(len(antenna_order)),output_file=logfile)#x_m.shape,y_m.shape,z_m.shape)
+        if verbose: printlog(str((UVW.shape,U.shape,V.shape,W.shape)),output_file=logfile)
+        if verbose: printlog(UVW,output_file=logfile)
 
-        print("Print bad channels:",np.isnan(dat.mean((0,1,3))))
+        printlog("Print bad channels:" + str(np.isnan(dat.mean((0,1,3)))),output_file=logfile)
 
         RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec)
         HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
         RA = RA_axis[int(len(RA_axis)//2)]
         HA = HA_axis[int(len(HA_axis)//2)]
-        print(HA_axis[len(HA_axis)//2-10:len(HA_axis)//2+10])
-        if verbose: print("Time:",time_start_isot)
-        if verbose: print("Coordinates (deg):",RA,Dec)
-        if verbose: print("Hour angle (deg):",HA)
+        printlog(HA_axis[len(HA_axis)//2-10:len(HA_axis)//2+10],output_file=logfile)
+        if verbose: printlog("Time:" + time_start_isot,output_file=logfile)
+        if verbose: printlog("Coordinates (deg):" + str((RA,Dec)),output_file=logfile)
+        if verbose: printlog("Hour angle (deg):" + str(HA),output_file=logfile)
 
 
         #creating injection
         if args.inject and (inject_count>=90):
             inject_count = 0
-            print("Injecting pulse")
+            printlog("Injecting pulse",output_file=logfile)
 
             #look for an injection in etcd
             injection_params = ETCD.get_dict(ETCDKEY_INJECT)
             if injection_params is None:
-                print("Injection not ready, postponing")
+                printlog("Injection not ready, postponing",output_file=logfile)
                 inject_count = 90
             else:
                 #update dict
@@ -215,7 +214,7 @@ def main(args):
                 ETCD.put_dict(ETCDKEY_INJECT,injection_params)
                 
                 if time_start_isot == injection_params['ISOT']:
-                    print("Injection",injection_params['ID'],"found")
+                    printlog("Injection" + injection_params['ID'] + "found",output_file=logfile)
                     fname = "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy"
                     #copy
                     os.system("scp h24.pro.pvt:" + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
@@ -224,14 +223,14 @@ def main(args):
                     #clear data if we only want the injection
                     if injection_params['inject_only']: dat[:,:,:,:] = 0
                     inject_flat = injection_params['inject_flat'] 
-                    print("Done injecting")
+                    printlog("Done injecting",output_file=logfile)
         else:
             inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         dat[np.isnan(dat)]= 0 
 
         #imaging
-        print("Start imaging")
-        if args.wstack: print("W-stacking with ",args.Nlayers," layers")
+        printlog("Start imaging",output_file=logfile)
+        if args.wstack: printlog("W-stacking with " + str(args.Nlayers) + " layers",output_file=logfile)
         dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,dat.shape[0],1))
         for i in range(dat.shape[0]):
             for k in range(dat.shape[-1]):
@@ -250,8 +249,8 @@ def main(args):
                             dirty_img[:,:,i,0] += revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
 
 
-        print("Imaging complete")            
-        print(dirty_img)
+        printlog("Imaging complete",output_file=logfile)
+        #print(dirty_img)
 
 
         #send to proc server
@@ -260,7 +259,7 @@ def main(args):
         if args.search:
                 
             msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,0] ,verbose=args.verbose,retries=5,keepalive_time=10)
-            if args.verbose: print(msg)
+            if args.verbose: printlog(msg,output_file=logfile)
                 
         if args.inject:
             inject_count += 1

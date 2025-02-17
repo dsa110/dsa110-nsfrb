@@ -180,3 +180,4 @@ report*nsys*rep
 #log files
 process_server/.*log*txt
 cand_cutter/.*log*txt
+realtime/realtime_imager_log.txt

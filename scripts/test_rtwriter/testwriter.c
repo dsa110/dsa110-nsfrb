@@ -74,6 +74,8 @@ int main()
 	}
 	fclose(fptr);
 	//wait for reader to finish
+	sleep(60);
+	
 	rtwrite(NULL,0,1,rtobj);
 	free(buffer);
 	free(rtobj);
