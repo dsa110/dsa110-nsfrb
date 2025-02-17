@@ -1,4 +1,4 @@
-# Offline
+# Realtime
 
 This folder contains the main script for the realtime imager and C helper libraries for reading and writing fast visibilities with MMMIO.
 
