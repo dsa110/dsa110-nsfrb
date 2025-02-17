@@ -5,6 +5,7 @@ This folder contains the main script for the realtime imager and C helper librar
 ## Structure
 
 -`realtime_imager`: This defines the main realtime imager routine which images memory-mapped visibilities on a given sub-band and sends them to the process server for offline searching.
+-`realtime_injector`: This defines the realtime injector service; this will be run on h24 and produce injections that are copied to the corr nodes to be injected into fast visibilities by the realtime imager
 -`rtreader/`: Custom Python C Extension used to read memory-mapped data into a Python bytes structure.
 -`rtwriter/`: Custom C library used to write fast visibilities to a memory mapped byte stream.
 
@@ -18,6 +19,12 @@ python realtime_imager.py 1 --verbose --num_time_samples 25 --nchans_per_node 8 
 ```
 
 Use the --help flag to see all available command line arguments.
+
+The realtime injector will be run on h24 as:
+
+```bash
+python realtime_injector
+```
 
 To import the `rtreader` module in Python:
 

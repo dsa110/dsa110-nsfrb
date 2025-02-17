@@ -40,7 +40,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,local_inject_dir
 
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
@@ -79,6 +79,7 @@ FILELENGTH = MFS_CONF['filelength_minutes']*u.min
 from multiprocessing import Process, Queue
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/fastvis'
+ETCDKEY_INJECT = f'/mon/nsfrb/inject'
 QQUEUE = Queue()
 
 logfile = ""
@@ -93,7 +94,6 @@ def rt_etcd_to_queue(etcd_dict,queue=QQUEUE):
     queue.put(etcd_dict['dec'])
     return
 
-
 def main(args):
 
     verbose = args.verbose
@@ -102,10 +102,9 @@ def main(args):
     printlog("Adding ETCD watch on key "+ETCDKEY,output_file=logfile)
     ETCD.add_watch(ETCDKEY,rt_etcd_to_queue)
 
-
     #make a running count and inject a burst every 90x25sample gulps
     if args.inject:
-        inject_count = 0
+        inject_count = 90
 
     while True:
 
@@ -196,42 +195,38 @@ def main(args):
         if args.inject and (inject_count>=90):
             inject_count = 0
             print("Injecting pulse")
-            offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=10000000,SNRmax=100000000)
-            #offsetRA = offsetDEC = 0
 
-            if args.snr_inject > 0:
-                SNR = args.snr_inject
-            if args.dm_inject != -1 and args.dm_inject >= 0:
-                DM = args.dm_inject
-            if args.width_inject > 0:
-                width = args.width_inject
-            offsetRA = args.offsetRA_inject
-            offsetDEC = args.offsetDEC_inject
-            print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
-            print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
-            noiseless=False
-            if args.solo_inject or args.flat_field or args.gauss_field:
-                #noiseless=False
-                dat[:,:,:,:] = 0
-            if args.inject_noiseless:
-                noiseless=True
-            inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
-            if args.flat_field:
-                inject_img = np.ones_like(inject_img)
-            elif args.gauss_field:
-                xx,yy = np.meshgrid(np.linspace(-2,2,args.gridsize),np.linspace(-2,2,args.gridsize))
-                inject_img = multivariate_normal(mean=[0,0],cov=0.5).pdf(np.dstack((xx,yy)))
-                inject_img = inject_img[:,:,np.newaxis,np.newaxis].repeat(dat.shape[0],2).repeat(args.num_chans,3)
-            elif args.point_field:
-                inject_img = np.zeros_like(inject_img)
-                inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
-            #report injection in log file
-            with open(inject_file,"a") as csvfile:
-                wr = csv.writer(csvfile,delimiter=',')
-                wr.writerow([time_start_isot,DM,width,SNR])
-            csvfile.close()
+            #look for an injection in etcd
+            injection_params = ETCD.get_dict(ETCDKEY_INJECT)
+            if injection_params is None:
+                print("Injection not ready, postponing")
+                inject_count = 90
+            else:
+                #update dict
+                if 'ISOT' not in injection_params.keys():
+                    injection_params['ISOT'] = time_start_isot
+
+                #acknowledge receipt
+                injection_params["ack"] = True
+
+                #check if correct time
+                if time_start_isot == injection_params['ISOT']:
+                    injection_params["injected"][args.sb] = True
+                ETCD.put_dict(ETCDKEY_INJECT,injection_params)
+                
+                if time_start_isot == injection_params['ISOT']:
+                    print("Injection",injection_params['ID'],"found")
+                    fname = "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy"
+                    #copy
+                    os.system("scp h24.pro.pvt:" + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
+                    #read
+                    inject_img = np.load(local_inject_dir + fname)
+                    #clear data if we only want the injection
+                    if injection_params['inject_only']: dat[:,:,:,:] = 0
+                    inject_flat = injection_params['inject_flat'] 
+                    print("Done injecting")
         else:
-            inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
+            inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         dat[np.isnan(dat)]= 0 
 
         #imaging
@@ -244,14 +239,15 @@ def main(args):
                 for jj in range(args.nchans_per_node):
                     if args.briggs:
                         if k == 0 and jj == 0:
-                            dirty_img[:,:,i,0] = revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                            dirty_img[:,:,i,0] = revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+
                         else:
-                            dirty_img[:,:,i,0] += revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                            dirty_img[:,:,i,0] += revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
                     else:
                         if k == 0 and jj == 0:
-                            dirty_img[:,:,i,0] = revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                            dirty_img[:,:,i,0] = revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
                         else:
-                            dirty_img[:,:,i,0] += revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,args.sb]==0) else inject_img[:,:,i,args.sb]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                            dirty_img[:,:,i,0] += revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
 
 
         print("Imaging complete")            
@@ -284,24 +280,10 @@ if __name__=="__main__":
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
     parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')
     parser.add_argument('--inject',action='store_true',default=False,help='Inject a burst into the gridded visibilities. Unless the --solo_inject flag is set, a noiseless injection will be integrated into the data.')
-    parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
-    parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=-1)
-    parser.add_argument('--dm_inject',type=float,help='DM of injection; default -1 which chooses a random DM',default=-1)
-    parser.add_argument('--width_inject',type=int,help='Width of injection in samples; default -1 which chooses a random width',default=-1)
-    parser.add_argument('--offsetRA_inject',type=int,help='Offset RA of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
-    parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
-    parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
-    parser.add_argument('--inject_noiseonly',action='store_true',default=False,help='Only inject noise; for use with false positive testing')
-    parser.add_argument('--inject_noiseless',action='store_true',default=False,help='Only inject signal')
-    parser.add_argument('--num_inject',type=int,help='Number of injections, must be less than number of gulps',default=1)
     parser.add_argument('--num_chans',type=int,help='Number of channels',default=int(NUM_CHANNELS//AVERAGING_FACTOR))
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)
-    parser.add_argument('--flat_field',action='store_true',help='Illuminate all pixels uniformly')
-    parser.add_argument('--gauss_field',action='store_true',help='Illuminate a gaussian source')
-    parser.add_argument('--point_field',action='store_true',help='Illuminate a point source')
     parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
-    parser.add_argument('--sleeptime',type=float,help='Time to sleep between processing gulps (seconds)',default=30)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     parser.add_argument('--wstack',action='store_true',help='If set use w-stacking algorithm with --Nlayers layers')
     parser.add_argument('--Nlayers',type=int,help='Number of layers for w-stacking',default=18)
