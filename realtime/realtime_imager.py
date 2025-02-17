@@ -207,7 +207,7 @@ def main(args):
                     injection_params['ISOT'] = time_start_isot
 
                 #acknowledge receipt
-                injection_params["ack"] = True
+                injection_params["ack"][args.sb] = True
 
                 #check if correct time
                 if time_start_isot == injection_params['ISOT']:

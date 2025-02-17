@@ -169,9 +169,9 @@ def main(args):
                     wr.writerow([injection_dict['ISOT'],DM,width,SNR])
                 csvfile.close()
                 if not np.all(injection_dict['injected']):
-                    print("Injection",injection_dict['ISOT'],"missing channels:",np.arange(args.num_chans)[np.array(injection_dict['injected'])])
+                    print("Injection",injection_dict['ISOT'],"missing channels:",np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))])
                 #delete injection
-                os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy"
+                os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
                 break
 
         
