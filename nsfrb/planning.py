@@ -36,7 +36,7 @@ def GP_curve(longitude,lat_offset=0):
 
         
 
-def find_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=3,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,maxtime=(180/0.5368867455531618)/3600,sys_time_offset=10*60,verbose=False,gb_offset=0): #slew rate 0.1 deg/s from https://www.antesky.com/project/4-5m-cku-dual-bands-tvro-antenna/
+def find_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=3,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,maxtime=(180/0.5368867455531618)/3600,sys_time_offset=10*60,verbose=False,gb_offset=0,lock_elevation=False): #slew rate 0.1 deg/s from https://www.antesky.com/project/4-5m-cku-dual-bands-tvro-antenna/
     """
     This function takes the current time an elevation of the DSA-110 and finds the fastest path to the Galactic Plane, returning the required elevation and time of crossing.
     """
@@ -82,7 +82,10 @@ def find_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=3,Lat=Lat,Lon
     #print(mjd_steps)
 
     #for given point, get the point on GP that could be reached at each timestep, if possible
-    if dec < interpGPwrapped(ra):#(dec > interpGPwrapped(ra) and elev <90) or (dec <= interpGPwrapped(ra) and elev >=90):#gb > 0:
+    if lock_elevation:
+        if verbose: print("LOCKING ELEVATION AT ",elev,"DEGREES")
+        elev_steps = elev*np.ones(len(t_steps))
+    elif dec < interpGPwrapped(ra):#(dec > interpGPwrapped(ra) and elev <90) or (dec <= interpGPwrapped(ra) and elev >=90):#gb > 0:
         if verbose: print("DECREASING ELEV")
         elev_steps = np.clip(elev + el_slew_rate*t_steps,0,180)
 
@@ -636,14 +639,21 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
 
 
     #find mjd of source pass
+    elev_init = elev
     if start_target is not None:
         #check if target is within plane
         start_target_c = SkyCoord(ra=start_target[0]*u.deg,dec=start_target[1]*u.deg,frame='icrs')
-        if (start_target_c.galactic.b.value - gb_offset) >= 3:
-            print("WARNING: target is not within the plane")
         
-        mjd,diff = find_source_pass(mjd,start_target[0],start_target[1])
-        print("Starting Plane Tracking with source",start_target_c,"at",Time(mjd,format='mjd').isot)
+        #basically just want to start at an elevation near the source
+        elev = start_target[1] + 90 - Lat
+
+        
+        #if (start_target_c.galactic.b.value - gb_offset) >= 3:
+        #    print("WARNING: target is not within the plane")
+        
+
+        #mjd,diff = find_source_pass(mjd,start_target[0],start_target[1])
+        print("Starting Plane Tracking with source",start_target_c,"at elevation",elev)
 
     if plot:
         #make a high-res interpolation for plane
@@ -699,10 +709,13 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
         mjd_now = (mjd if step == 0 else mjd_steps[-1])
         elev_now = (elev if step == 0 else elev_steps[-1])
         
-        mjd_int,ra_int,dec_int,az_int,elev_int,ra_steps_,dec_steps_,dec_plane,elev_steps_,az_steps_,alt_steps_,mjd_steps_,gb_steps_,gl_steps_ = find_plane(mjd_now,elev_now,el_slew_rate=el_slew_rate,resolution=fixed_tstep_hr*15/3600,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset)
+        lock_elevation = (step == 0) and (start_target is not None)
+
+        mjd_int,ra_int,dec_int,az_int,elev_int,ra_steps_,dec_steps_,dec_plane,elev_steps_,az_steps_,alt_steps_,mjd_steps_,gb_steps_,gl_steps_ = find_plane(mjd_now,elev_now,el_slew_rate=el_slew_rate,resolution=fixed_tstep_hr*15/3600,Lat=Lat,Lon=Lon,Height=Height,az_offset=az_offset,sys_time_offset=sys_time_offset,gb_offset=gb_offset,lock_elevation=lock_elevation)
         if step == 0: 
-            mjd_steps.append(mjd)
-        
+            #mjd_steps.append(mjd)
+            #need to subtract systematic time offset and slew time from initial to new elevation from mjd_int
+            mjd_steps.append(mjd_int - (np.abs((elev_init-elev)/el_slew_rate)/86400) - (sys_time_offset/86400))
         
             print("Start UTC:",Time(mjd_int,format='mjd').isot)
             print("Start Elevation:",elev_int,'degrees')
@@ -729,7 +742,7 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
             break
         else:
             step += 1
-            mjd_steps.append(mjd + step*(fixed_tstep_hr/24))
+            mjd_steps.append(mjd_steps[0] + step*(fixed_tstep_hr/24))
     print("Number of steps: ",len(mjd_steps))
     cdt = np.logical_and(np.array(dec_steps)>=dec_min,np.array(dec_steps)<=dec_max)
     mjd_steps = np.array(mjd_steps)[cdt]

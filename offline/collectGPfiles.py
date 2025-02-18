@@ -36,7 +36,6 @@ subdirs_to_clear = [
     ("lxd110h21","*.out"),
     ("lxd110h22","*.out")
     ]
-vis_file = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/vis_files.csv"
 
 
 def main(args):
@@ -66,10 +65,14 @@ def main(args):
 
         #make directory
         GP_obs_vis_dir = vis_dir + "GP_observations_" + args.planisot + "/"
+        GP_vis_file = vis_dir + "GP_observations_" + args.planisot + "/vis_files.csv"
         plan_metadata['fast_vis_dir'] = GP_obs_vis_dir
         os.system("mkdir " + GP_obs_vis_dir)
         time.sleep(3)
+        os.system("touch " + GP_vis_file)
 
+        csvfile = open(GP_vis_file,"a")
+        wr = csv.writer(csvfile,delimiter=',')
         for subdir, pattern in subdirs_to_clear:
             for file in (operations_dir / subdir).glob(pattern):
                 #print(os.path.basename(str(file)),type(file))
@@ -90,6 +93,10 @@ def main(args):
                     label = label[len(label)-label[::-1].index("_")-1:label.index(".out")]
                     print(label)
                     plan_metadata['fast_vis_labels'].append(label)
+
+                    #write to csv
+                    wr.writerow([os.path.basename(str(file)),int(0),""])
+        csvfile.close()
         #update json
         with open(jsonfname,"w") as jsonfile:
             json.dump(plan_metadata,jsonfile)
@@ -100,7 +107,6 @@ if __name__=="__main__":
     #argument parsing
     parser = argparse.ArgumentParser()
     parser.add_argument('--planisot',type=str,help='ISOT of GP plan in plan directory',default='')
-    parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
     args = parser.parse_args()
 
     main(args)
