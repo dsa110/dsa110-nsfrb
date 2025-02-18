@@ -25,13 +25,13 @@ static PyObject *rtreader_read(PyObject *self, PyObject *args)
 	//int shmid = atoi(shmid_str);
 	if (!PyArg_ParseTuple(args,"ll", &shmid, &buffersize))
 		return NULL;
-	printf("SHMID: %ld\n",shmid);
-	printf("BUFFERSIZE: %ld\n",buffersize);
+	//printf("SHMID: %ld\n",shmid);
+	//printf("BUFFERSIZE: %ld\n",buffersize);
 
 	//printf("%p\n",shmid_ptr);
 	//printf("%d\n",shmid_ptr);
 	//int shmid = *shmid_ptr;
-	fflush(stdout);
+	//fflush(stdout);
 
 	//attach
 	char *memaddr = shmat(shmid, NULL, SHM_RDONLY);

@@ -99,8 +99,8 @@ def main(args):
                 print("Using _" + str(fnum) + " for last frame initialization") 
                 filelabels = ["_" + str(fnum)] + filelabels
                 if len(args.filedir) > 0:
-                    print("Copying files " + "_" + str(fnum) + " to " + args.path + "/" + args.filedir) 
-                    os.system("cp " + args.path + "/lxd110h*/" + ("nsfrb_sb*" if args.sb else "h*") + "_" + str(fnum) + ".out " + args.path + "/" + args.filedir)
+                    print("Copying files " + "_" + str(fnum) + " to " + args.filedir) 
+                    os.system("cp " + args.path + "/lxd110h*/" + ("nsfrb_sb*" if args.sb else "h*") + "_" + str(fnum) + ".out " + args.filedir)
             else:
                 print("Couldn't find previous file, cannot initialize last frame")
         
@@ -126,7 +126,7 @@ def main(args):
                 if len(args.filedir) == 0:
                     fname = args.path + "/lxd110"+ corr + "/" + ("nsfrb_" + sb if args.sb else corr) + filelabels[g] + ".out"
                 else:
-                    fname =  args.path + "/" + args.filedir + "/" + ("nsfrb_" + sb if args.sb else corr) + filelabels[g] + ".out"
+                    fname =  args.filedir + "/" + ("nsfrb_" + sb if args.sb else corr) + filelabels[g] + ".out"
                 print(fname)
                 #fname = args.path + "/lxd110"+ corr + "/" + corr + args.filelabel + ".out"
                 #fname = args.path + "/3C286_vis/" + corr + args.filelabel + ".out"

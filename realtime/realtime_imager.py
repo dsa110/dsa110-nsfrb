@@ -180,7 +180,7 @@ def main(args):
 
         printlog("Print bad channels:" + str(np.isnan(dat.mean((0,1,3)))),output_file=logfile)
 
-        RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec)
+        RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec,output_file=logfile)
         HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
         RA = RA_axis[int(len(RA_axis)//2)]
         HA = HA_axis[int(len(HA_axis)//2)]

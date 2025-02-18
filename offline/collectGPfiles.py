@@ -41,6 +41,21 @@ subdirs_to_clear = [
 def main(args):
     
 
+    if args.populate:
+        GP_obs_vis_dir = vis_dir + "GP_observations_" + args.planisot + "/"
+        GP_vis_file = vis_dir + "GP_observations_" + args.planisot + "/vis_files.csv"
+        with open(GP_vis_file,"w") as csvfile:
+            #for subdir, pattern in subdirs_to_clear:
+            #files = np.sort(glob.glob(os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/" + subdir + "/" + pattern))
+            files = np.sort(glob.glob(GP_obs_vis_dir + "*"))
+            for f in files:
+                if os.path.basename(str(f)) != 'vis_files.csv':
+                    wr = csv.writer(csvfile,delimiter=',')
+                    wr.writerow([os.path.basename(str(f)),int(0),""])
+                    #print(os.path.basename(str(f)))
+
+        print("Populated csv, returning")
+        return 0
 
     if args.planisot == '':
         print("Requires --planisot argument")
@@ -82,8 +97,8 @@ def main(args):
                 # modtime is timezone naive, so we set it to utc
                 # lxc managed containers are all using utc
                 modtime = modtime.replace(tzinfo=start_time.tzinfo)
-                if modtime >= start_time and modtime <= end_time:
-                    print(modtime,cutoff)
+                if modtime >= start_time and modtime <= end_time and len(glob.glob(GP_obs_vis_dir + os.path.basename(str(file))))==0:
+                    #print(modtime,cutoff)
                     print(f'Copying {file}')
                     print(f'cp {file} {GP_obs_vis_dir}')
                     os.system(f'cp {file} {GP_obs_vis_dir}')
@@ -107,6 +122,7 @@ if __name__=="__main__":
     #argument parsing
     parser = argparse.ArgumentParser()
     parser.add_argument('--planisot',type=str,help='ISOT of GP plan in plan directory',default='')
+    parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
     args = parser.parse_args()
 
     main(args)
