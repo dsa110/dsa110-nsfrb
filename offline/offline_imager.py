@@ -98,9 +98,9 @@ def main(args):
             if len(glob.glob(args.path + "/lxd110h03/" + ("nsfrb_sb00" if args.sb else "h03") + "_" + str(fnum) + ".out")) > 0:
                 print("Using _" + str(fnum) + " for last frame initialization") 
                 filelabels = ["_" + str(fnum)] + filelabels
-                if len(args.filedir) > 0:
-                    print("Copying files " + "_" + str(fnum) + " to " + args.filedir) 
-                    os.system("cp " + args.path + "/lxd110h*/" + ("nsfrb_sb*" if args.sb else "h*") + "_" + str(fnum) + ".out " + args.filedir)
+                #if len(args.filedir) > 0:
+                #    print("Copying files " + "_" + str(fnum) + " to " + args.filedir) 
+                #    os.system("cp " + args.path + "/lxd110h*/" + ("nsfrb_sb*" if args.sb else "h*") + "_" + str(fnum) + ".out " + args.filedir)
             else:
                 print("Couldn't find previous file, cannot initialize last frame")
         

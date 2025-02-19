@@ -68,7 +68,8 @@ def main(args):
             plan_metadata = json.load(jsonfile)
         
         #add a field for fast vis file labels
-        plan_metadata['fast_vis_labels'] = []
+        if 'fast_vis_labels' not in plan_metadata.keys():
+            plan_metadata['fast_vis_labels'] = []
 
 
         
@@ -82,9 +83,11 @@ def main(args):
         GP_obs_vis_dir = vis_dir + "GP_observations_" + args.planisot + "/"
         GP_vis_file = vis_dir + "GP_observations_" + args.planisot + "/vis_files.csv"
         plan_metadata['fast_vis_dir'] = GP_obs_vis_dir
-        os.system("mkdir " + GP_obs_vis_dir)
+        if len(glob.glob(GP_obs_vis_dir))==0:
+            os.system("mkdir " + GP_obs_vis_dir)
         time.sleep(3)
-        os.system("touch " + GP_vis_file)
+        if len(glob.glob(GP_vis_file))==0:
+            os.system("touch " + GP_vis_file)
 
         csvfile = open(GP_vis_file,"a")
         wr = csv.writer(csvfile,delimiter=',')
