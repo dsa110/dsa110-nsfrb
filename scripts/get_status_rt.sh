@@ -1,7 +1,7 @@
 #!/bin/bash
 #test
-cwd=$(cat ../metadata.txt)
-
+cwd=$(cat ${NSFRBDIR}/scripts/metadata.txt)
+cwd=${NSFRBDIR}
 while :
 do
 

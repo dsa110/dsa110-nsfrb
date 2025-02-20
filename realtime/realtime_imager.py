@@ -40,12 +40,12 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,local_inject_dir
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,local_inject_dir,NSFRB_PSRDADA_KEY
 
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 from dsautils import cnf
-import rtreader
+from realtime import rtreader
 """
 This script continuously pulls data from memory mapped from the rtwriter, images, and sends to the process
 server in realtime.
@@ -80,27 +80,27 @@ from multiprocessing import Process, Queue
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/fastvis'
 ETCDKEY_INJECT = f'/mon/nsfrb/inject'
-QQUEUE = Queue()
+#QQUEUE = Queue()
 
 logfile = "realtime_imager_log.txt"
-def rt_etcd_to_queue(etcd_dict,queue=QQUEUE):
-    """
-    ETCD watch callback function for /mon/nsfrb/fastvis
-    """
-    queue.put(etcd_dict['shmid'])
-    queue.put(etcd_dict['datasize'])
-    queue.put(etcd_dict['mjd'])
-    queue.put(etcd_dict['sb'])
-    queue.put(etcd_dict['dec'])
-    return
+#def rt_etcd_to_queue(etcd_dict,queue=QQUEUE):
+#    """
+#    ETCD watch callback function for /mon/nsfrb/fastvis
+#    """
+#    queue.put(etcd_dict['shmid'])
+#    queue.put(etcd_dict['datasize'])
+#    queue.put(etcd_dict['mjd'])
+#    queue.put(etcd_dict['sb'])
+#    queue.put(etcd_dict['dec'])
+#    return
 
 def main(args):
 
     verbose = args.verbose
     
     #attach callback to etcdkey
-    printlog("Adding ETCD watch on key "+ETCDKEY,output_file=logfile)
-    ETCD.add_watch(ETCDKEY,rt_etcd_to_queue)
+    #printlog("Adding ETCD watch on key "+ETCDKEY,output_file=logfile)
+    #ETCD.add_watch(ETCDKEY,rt_etcd_to_queue)
 
     #make a running count and inject a burst every 90x25sample gulps
     if args.inject:
@@ -111,6 +111,15 @@ def main(args):
         #read and reshape into np array (25 times x 4656 baselines x 8 chans x 2 pols, complex)
         dat = None
         while (dat is None) or dat.shape[0]<args.num_time_samples:
+            printlog("Waiting for data in psrdada buffer")
+            dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
+            printlog(str((mjd,sb,Dec)),output_file=logfile)
+            assert(sb==args.sb)
+            if dat is None:
+                dat = dat_i
+            else:
+                dat = np.concatenate([dat,dat_i])
+            """
             #wait for shmid to be added to queue
             printlog("Waiting for fast vis data in queue:" + str(QQUEUE),output_file=logfile)
             shmid = QQUEUE.get()
@@ -134,7 +143,7 @@ def main(args):
                 dat[:,:,:,:] = dat_i[:,:,:,:,0] + 1j*dat_i[:,:,:,:,1]
             else:
                 dat = np.concatenate([dat,dat_i[:,:,:,:,0] + 1j*dat_i[:,:,:,:,1]],axis=0,dtype=np.complex64)
-
+            """
             printlog(dat.shape,output_file=logfile)
         
         np.save(img_dir + "2025-02-16T20:36:48.010_rtvis.npy",dat)
@@ -225,6 +234,7 @@ def main(args):
                     inject_flat = injection_params['inject_flat'] 
                     printlog("Done injecting",output_file=logfile)
         else:
+            inject_flat = False
             inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         dat[np.isnan(dat)]= 0 
 

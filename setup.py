@@ -7,14 +7,14 @@ setup(name='dsa110-nsfrb',
       url='http://github.com/dsa110/dsa110-nsfrb',
       python_requires='>3.8',
 #      requirements=['seaborn', 'astropy', 'hdbscan', 'progress'],
-      packages=['nsfrb','simulations_and_classifications','inject','dsaT4'],
+      packages=['nsfrb','simulations_and_classifications','inject','dsaT4','realtime','realtime'],
       zip_safe=False,
-      ext_modules=[
-          Extension(
-              name="rtreader",
-              sources=["realtime/rtreader/rtreader.c"],
-          ),
-      ]
+      #ext_modules=[
+      #    Extension(
+      #        name="rtreader",
+    #       sources=["realtime/rtreader/rtreader.c"],
+    #      ),
+     # ]
 )
 
 #set CORR_INSTALL=True if installing realtime imager on the corr nodes
