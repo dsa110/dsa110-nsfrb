@@ -340,7 +340,8 @@ def main(args):
         sl.DEC_axis = np.linspace(config.DEC_point-(config.pixsize*config.gridsize/2),config.DEC_point+(config.pixsize*config.gridsize/2),config.gridsize)
 
 
-        sl.DM_trials = np.array(sl.gen_dm(sl.minDM,sl.maxDM,config.DM_tol,config.fc*1e-3,config.nchans,config.tsamp,config.chanbw))#[0:1]
+        sl.DM_trials = np.array(sl.gen_dm(sl.minDM,sl.maxDM,config.DM_tol,config.fc*1e-3,config.nchans,config.tsamp,config.chanbw,args.nsamps))#[0:1]
+        printlog(sl.DM_trials,output_file=processfile)
         sl.nDMtrials = len(sl.DM_trials)
 
         sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,config.nsamps)
@@ -355,6 +356,7 @@ def main(args):
         sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
         sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
 
+        printlog("UPDATED MAXSHIFT:" + str(sl.maxshift),output_file=processfile)
     if args.nocutoff:
         sl.default_cutoff = 0
     else:
@@ -424,12 +426,12 @@ def main(args):
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
 
         else:
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
                                                jax.device_put(tdelays_frac,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
                                                jax.device_put(tdelays_frac,jax.devices()[1]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),

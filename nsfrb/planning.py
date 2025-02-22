@@ -1136,6 +1136,45 @@ def atnf_cat(mjd,dd,sep=2.0*u.deg):
     n = names[idxs]
     return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)]
 
+def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
+    names = []
+    coords = []
+    Ps = []
+    Ws = []
+    S1400s = []
+    with open(fl,"r") as csvfile:
+        i = 0
+        rdr = csv.reader(csvfile,delimiter=',')
+        for row in rdr:
+            if i ==0 : i += 1
+            else:
+                names.append(row[0])
+                coords.append(SkyCoord(row[1],unit=(u.hourangle,u.deg),frame='icrs'))
+                
+                Ps.append(np.nan if len(row[2])==0 else float(row[2]))
+                Ws.append(np.nan if len(row[3])==0 else float(row[3]))
+                S1400s.append(np.nan if len(row[4])==0 else float(row[4]))
+
+    names = np.array(names)
+    Ps = np.array(Ps)
+    Ws = np.array(Ws)
+    S1400s = np.array(S1400s)
+    return names,SkyCoord(coords),Ps,Ws,S1400s
+
+def LPT_cat(mjd,dd,sep=2.0*u.deg):
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    names,coords,Ps,Ws,S1400s = read_LPTs()
+    idx = np.arange(len(coords))
+
+    #print(coords)
+    d2d = c.separation(coords)
+    idxs = idx[d2d<sep]
+
+    return names[idxs],coords[idxs],Ps[idxs],Ws[idxs],S1400s[idxs]
+
 #function to find visibility file label associated with candidates
 def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps):
     #get list of all visibilities on h03

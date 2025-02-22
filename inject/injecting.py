@@ -36,7 +36,7 @@ import glob
 from nsfrb.outputlogging import printlog
 from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.config import *
-from nsfrb.searching import gen_dm_shifts,DM_trials
+from nsfrb.searching import gen_dm,gen_dm_shifts,minDM,maxDM
 
 """
 minDM = 171
@@ -44,8 +44,8 @@ maxDM = 4000
 DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 nDMtrials = len(DM_trials)
 """
-freq_axis = np.linspace(fmin,fmax,nchans)
-corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
+#freq_axis = np.linspace(fmin,fmax,nchans)
+#corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
 """
 error_file = cwd + "-logfiles/inject_error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
@@ -56,7 +56,7 @@ frame_dir = cwd + "-frames/"
 noise_dir = cwd + "-noise/"
 inject_dir = cwd + "-injections/"
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,inject_log_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,inject_log_file,chanbw,fc,fmin,fmax
 
 PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
@@ -208,6 +208,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     #if DM is given, disperse before adding noise
     if DM != 0:
         print("COMPUTING SHIFTS FOR DM=",DM,"pc/cc",file=fout)
+        DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))#[0:1]
         freq_axis = np.linspace(fmin,fmax,nchans)
         corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps,outputwraps=True,maxshift=maxshift)
 
@@ -303,6 +304,8 @@ def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width
     """
     Randomly draws injected burst parameters from set of trial DMs, widths and RA/DEC grid
     """
+    DMtrials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))
+    widthtrials = widthtrials[widthtrials<nsamps]
     
     #get RA,DEC axes
     time_start = Time(time_start_isot,format='isot')

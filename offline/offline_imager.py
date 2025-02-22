@@ -425,9 +425,9 @@ def main(args):
                         if args.verbose: print(msg)
                         time.sleep(1)
                 
-                else: #if filelabels[g] != args.filelabel or gulp < args.gulp_offset:#else:
-                    print("Writing to last_frame.npy")
-                    np.save(frame_dir + "last_frame.npy",dirty_img)
+            if filelabels[g] != args.filelabel or gulp < args.gulp_offset:#else:
+                print("Writing to last_frame.npy")
+                np.save(frame_dir + "last_frame.npy",dirty_img)
         time.sleep(args.sleeptime)
     return
 
