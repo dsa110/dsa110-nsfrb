@@ -218,7 +218,7 @@ nDMtrials = len(DM_trials)
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps)
 
 #make boxcar filters in advance
-widthtrials = np.array([1,2],dtype=int)#np.array(2**np.arange(5),dtype=int)
+widthtrials = np.array(2**np.arange(5),dtype=int)
 nwidths = len(widthtrials)
 def gen_boxcar_filter(widthtrials,truensamps,gridsize=1,nDMtrials=1): #note, you shouldn't need to set gridsize OR DM trials
     nwidths = len(widthtrials)

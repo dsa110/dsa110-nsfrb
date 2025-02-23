@@ -37,7 +37,6 @@ subdirs_to_clear = [
     ("lxd110h22","*.out")
     ]
 
-
 def main(args):
     
 
@@ -47,11 +46,16 @@ def main(args):
         with open(GP_vis_file,"w") as csvfile:
             #for subdir, pattern in subdirs_to_clear:
             #files = np.sort(glob.glob(os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/" + subdir + "/" + pattern))
-            files = np.sort(glob.glob(GP_obs_vis_dir + "*"))
+            files = np.sort(glob.glob(GP_obs_vis_dir + "*out"))
             for f in files:
                 if os.path.basename(str(f)) != 'vis_files.csv':
                     wr = csv.writer(csvfile,delimiter=',')
-                    wr.writerow([os.path.basename(str(f)),int(0),""])
+                    fnum = int(os.path.basename(str(f))[11:-4])
+                    #print(fnum,args.setlist)
+                    if fnum in args.setlist:
+                        wr.writerow([os.path.basename(str(f)),int(args.setval),""])
+                    else:
+                        wr.writerow([os.path.basename(str(f)),int(0),""])
                     #print(os.path.basename(str(f)))
 
         print("Populated csv, returning")
@@ -126,6 +130,8 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--planisot',type=str,help='ISOT of GP plan in plan directory',default='')
     parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
+    parser.add_argument('--setlist',type=int,nargs='+',default=[],help='List of fnums to set to specific value')
+    parser.add_argument('--setval',type=int,help='Value to set list of fnums to',default=500)
     args = parser.parse_args()
 
     main(args)

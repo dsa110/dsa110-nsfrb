@@ -221,19 +221,19 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
             dec_grid_2D_cut = dec_grid_2D[:,-searched_image.shape[1]:]
             ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
                     dec_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
-                    c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+                    c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')
             ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
                     dec_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
-                    c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='limegreen')
+                    c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')
         else:
             ax.scatter(ra_grid_2D_cut[decs,ras].flatten(),
-                    dec_grid_2D_cut[decs,ras].flatten(),c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+                    dec_grid_2D_cut[decs,ras].flatten(),c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)
     else:
         if 'predicts' in canddict.keys():
-            ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
-            ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')
+            ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')
+            ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')
         else:
-            ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax,linewidths=2,edgecolors='violet')#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+            ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     #nvss sources
     nvsspos,tmp,tmp = nvss_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
     ax.plot(nvsspos.ra.value,nvsspos.dec.value,'o',markerfacecolor='none',markeredgecolor='blue',markersize=20,markeredgewidth=4,label='NVSS Source')
@@ -252,9 +252,9 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax = fig.add_subplot(gs[0,1])#ax=plt.subplot(3,2,2)
     if 'predicts' in canddict.keys():
         c=ax.scatter(widthtrials[wids][canddict['predicts']==0],
-                DM_trials[dms][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+                DM_trials[dms][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
         c=ax.scatter(widthtrials[wids][canddict['predicts']==1],
-                DM_trials[dms][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='s',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+                DM_trials[dms][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     else:
         c=ax.scatter(widthtrials[wids],
                 DM_trials[dms],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))

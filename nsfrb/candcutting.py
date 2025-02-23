@@ -30,6 +30,7 @@ import csv
 import copy
 
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
+from nsfrb.classifying_with_time import classify_images_3D
 from nsfrb.noise import init_noise,noise_update_all,get_noise_dict
 import hdbscan
 import copy
@@ -700,7 +701,9 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     
 
 
+    classify_flag = args['classify'] or args['classify3D']
     if args['classify']:
+
         if args['subimgpix'] == image.shape[0]:
             printlog("Using full image for classification and cutouts",output_file=cutterfile)
             data_array = (img_to_classifier_format(image.mean(2),cand_isot,img_dir)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
@@ -739,13 +742,42 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
 
         #only save bursts likely to be real
         #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
+    
+    elif args['classify3D']:
+        if args['subimgpix'] == image.shape[0]:
+            printlog("Using full image for classification and cutouts",output_file=cutterfile)
+            data_array = (image[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
+        else:
+            #make a binned copy for each candidate
+            data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[2],image.shape[3]),dtype=np.float32)
+            for j in range(len(finalcands)):
+                printlog(finalcands[j],output_file=cutterfile)
+                #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:]),widthtrials[int(finalcands[j][2])])
+                #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],dmidx=int(finalcands[j][3])),widthtrials[int(finalcands[j][2])])
+
+                #don't need to dedisperse(?)
+                data_array[j,:,:,:,:] = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args['subimgpix'])
+                printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
+
+        #run classifier
+        printlog("Start classifying " + str(data_array.shape),output_file=cutterfile)
+        predictions, probabilities = classify_images_3D(data_array, args['model_weights3D'], verbose=args['verbose'])
+        printlog(predictions,output_file=cutterfile)
+        printlog(probabilities,output_file=cutterfile)
+
+        #only save bursts likely to be real
+        #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
+        
+
+
+
 
     #if its an injection write the highest SNR candidate to the injection tracker
     if injection_flag:
         with open(recover_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             for j in finalidxs:
-                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not args['classify'] else predictions[j]),(None if not args['classify'] else probabilities[j])])
+                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not classify_flag else predictions[j]),(None if not classify_flag else probabilities[j])])
         csvfile.close()
 
 
@@ -767,14 +799,14 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
     if useTOA: hdr += ["TOA"]
     hdr += ["SNR"]
-    if args['classify']: hdr += ["PROB"]
+    if classify_flag: hdr += ["PROB"]
     wr.writerow(hdr)
     sysstdout = sys.stdout
     for j in finalidxs:#range(len(finalidxs)):
         with open(cutterfile,"a") as sys.stdout:
             lastname = names.increment_name(cand_mjd,lastname=lastname)
         sys.stdout = sysstdout
-        if args['classify']:
+        if classify_flag:
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
         else:
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
@@ -846,7 +878,7 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
         canddict['snrs'] = [finalcands[j][-1] for j in finalidxs]
         printlog("SNRS:" + str(canddict['snrs']),output_file=cutterfile)
         canddict['names'] = allcandnames
-        if args['classify']:
+        if classify_flag:
             canddict['probs'] = probabilities
             canddict['predicts'] = predictions
         if useTOA: 
