@@ -99,25 +99,27 @@ def main(args):
             for file in (operations_dir / subdir).glob(pattern):
                 #print(os.path.basename(str(file)),type(file))
                 
-
-                modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
-                # modtime is timezone naive, so we set it to utc
-                # lxc managed containers are all using utc
-                modtime = modtime.replace(tzinfo=start_time.tzinfo)
-                if modtime >= start_time and modtime <= end_time and len(glob.glob(GP_obs_vis_dir + os.path.basename(str(file))))==0:
-                    #print(modtime,cutoff)
-                    print(f'Copying {file}')
-                    print(f'cp {file} {GP_obs_vis_dir}')
-                    os.system(f'cp {file} {GP_obs_vis_dir}')
+                try:
+                    modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
+                    # modtime is timezone naive, so we set it to utc
+                    # lxc managed containers are all using utc
+                    modtime = modtime.replace(tzinfo=start_time.tzinfo)
+                    if modtime >= start_time and modtime <= end_time and len(glob.glob(GP_obs_vis_dir + os.path.basename(str(file))))==0:
+                        #print(modtime,cutoff)
+                        print(f'Copying {file}')
+                        print(f'cp {file} {GP_obs_vis_dir}')
+                        os.system(f'cp {file} {GP_obs_vis_dir}')
                     
-                    #add to json
-                    label = os.path.basename(str(file))
-                    label = label[len(label)-label[::-1].index("_")-1:label.index(".out")]
-                    print(label)
-                    plan_metadata['fast_vis_labels'].append(label)
+                        #add to json
+                        label = os.path.basename(str(file))
+                        label = label[len(label)-label[::-1].index("_")-1:label.index(".out")]
+                        print(label)
+                        plan_metadata['fast_vis_labels'].append(label)
 
-                    #write to csv
-                    wr.writerow([os.path.basename(str(file)),int(0),""])
+                        #write to csv
+                        wr.writerow([os.path.basename(str(file)),int(0),""])
+                except Exception as exc:
+                    print("bad file: " + str(file))
         csvfile.close()
         #update json
         with open(jsonfname,"w") as jsonfile:

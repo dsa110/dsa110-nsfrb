@@ -121,4 +121,4 @@ crpix_dict = {16.27:{"source":"3C138",
 maxrawsamps = 2250
 
 #psrdada key
-NSFRB_PSRDADA_KEY = 0xdada
+NSFRB_PSRDADA_KEY = 0xcaba
