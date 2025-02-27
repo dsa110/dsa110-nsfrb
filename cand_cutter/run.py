@@ -125,6 +125,8 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
     queue.put(etcd_dict['candfile'])
     queue.put(etcd_dict['uv_diag'])
     queue.put(etcd_dict['dec'])
+    queue.put(etcd_dict['img_shape'])
+    queue.put(etcd_dict['img_search_shape'])
     return
 
 
@@ -166,8 +168,10 @@ def main(args):
             fname = raw_cand_dir + str(QQUEUE.get())
             uv_diag = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
             dec = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
+            img_shape = tuple(QQUEUE.get())
+            img_search_shape = tuple(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-            future = executor.submit(cc.candcutter_task,fname,uv_diag,dec,vars(args))
+            future = executor.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args))
             #printlog(future.result(),output_file=cutterfile)
             #fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
         else:
@@ -222,6 +226,7 @@ if __name__=="__main__":
     parser.add_argument('--useTOA',action='store_true',help='Include TOAs in clustering algorithm')
     parser.add_argument('--psfcluster',action='store_true',help='PSF-based spatial clustering')
     parser.add_argument('--clusteriters',type=int,help='Number of clustering iterations; minimum cluster size reduced on each iteration; default=1',default=1)
+    parser.add_argument('--realtime',action='store_true',help='Running in realtime system, pulls image data from PSRDADA buffer')
     args = parser.parse_args()
     main(args)
     """

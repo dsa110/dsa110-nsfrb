@@ -109,7 +109,7 @@ def manage_PSF(PSF_dict,kernel_size,dec,default_PSF_params=(-1,180),default_PSF=
                 default_PSF_params = (kernel_size,best_dec)
             else: #Case1By: psf_dict does not have right kerenel size and dec
                 printlog("making PSF for kernelsize " + str(kernel_size) + ", declination " + "{d:.2f}".format(d=dec),output_file=processfile) #generate new PSF
-                default_PSF = generate_PSF_images(psf_dir,dec,kernel_size//2,True,nsamps)
+                default_PSF = generate_PSF_images(psf_dir,dec,kernel_size,True,nsamps)
                 default_PSF_params =  (kernel_size,float("{d:.2f}".format(d=dec)))
                 printlog("Saved PSF to " + str(save_PSF(default_PSF,kernel_size,dec)),output_file=processfile)
                 printlog("updating PSF dict...",output_file=processfile)
@@ -122,7 +122,7 @@ def manage_PSF(PSF_dict,kernel_size,dec,default_PSF_params=(-1,180),default_PSF=
             default_PSF_params = (kernel_size,best_dec)
         else: #Case1By: psf_dict does not have right kerenel size and dec
             printlog("making PSF for kernelsize " + str(kernel_size) + ", declination " + "{d:.2f}".format(d=dec),output_file=processfile) #generate new PSF
-            default_PSF = generate_PSF_images(psf_dir,dec,kernel_size//2,True,nsamps)
+            default_PSF = generate_PSF_images(psf_dir,dec,kernel_size,True,nsamps)
             default_PSF_params =  (kernel_size,float("{d:.2f}".format(d=dec)))
             printlog("Saved PSF to " + str(save_PSF(default_PSF,kernel_size,dec)),output_file=processfile)
             printlog("updating PSF dict...",output_file=processfile)

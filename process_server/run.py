@@ -292,7 +292,9 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
                     {
                         "candfile":future.result()[1],
                         "uv_diag":fullimg_dict[timestepisot].img_uv_diag,
-                        "dec":fullimg_dict[timestepisot].img_dec
+                        "dec":fullimg_dict[timestepisot].img_dec,
+                        "img_shape":fullimg_dict[timestepisot].image_tesseract.shape,
+                        "img_search_shape":fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
     printlog(future.result()[0],output_file=processfile)
@@ -693,7 +695,7 @@ def main(args):
 
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff))
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime))
             
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
@@ -757,7 +759,9 @@ if __name__=="__main__":
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
     parser.add_argument('--noiseth',type=float,help='S/N threshold below which samples are included in noise calculation; default=3',default=3)#Quantile threshold below which samples are included in noise calculation; default=0.1',default=0.1)
     parser.add_argument('--nocutoff',action='store_true',help='If set, ignores offset between successive time batches (3.25 seconds)')
+    parser.add_argument('--realtime',action='store_true',help='Running in realtime system, puts image data in PSRDADA buffer')
     args = parser.parse_args()
+
 
     
     main(args)

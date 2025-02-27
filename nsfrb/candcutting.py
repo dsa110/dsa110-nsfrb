@@ -1,4 +1,6 @@
 import numpy as np
+from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY
+from realtime.rtreader import rtread_cand
 from nsfrb.planning import find_fast_vis_label
 from nsfrb import pipeline
 from dsaT4 import T4_manager as T4m
@@ -554,14 +556,26 @@ def img_to_classifier_format(img,candname,output_dir):
 
 
 #main cand cutter task function
-def candcutter_task(fname,uv_diag,dec_obs,args):
+def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     """
     Main task to obtain cutouts
     """
     #for each candidate get the isot and find the corresponding image
     cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
+    try:
+        if args['realtime']:
+            image = rtread_cand(key=NSFRB_CANDDADA_KEY,gridsize_dec=img_shape[0],gridsize_ra=img_shape[1],nsamps=img_shape[2],nchans=img_shape[3])
+            searched_image = rtread_cand(key=NSFRB_SRCHDADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
+        else:
+            image = np.load(raw_cand_dir + cand_isot + ".npy")
+            searched_image = np.load(raw_cand_dir + cand_isot + "_searched.npy")
+    except Exception as e:
+        printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
+        printlog(str(e),output_file=cutterfile)
+        return
     cand_mjd = Time(cand_isot,format='isot').mjd
     injection_flag,postinjection_flag = is_injection(cand_isot)
+
     
     #read cand file
     raw_cand_names,finalcands = read_candfile(fname)
@@ -616,12 +630,12 @@ def candcutter_task(fname,uv_diag,dec_obs,args):
     finalidxs = np.arange(len(finalcands),dtype=int)
 
     #if getting cutouts, read image
-    try:
+    """try:
         image = np.load(raw_cand_dir + cand_isot + ".npy")
         searched_image = np.load(raw_cand_dir + cand_isot + "_searched.npy")
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
-        return
+        return"""
     RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
     RA_axis = RA_axis[-searched_image.shape[1]:]
     RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)

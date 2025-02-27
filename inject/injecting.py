@@ -104,7 +104,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
                                     srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
                                     srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180)"""
     if not noiseonly:
-        PSFimg = scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize//2,True,nsamps=width,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
+        PSFimg = scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize,True,nsamps=width,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
                                     srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
                                     srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180)
         if width == 1:
@@ -116,7 +116,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         if offline:
             nn = nsamps+maxshift+maxshift
             if not noiseonly: nn -=width
-            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
+            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
             if nsamps-width+maxshift+maxshift == 1:
                 noiseimg = noiseimg[:,:,np.newaxis,:]
             last_frame = noiseimg[:,:,:maxshift,:]
@@ -128,7 +128,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         else:
             nn = nsamps+maxshift
             if not noiseonly: nn -= width
-            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
+            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
             if nsamps-width+maxshift == 1:
                 noiseimg = noiseimg[:,:,np.newaxis,:]
         
