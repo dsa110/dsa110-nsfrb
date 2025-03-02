@@ -796,8 +796,8 @@ def generate_plane_timetile(mjd,elev,fixed_tstep_hr,start_target=None,el_slew_ra
         fname=plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".json"
         print("Writing plan metadata to ",fname)
         metadata = dict()
-        metadata['start_mjd'] = mjd
-        metadata['start_isot'] = Time(mjd,format='mjd').isot
+        metadata['start_mjd'] = mjd_steps[0]
+        metadata['start_isot'] = Time(mjd_steps[0],format='mjd').isot
         metadata['plan_file'] = plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".csv"
         metadata['start_elev'] = elev_steps[0]
         metadata['start_dec'] = dec_steps[0]
@@ -939,8 +939,8 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
         fname=plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".json"
         print("Writing plan metadata to ",fname)
         metadata = dict()
-        metadata['start_mjd'] = mjd
-        metadata['start_isot'] = Time(mjd,format='mjd').isot
+        metadata['start_mjd'] = mjd_steps[0]
+        metadata['start_isot'] = Time(mjd_steps[0],format='mjd').isot
         metadata['plan_file'] = plan_dir + "GP_observing_plan_" + str(Time(mjd,format='mjd').isot) + ".csv"
         metadata['start_elev'] = elev_steps[0]
         metadata['start_dec'] = dec_steps[0]

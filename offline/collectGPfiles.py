@@ -67,7 +67,7 @@ def main(args):
 
     else: 
         #read json file
-        jsonfname = plan_dir + "GP_observing_plan_" + args.planisot + ".json"
+        jsonfname = plan_dir + str(args.planname) + "/GP_observing_plan_" + args.planisot + ".json"
         with open(jsonfname,"r") as jsonfile:
             plan_metadata = json.load(jsonfile)
         
@@ -75,9 +75,16 @@ def main(args):
         if 'fast_vis_labels' not in plan_metadata.keys():
             plan_metadata['fast_vis_labels'] = []
 
+        #get first mjd from csv
+        csvfname =  plan_dir + str(args.planname) + "/GP_observing_plan_" + args.planisot + ".csv"
+        with open(csvfname,"r") as csvfile:
+            rdr = csv.reader(csvfile,delimiter=',')
+            for row in rdr:
+                plan_metadata['start_mjd'] = float(row[0])
+                break
 
         
-        start_time = Time(plan_metadata['start_mjd'],format='mjd').datetime
+        start_time = Time(plan_metadata['start_mjd'] - (5/60/24),format='mjd').datetime
         end_time = Time(plan_metadata['stop_mjd'] + (1/24),format='mjd').datetime
         print(f"Copying operation files modified between "
                 f"{start_time.strftime('%Y-%m-%dT%H:%M:%S')} UTC and "
@@ -134,6 +141,7 @@ if __name__=="__main__":
     parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
     parser.add_argument('--setlist',type=int,nargs='+',default=[],help='List of fnums to set to specific value')
     parser.add_argument('--setval',type=int,help='Value to set list of fnums to',default=500)
+    parser.add_argument('--planname',type=str,help="name of sub-directory",default="")
     args = parser.parse_args()
 
     main(args)

@@ -45,6 +45,7 @@ vis_to_img_slope = 0.0025062597643136777 #same, but with PSF smoothing; noise in
 
 #outrigger flagging and short baseline flagging
 bmin=20 #meters
+robust=-2 #default to uniform weighting
 #flagged_antennas = [48,103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 outrigger_antennas = [103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 flagged_corrs = []

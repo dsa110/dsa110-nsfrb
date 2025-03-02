@@ -9,12 +9,12 @@ import pandas as pd
 from tqdm import tqdm  
 from nsfrb.simulating import compute_uvw, add_complex_gaussian_noise, get_all_coordinates, get_core_coordinates, apply_spectral_index, apply_phase_shift
 from nsfrb.imaging import revised_robust_image,revised_uniform_image,uniform_image
-from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, flagged_antennas
+from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, flagged_antennas,bmin,robust
 from nsfrb.flagging import flag_vis
 from dsamfs import utils as pu
 
 
-def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1,flagged_antennas=flagged_antennas):
+def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -77,7 +77,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
         test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
         pt_dec = Dec_point*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-        tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, list(exclude_antennas) + list(flagged_antennas), bmin=0,flagged_corrs=[],flag_channel_templates=[])
+        tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, list(exclude_antennas) + list(flagged_antennas),flagged_corrs=[],flag_channel_templates=[],bmin=bmin)
         
         u_core = u_core_new = UVW[0,:,0]
         v_core = v_core_new = UVW[0,:,1]
@@ -85,7 +85,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
 
         pt_dec = Dec_source*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-        tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, list(exclude_antennas) + list(flagged_antennas), bmin=0,flagged_corrs=[],flag_channel_templates=[])
+        tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, list(exclude_antennas) + list(flagged_antennas),flagged_corrs=[],flag_channel_templates=[],bmin=bmin)
         u_core_s = u_core_s_new = UVW[0,:,0]
         v_core_s = v_core_s_new = UVW[0,:,1]
         w_core_s = w_core_s_new = UVW[0,:,2]
@@ -156,7 +156,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             
                 #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
                 #dirty_img = revised_uniform_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0))
-                dirty_img = revised_robust_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0),robust=2)
+                dirty_img = revised_robust_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0),robust=robust)
                 """if inflate:
                     dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2 + 1)
                 else:
@@ -182,7 +182,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
                 avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
                 filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
                 filepath = os.path.join(observation_dir, filename)
-                im_zoom = np.array(np.fliplr(np.abs(dirty_img.T)))
+                im_zoom = np.array(np.fliplr(dirty_img))
                 """
                 if not inflate:
                     #im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix - 1):(IMAGE_SIZE // 2 + zoom_pix + 1), (IMAGE_SIZE // 2 - zoom_pix - 1):(IMAGE_SIZE // 2 + zoom_pix + 1)]

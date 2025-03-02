@@ -1,4 +1,5 @@
 import numpy as np
+from dsamfs import utils as pu
 from dsacalib.utils import Direction
 from dsautils.coordinates import create_WCS,get_declination,get_elevation
 from nsfrb.outputlogging import printlog
@@ -16,6 +17,7 @@ from matplotlib import pyplot as plt
 from nsfrb import simulating#,planning
 import copy
 import numba
+from nsfrb.flagging import flag_vis
 
 #flagged_antennas = [21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 #f = open("../metadata.txt","r")
@@ -66,7 +68,7 @@ def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: 
 
     f2 = (5 * 10 ** (-robust)) ** 2 / (np.sum(Wk ** 2) / np.sum(vis_weights))
 
-    new_weights = vis_weights / (1 + Wk[u_indices * grid_size + v_indices] * f2)
+    new_weights = vis_weights / (1 + Wk[u_indices * grid_size + v_indices- np.min(u_indices * grid_size + v_indices)] * f2)
 
     return new_weights
 
@@ -508,9 +510,19 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
     
 
     if uv_diag is None:
-        x_m,y_m,z_m = simulating.get_all_coordinates(flagged_antennas) #meters
-        U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,DEC*np.pi/180) #meters
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        pt_dec = DEC.value*np.pi/180.
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+        tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, flagged_antennas, bmin=0,flagged_corrs=[],flag_channel_templates=[])
+
+        U = UVW[0,:,0]
+        V = UVW[0,:,1]
+       
+
         uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
+        #x_m,y_m,z_m = simulating.get_all_coordinates(flagged_antennas) #meters
+        #U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,DEC*np.pi/180) #meters
+        #uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
     pixel_resolution = (ref_wav / uv_diag) / 3
     w2 = create_WCS(pointing,-pixel_resolution*u.rad,image_size)
     
