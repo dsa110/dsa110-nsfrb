@@ -70,7 +70,9 @@ def main(args):
         jsonfname = plan_dir + str(args.planname) + "/GP_observing_plan_" + args.planisot + ".json"
         with open(jsonfname,"r") as jsonfile:
             plan_metadata = json.load(jsonfile)
-        
+        if args.planname != "" and 'planname' not in plan_metadata.keys():
+            plan_metadata['planname'] = str(args.planname)
+
         #add a field for fast vis file labels
         if 'fast_vis_labels' not in plan_metadata.keys():
             plan_metadata['fast_vis_labels'] = []
@@ -103,6 +105,8 @@ def main(args):
         csvfile = open(GP_vis_file,"a")
         wr = csv.writer(csvfile,delimiter=',')
         for subdir, pattern in subdirs_to_clear:
+            if args.repeat>0:
+                nadded= 0
             for file in (operations_dir / subdir).glob(pattern):
                 #print(os.path.basename(str(file)),type(file))
                 
@@ -125,13 +129,17 @@ def main(args):
 
                         #write to csv
                         wr.writerow([os.path.basename(str(file)),int(0),""])
+                        if args.repeat>0:
+                            nadded += 1
                 except Exception as exc:
                     print("bad file: " + str(file))
         csvfile.close()
         #update json
         with open(jsonfname,"w") as jsonfile:
             json.dump(plan_metadata,jsonfile)
-
+    
+        if args.repeat>0:
+            return nadded
         return 0
 
 if __name__=="__main__":
@@ -142,6 +150,16 @@ if __name__=="__main__":
     parser.add_argument('--setlist',type=int,nargs='+',default=[],help='List of fnums to set to specific value')
     parser.add_argument('--setval',type=int,help='Value to set list of fnums to',default=500)
     parser.add_argument('--planname',type=str,help="name of sub-directory",default="")
+    parser.add_argument('--repeat',type=float,help='if set, repeats the given number of seconds',default=0)
     args = parser.parse_args()
 
-    main(args)
+    if args.repeat>0:
+        nadded = 1
+        while nadded > 0:
+            print("Starting...")
+            nadded = main(args)
+            if nadded==0: break
+            print("Sleeping for " + str(args.repeat) + " seconds...")
+            time.sleep(args.repeat)
+    else:
+        main(args)

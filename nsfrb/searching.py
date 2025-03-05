@@ -29,7 +29,7 @@ from nsfrb.imaging import uv_to_pix
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 from astropy.time import Time
-from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY
+from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY
 from realtime.rtwriter import rtwrite
 
 fsize=45
@@ -1641,7 +1641,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
                    multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
-                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff):
+                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True):
 
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
@@ -1844,47 +1844,50 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         print("Time for DM and SNR:" + str(time.time()-t1),file=fout)
 
         #sort candidates
-        t1 = time.time()
-        print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
-        #find candidates above SNR threshold
-        #condition = (image_tesseract_binned>=SNRthresh).flatten()
-        #ncands = np.sum(condition)
-        #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
+        if applySNthresh:
+            t1 = time.time()
+            print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
+            #find candidates above SNR threshold
+            #condition = (image_tesseract_binned>=SNRthresh).flatten()
+            #ncands = np.sum(condition)
+            #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
 
-        print(image_tesseract_binned.shape,image_tesseract_filtered_cut.shape,file=fout)
-        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
-        print(canddec_idxs,file=fout)
-        print(candra_idxs,file=fout)
-        print(candwid_idxs,file=fout)
-        print(canddm_idxs,file=fout)
-        #fout.close()
-        ncands = len(canddec_idxs)
-        #print(len(DEC_axis),np.max(canddec_idxs),len(RA_axis),np.max(candra_idxs),file=fout)
-        #fout.close()
-        canddecs = DEC_axis[canddec_idxs]
-        candras = RA_axis[candra_idxs]
-        candwids = widthtrials[candwid_idxs]
-        canddms = DM_trials[canddm_idxs]
-        candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
-        if DMbatches==1:
-            candTOAs = TOAs[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
-        else:
-            candTOAs = -np.ones(ncands)
-        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
-        cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+        
+       
+            print(image_tesseract_binned.shape,image_tesseract_filtered_cut.shape,file=fout)
+            canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+            print(canddec_idxs,file=fout)
+            print(candra_idxs,file=fout)
+            print(candwid_idxs,file=fout)
+            print(canddm_idxs,file=fout)
+            #fout.close()
+            ncands = len(canddec_idxs)
+            #print(len(DEC_axis),np.max(canddec_idxs),len(RA_axis),np.max(candra_idxs),file=fout)
+            #fout.close()
+            canddecs = DEC_axis[canddec_idxs]
+            candras = RA_axis[candra_idxs]
+            candwids = widthtrials[candwid_idxs]
+            canddms = DM_trials[canddm_idxs]
+            candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
+            if DMbatches==1:
+                candTOAs = TOAs[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
+            else:
+                candTOAs = -np.ones(ncands)
+            candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+            cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
 
-        #make a dictionary for easy plotting of results
-        canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
-        canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
-        canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
-        canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
-        canddict['ras'] = copy.deepcopy(candras)
-        canddict['decs'] = copy.deepcopy(canddecs)
-        canddict['wids'] = copy.deepcopy(candwids)
-        canddict['dms'] = copy.deepcopy(canddms)
-        canddict['snrs'] = copy.deepcopy(candsnrs)
-        canddict['TOAs'] = copy.deepcopy(candTOAs)
-        print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
+            #make a dictionary for easy plotting of results
+            canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
+            canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
+            canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+            canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
+            canddict['ras'] = copy.deepcopy(candras)
+            canddict['decs'] = copy.deepcopy(canddecs)
+            canddict['wids'] = copy.deepcopy(candwids)
+            canddict['dms'] = copy.deepcopy(canddms)
+            canddict['snrs'] = copy.deepcopy(candsnrs)
+            canddict['TOAs'] = copy.deepcopy(candTOAs)
+            print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
 
 
 
@@ -1965,18 +1968,19 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             candidxs_i,cands_i,image_tesseract_binned_i,image_tesseract_filtered_i,canddict_i,DM_trials_i,raidx_offset_i,decidx_offset_i,dm_offset_i = future.result()
             #if threadDM: subDMidx = list(DM_trials).index(DM_trials_i[0])#np.argmin(np.abs(DM_trials_i[0] - DM_trials))
 
+            if applySNthresh:
+                #save the binned image and candidates
+                candidxs = list(candidxs) + list(candidxs_i)
+                cands = list(cands) + list(cands_i)
+                if threadDM: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,dm_offset_i:dm_offset_i+1] = image_tesseract_binned_i    
+                else: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,:] = image_tesseract_binned_i
 
-            #save the binned image and candidates
-            candidxs = list(candidxs) + list(candidxs_i)
-            cands = list(cands) + list(cands_i)
-            if threadDM: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,dm_offset_i:dm_offset_i+1] = image_tesseract_binned_i    
-            else: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,:] = image_tesseract_binned_i
-
-            for k in canddict_i.keys():
-                canddict[k] = np.concatenate([canddict[k],canddict_i[k]])
+                for k in canddict_i.keys():
+                    canddict[k] = np.concatenate([canddict[k],canddict_i[k]])
 
         #make a dictionary for easy plotting of results
-        ncands = len(cands)
+        if applySNthresh:
+            ncands = len(cands)
     else: #proceed normally
 
         t1 = time.time()
@@ -2067,43 +2071,50 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
         t1 = time.time()
-        print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
-        #find candidates above SNR threshold
-        #condition = (image_tesseract_binned>=SNRthresh).flatten()
-        #ncands = np.sum(condition)
-        #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*nDMtrials*nwidthtrials)[condition],(gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))#[1].shape
+        if applySNthresh:
+            print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
+            #find candidates above SNR threshold
+            #condition = (image_tesseract_binned>=SNRthresh).flatten()
+            #ncands = np.sum(condition)
+            #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*nDMtrials*nwidthtrials)[condition],(gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))#[1].shape
     
-        canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
-        ncands = len(canddec_idxs)
+            canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+            ncands = len(canddec_idxs)
 
-        canddecs = DEC_axis[canddec_idxs]
-        candras = RA_axis[candra_idxs]
-        candwids = widthtrials[candwid_idxs]
-        canddms = DM_trials[canddm_idxs]
-        candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
+            canddecs = DEC_axis[canddec_idxs]
+            candras = RA_axis[candra_idxs]
+            candwids = widthtrials[candwid_idxs]
+            canddms = DM_trials[canddm_idxs]
+            candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
     
-        candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
-        cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
+            candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
+            cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
 
-        #make a dictionary for easy plotting of results
-        canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
-        canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
-        canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
-        canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
-        canddict['ras'] = copy.deepcopy(candras)
-        canddict['decs'] = copy.deepcopy(canddecs)
-        canddict['wids'] = copy.deepcopy(candwids)
-        canddict['dms'] = copy.deepcopy(canddms)
-        canddict['snrs'] = copy.deepcopy(candsnrs)
-        print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
-    print(printprefix +"Done! Found " + str(ncands) + " candidates",file=fout)
+            #make a dictionary for easy plotting of results
+            canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
+            canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
+            canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+            canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
+            canddict['ras'] = copy.deepcopy(candras)
+            canddict['decs'] = copy.deepcopy(canddecs)
+            canddict['wids'] = copy.deepcopy(candwids)
+            canddict['dms'] = copy.deepcopy(canddms)
+            canddict['snrs'] = copy.deepcopy(candsnrs)
+            print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
+    if applySNthresh:
+        print(printprefix +"Done! Found " + str(ncands) + " candidates",file=fout)
     if output_file != "":
         fout.close()
-    if append_frame:
-        return candidxs,cands,image_tesseract_binned,image_tesseract_filtered[:,:,-truensamps:,:],canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
+    if applySNthresh:
+        if append_frame:
+            return candidxs,cands,image_tesseract_binned,image_tesseract_filtered[:,:,-truensamps:,:],canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
+        else:
+            return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
     else:
-        return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
-
+        if append_frame:
+            return TOAs,image_tesseract_binned,image_tesseract_filtered[:,:,-truensamps:,:],DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
+        else:
+            return TOAs,image_tesseract_binned,image_tesseract_filtered,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
 
 
 
@@ -2157,8 +2168,11 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=output_file,usefft=usefft,space_filter=space_filter,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2],T=tsamp*nsamps,pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])))
 
     else:
-        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=tsamp*nsamps,pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials)#,RA_axis_2D=RA_axis_2D,DEC_axis_2D=DEC_axis_2D)
-
+        if realtime:
+            TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=tsamp*nsamps,pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False)
+        else:
+            TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=tsamp*nsamps,pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False) 
+            #fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=append_frame,DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=tsamp*nsamps,pixsize=np.abs(fullimg.DEC_axis[1]-fullimg.DEC_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False)
 
     #update noise stats
     if total_noise is not None:
@@ -2172,7 +2186,8 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         printlog("Writing to last_frame.npy",output_file=processfile)
 
     if savesearch or len(fullimg.candidxs)>0 or fprtest:
-        if not fprtest:
+        if (not fprtest) and (not realtime):
+            """
             #write raw candidates to csv
             csvfile = open(cand_dir + "raw_cands/candidates_" + fullimg.img_id_isot + ".csv","w")
             wr = csv.writer(csvfile,delimiter=',')
@@ -2184,27 +2199,31 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
             for i in range(len(fullimg.candidxs)):
                 wr.writerow(np.concatenate([[i],np.array(fullimg.candidxs[i][:-1],dtype=int),[fullimg.candidxs[i][-1]]]))
             csvfile.close()
-            
-            if not realtime:
-                #save image
-                f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
-                np.save(f,fullimg.image_tesseract_binned)
-                f.close()
+            """
+            #save image
+            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ".npy","wb")
+            np.save(f,fullimg.image_tesseract_binned)
+            f.close()
 
-                #save fits
-                numpy_to_fits(fullimg.image_tesseract_binned.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ".fits")
+            #save fits
+            numpy_to_fits(fullimg.image_tesseract_binned.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ".fits")
             
-                #save fits
-                numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.fits")
+            #save fits
+            numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.fits")
 
 
         #save image OR if realtime, write to psrdada buffers
         if realtime:
             rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_KEY)
             rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_KEY)
+            rtwrite(fullimg.image_tesseract_searched,key=NSFRB_TOADADA_KEY)
         else:
             f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + "_searched.npy","wb")
             np.save(f,fullimg.image_tesseract_searched)
+            f.close()
+
+            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + "_TOAs.npy","wb")
+            np.save(f,TOAs)
             f.close()
         
             f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + "_input.npy","wb")
@@ -2230,14 +2249,18 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     ftime.write(str(time.time()-timing1)+"\n")
     ftime.close()
 
-    if len(fullimg.candidxs)==0:
-        printlog("No candidates found",output_file=processfile)
-        return fullimg.image_tesseract_searched,None#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
+    if False: #not realtime:
+        if len(fullimg.candidxs)==0:
+            printlog("No candidates found",output_file=processfile)
+            return fullimg.image_tesseract_searched,None#fullimg.cands,fullimg.candidxs,len(fullimg.cands)
+        else:
+            printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
+            return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ".csv"
     else:
-        printlog(str(len(fullimg.candidxs)) + " candidates found",output_file=processfile)
-        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ".csv"
-
-
+        if np.nanmax(fullimg.image_tesseract_searched)>SNRthresh:
+            return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ".csv"
+        else:
+            return fullimg.image_tesseract_searched,None
 
 #get cands and clusters from csv file
 def read_cands(fname):

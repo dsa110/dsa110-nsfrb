@@ -1,5 +1,5 @@
 import numpy as np
-from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY
+from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY
 from realtime.rtreader import rtread_cand
 from nsfrb.planning import find_fast_vis_label
 from nsfrb import pipeline
@@ -535,7 +535,63 @@ def read_candfile(fname):
     csvfile.close()
     return raw_cand_names,finalcands
 
+def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0):
 
+    t1 = time.time()
+    printlog("Searching for candidates with S/N > " + str(SNRthresh) + "...",output_file=output_file)
+    #find candidates above SNR threshold
+    #condition = (image_tesseract_binned>=SNRthresh).flatten()
+    #ncands = np.sum(condition)
+    #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
+
+
+    canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+    printlog(canddec_idxs,output_file=output_file)
+    printlog(candra_idxs,output_file=output_file)
+    printlog(candwid_idxs,output_file=output_file)
+    printlog(canddm_idxs,output_file=output_file)
+    #fout.close()
+    ncands = len(canddec_idxs)
+    #print(len(DEC_axis),np.max(canddec_idxs),len(RA_axis),np.max(candra_idxs),file=fout)
+    #fout.close()
+    canddecs = DEC_axis[canddec_idxs]
+    candras = RA_axis[candra_idxs]
+    candwids = widthtrials[candwid_idxs]
+    canddms = DM_trials[canddm_idxs]
+    candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
+    candTOAs = TOAs[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
+    candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+    cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+
+    #make a dictionary for easy plotting of results
+    canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
+    canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
+    canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+    canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
+    canddict['ras'] = copy.deepcopy(candras)
+    canddict['decs'] = copy.deepcopy(canddecs)
+    canddict['wids'] = copy.deepcopy(candwids)
+    canddict['dms'] = copy.deepcopy(canddms)
+    canddict['snrs'] = copy.deepcopy(candsnrs)
+    canddict['TOAs'] = copy.deepcopy(candTOAs)
+    printlog("Time for sorting candidates: " + str(time.time()-t1) + " s",output_file=output_file)
+    
+
+
+    
+    #write raw candidates to csv
+    printlog("Writing to file " + fname,output_file=output_file)
+    csvfile = open(fname,"w")
+    wr = csv.writer(csvfile,delimiter=',')
+    wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "TOA", "SNR"])
+    finalcands = []
+    for i in range(len(candidxs)):
+        wr.writerow(np.concatenate([[i],np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
+        finalcands.append(np.concatenate([np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
+    csvfile.close()
+    printlog("Done",output_file=output_file)
+
+    return np.arange(len(candidxs)).astype(str),finalcands
 
 #classifier format
 from torchvision import transforms
@@ -566,19 +622,36 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         if args['realtime']:
             image = rtread_cand(key=NSFRB_CANDDADA_KEY,gridsize_dec=img_shape[0],gridsize_ra=img_shape[1],nsamps=img_shape[2],nchans=img_shape[3])
             searched_image = rtread_cand(key=NSFRB_SRCHDADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
+            TOAs = (rtread_cand(key=NSFRB_TOADADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])).astype(int)
         else:
             image = np.load(raw_cand_dir + cand_isot + ".npy")
             searched_image = np.load(raw_cand_dir + cand_isot + "_searched.npy")
+            TOAs = np.load(raw_cand_dir + cand_isot + "_TOAs.npy").astype(int)
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         printlog(str(e),output_file=cutterfile)
         return
     cand_mjd = Time(cand_isot,format='isot').mjd
     injection_flag,postinjection_flag = is_injection(cand_isot)
+    RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
+    RA_axis = RA_axis[-searched_image.shape[1]:]
+    RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)
+    RA_axis_2D = RA_axis_2D[:,-searched_image.shape[1]:]
+    DEC_axis_2D = DEC_axis_2D[:,-searched_image.shape[1]:]
+    nsamps = image.shape[2]
+    if True: #args['realtime']:
+        canddict = dict()
+        raw_cand_names,finalcands = sort_cands(fname,
+                    searched_image,TOAs,
+                    args['SNRthresh'],
+                    RA_axis,DEC_axis,
+                    widthtrials,DM_trials,canddict,
+                    raidx_offset=np.abs(image.shape[1]-searched_image.shape[1]),
+                    decidx_offset=np.abs(image.shape[0]-searched_image.shape[0]))
 
-    
-    #read cand file
-    raw_cand_names,finalcands = read_candfile(fname)
+    else:
+        #read cand file
+        raw_cand_names,finalcands = read_candfile(fname)
     #raw_cand_names = raw_cand_names[:100]
     #finalcands = finalcands[:100]
 
@@ -636,12 +709,12 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         return"""
-    RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
+    """RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
     RA_axis = RA_axis[-searched_image.shape[1]:]
     RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)
     RA_axis_2D = RA_axis_2D[:,-searched_image.shape[1]:]
     DEC_axis_2D = DEC_axis_2D[:,-searched_image.shape[1]:]
-    nsamps = image.shape[2]
+    nsamps = image.shape[2]"""
     #RA_axis = RA_axis[int((len(RA_axis)-image.shape[1])//2):int((len(RA_axis)-image.shape[1])//2) + image.shape[1]]
     #PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps)
 
