@@ -205,6 +205,104 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
 
 
 
+def subrevised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,xidxs=None,yidxs=None) -> np.ndarray:
+    """
+    Process visibility data and create a dirty image using FFT and Briggs weighting.
+
+    Parameters:
+    chunk_V: Chunk of visibility data.
+    u, v: u,v coordinates.
+    image_size: Size of the output image.
+    robust: Robust parameter for Briggs weighting.
+
+    Returns:
+    The resulting 'dirty' image.
+    """
+    if pixel_resolution is None:
+        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+    #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
+    uv_resolution = 1 / (image_size * pixel_resolution)
+    uv_max = uv_resolution * image_size / 2
+    grid_res = 2 * uv_max / image_size
+
+    if wstack and w is not None:
+        w_min = -np.max(np.abs(w))
+        w_max = np.max(np.abs(w))
+        w_grid_res = (w_max+1-w_min)/Nlayers_w
+        w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
+
+    #briggs weighting
+    briggs_weights = briggs_weighting(u, v, image_size, robust=robust,pixel_resolution=pixel_resolution)
+    v_avg = np.mean(np.array(chunk_V * briggs_weights), axis=0)
+
+    #removed clip
+    i_indices = ((u + uv_max) / grid_res).astype(int)
+    j_indices = ((v + uv_max) / grid_res).astype(int)
+    if wstack and w is not None:
+        k_indices = ((w - w_min) / w_grid_res).astype(int)
+
+    #remove long baselines
+    uvs = np.sqrt(u**2 + v**2)
+    v_avg = v_avg[uvs<uv_max]
+    i_indices = i_indices[uvs<uv_max]
+    j_indices = j_indices[uvs<uv_max]
+    if wstack and w is not None:
+        k_indices = k_indices[uvs<uv_max]
+
+    #get conjugate baselines
+    i_conj_indices = image_size - i_indices - 1
+    j_conj_indices = image_size - j_indices - 1
+    if wstack and w is not None:
+        k_conj_indices = Nlayers_w - k_indices - 1
+
+    if wstack and w is not None:
+        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
+        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
+        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
+    else:
+        visibility_grid = np.zeros((image_size, image_size), dtype=complex)
+        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
+        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
+
+    if inject_img is not None:
+        #print("IN THE WRONG PLACE")
+        if wstack and w is not None:
+            if inject_flat:
+                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2)
+                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2)
+            else:
+                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2)
+        else:
+            if inject_flat:
+                visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices]
+                visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices]
+            else:
+                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
+
+    #updated sign convention
+    if wstack and w is not None:
+        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(0,1)),axes=(0,1)),axes=(0,1))
+        #multiply by phase term and scale factor
+        l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
+        l_grid_3D = l_grid_2D[:,:,np.newaxis]
+        m_grid_3D = m_grid_2D[:,:,np.newaxis]
+        w_grid_3D = w_bins[np.newaxis,np.newaxis,:]
+        dirty_image = np.nansum(dirty_image*np.exp(2*np.pi*1j*w_grid_3D*(np.sqrt(1-l_grid_3D**2-m_grid_3D**2) - 1))*np.sqrt(1 - l_grid_3D**2 - m_grid_3D**2)/(w_max-w_min),2)
+    elif xidxs is None and yidxs is None:
+        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
+    else:
+        visibility_grid = ifftshift(visibility_grid)
+        dirty_image = np.zeros((image_size,image_size),dtype=complex)
+        igrid2d,jgrid2d = np.meshgrid(np.arange(image_size),np.arange(image_size))
+        for x in xidxs:
+            for y in yidxs:
+                dirty_image[x,y] = np.sum(visibility_grid*np.exp(1j*2*np.pi*x*igrid2d/image_size)*np.exp(1j*2*np.pi*y*jgrid2d/image_size))
+
+
+    return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
+
+
+
 
 
 
