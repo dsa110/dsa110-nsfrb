@@ -79,7 +79,7 @@ cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidat
 psf_dir = cwd + "-PSF/"
 error_file = cwd + "-logfiles/error_log.txt"
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow
 
 """
 NSFRB modules
@@ -138,7 +138,7 @@ def set_pflag_loc(flag=None,on=True,reset=False):
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16):
+    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
         self.img_id_isot = img_id_isot
@@ -148,6 +148,17 @@ class fullimg:
         self.img_dec = img_dec
         #get ra and dec axes
         self.RA_axis,self.DEC_axis,tmp = uv_to_pix(self.img_id_mjd,self.shape[0],Lat=Lat,Lon=Lon,uv_diag=img_uv_diag,DEC=img_dec)
+        self.slow = slow
+        self.slow_counter=0
+        self.bin_slow=  bin_slow
+        self.bin_interval_slow = int(self.shape[2])//self.bin_slow
+        if slow:
+            self.RA_cutoff = sl.get_RA_cutoff(img_dec,pixsize=self.DEC_axis[1]-self.DEC_axis[0])
+            self.slow_RA_cutoff = (self.bin_slow-1)*self.RA_cutoff
+            self.shape = (self.shape[0],self.shape[1]-self.slow_RA_cutoff,self.shape[2],self.shape[3])
+            self.RA_cutoff = sl.get_RA_cutoff(img_dec,pixsize=self.DEC_axis[1]-self.DEC_axis[0])
+            self.image_tesseract = np.zeros((shape[0],shape[1]-self.slow_RA_cutoff,shape[2],shape[3]),dtype=dtype)
+            self.RA_axis = self.RA_axis[self.slow_RA_cutoff:]
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
@@ -156,7 +167,12 @@ class fullimg:
         #if testmode:
         self.corrstatus[corr_node] = 1
         return
-	    
+    def slow_append_img(self,data):
+        self.image_tesseract[:,:,self.slow_counter*self.bin_interval_slow:(self.slow_counter+1)*self.bin_interval_slow,:] = data[:,self.RA_cutoff*self.slow_counter:-self.RA_cutoff*(self.bin_slow-self.slow_counter-1),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)
+        self.slow_counter += 1
+        return
+    def slow_is_full(self):
+        return (self.slow_counter+1)*self.bin_interval_slow >= self.shape[2]
     def is_full(self):
         return np.all(self.corrstatus==1)
 
@@ -279,6 +295,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,img_data
 
 fullimg_dict = dict()
+slow_fullimg_dict =dict()
 def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled):
     """
     This function prints the result once a thread finishes processing an image
@@ -692,16 +709,35 @@ def main(args):
                 sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
 
 
+            #make slow fullimag object
+            slowdone = False
+            for k in slow_fullimg_dict.keys():
+                if not slow_fullimg_dict[k].slow_is_full() and (Time(img_id_isot,format='isot').mjd - Time(str(k),format='isot').mjd)*86400*1000 <= config.nsamps*config.tsamp_slow:
+                    slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract)
+                    slowdone = True
+                    break
+            if not slowdone:
+                slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[args.nchans]])),slow=True)
+                slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract)
+            slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
+
 
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime))
-            
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,False))
+            if slowsearch_now:
+                printlog("SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
+                """
+                task_list.append(executor.submit(sl.search_task,slow_fullimg_dict[k],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,False,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,True)
+                """
             #printlog(future.result(),output_file=processfile)
             task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
             #after finishes execution, remove from list by setting element to None
             #fullimg_array[idx] = None
     
+                    
 
         
 
