@@ -40,7 +40,7 @@ import numpy as np
 import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
-from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir
+from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir
 from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter,default_PSF
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
@@ -617,22 +617,27 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     Main task to obtain cutouts
     """
     #for each candidate get the isot and find the corresponding image
-    cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
+    slow = 'slow' in fname
+    cand_isot = fname[fname.index("candidates_")+11:fname.index(str("_slow" if slow else "") + ".csv")]
+    if slow: printlog("SLOW CANDCUTTING",output_file=cutterfile)
     try:
         if args['realtime']:
             image = rtread_cand(key=NSFRB_CANDDADA_KEY,gridsize_dec=img_shape[0],gridsize_ra=img_shape[1],nsamps=img_shape[2],nchans=img_shape[3])
             searched_image = rtread_cand(key=NSFRB_SRCHDADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
             TOAs = (rtread_cand(key=NSFRB_TOADADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])).astype(int)
         else:
-            image = np.load(raw_cand_dir + cand_isot + ".npy")
-            searched_image = np.load(raw_cand_dir + cand_isot + "_searched.npy")
-            TOAs = np.load(raw_cand_dir + cand_isot + "_TOAs.npy").astype(int)
+            image = np.load(raw_cand_dir + cand_isot + str("_slow" if slow else "") + ".npy")
+            searched_image = np.load(raw_cand_dir + cand_isot + str("_slow" if slow else "") + "_searched.npy")
+            TOAs = np.load(raw_cand_dir + cand_isot + str("_slow" if slow else "") + "_TOAs.npy").astype(int)
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         printlog(str(e),output_file=cutterfile)
         return
     cand_mjd = Time(cand_isot,format='isot').mjd
-    injection_flag,postinjection_flag = is_injection(cand_isot)
+    if not slow:
+        injection_flag,postinjection_flag = is_injection(cand_isot)
+    else:
+        injection_flag = postinjection_flag = False
     RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
     RA_axis = RA_axis[-searched_image.shape[1]:]
     RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)
@@ -869,7 +874,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
 
     #make final directory for candidates
-    os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot)
+    os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else ""))
 
     #write final candidates to csv
     prefix = "NSFRB"
@@ -881,7 +886,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
     #lastname =      #once we have etcd, change to 'names.get_lastname()'
     allcandnames = []
-    csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + "/final_candidates_" + cand_isot + ".csv","w")
+    csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + str("_slow" if slow else "") + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
     hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
     if useTOA: hdr += ["TOA"]
@@ -913,8 +918,8 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
         lastname = allcandnames[j]
         #make folder for each candidate
-        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname)
-        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
+        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname)
+        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages")
 
     #get image cutouts and write to file
     if (args['cutout'] or args['train'] or (args['traininject'] and injection_flag and not postinjection_flag)):
@@ -928,7 +933,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
             lastname = allcandnames[j]
 
-            if args['train'] or (args['traininject'] and injection_flag and not postinjection_flag):
+            if (not slow) and (args['train'] or (args['traininject'] and injection_flag and not postinjection_flag)):
                 printlog(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j),output_file=cutterfile)
                 for i in range(subimg.shape[2]):
                     for k in range(subimg.shape[3]):
@@ -949,9 +954,9 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
 
             #make folder for each candidate
-            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname)
-            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
-            np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/" + lastname + ".npy",subimg)
+            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname)
+            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages")
+            np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/" + lastname + ".npy",subimg)
 
     #send candidates to slack 
     if len(finalidxs) > 0:
@@ -975,7 +980,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
         # dedisperse to each unique dm candidate
         timeseries = []
-        sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[maxshift]+[image.shape[3]])),image],axis=2)
+        sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[0 if slow else maxshift]+[image.shape[3]])),image],axis=2)
         for i in range(len(finalidxs)):
             DM = DM_trials[int(canddict['dm_idxs'][i])]
 
@@ -983,7 +988,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
             printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc",output_file=cutterfile)
             freq_axis = np.linspace(fmin,fmax,nchans)
-            corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps,outputwraps=True,maxshift=maxshift)
+            corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp_slow if slow else tsamp,nsamps,outputwraps=True,maxshift=0 if slow else maxshift)
 
             printlog("corr shifts shape:" + str(corr_shifts_all_append.shape),output_file=cutterfile)
 
@@ -1010,11 +1015,11 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                 printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
                 if useTOA:
                     toa = canddict['TOAs'][i]
-                    cand_mjd = Time(Time(cand_isot,format='isot').mjd + (canddict['TOAs'][i]*tsamp/1000/86400),format='mjd').mjd
+                    cand_mjd = Time(Time(cand_isot,format='isot').mjd + (canddict['TOAs'][i]*(tsamp_slow if slow else tsamp)/1000/86400),format='mjd').mjd
                 else:
                     cand_mjd = Time(cand_isot,format='isot').mjd
                 
-                fl = T4m.nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + trigname + "/")
+                fl = T4m.nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + trigname + "/")
                 printlog(fl,output_file=cutterfile)
                 if args['trigger']:
                     T4m.submit_cand_nsfrb(fl, logfile=cutterfile)
@@ -1023,14 +1028,14 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/",show=False,s100=args['SNRthresh']/2,
+                                            output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/",show=False,s100=args['SNRthresh']/2,
                                             injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],
-                                            searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,dec_obs=dec_obs)
+                                            searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,dec_obs=dec_obs,slow=slow)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:
             printlog("sending plot to slack...",output_file=cutterfile)
-            send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
+            send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/")
             printlog("done!",output_file=cutterfile)
     
     #cp fast visibilities
@@ -1059,32 +1064,32 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
             T4dir += "injections"
         else:
             T4dir += "candidates"
-        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+"\"",output_file=cutterfile)
-        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+"\"")
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+ str("_slow" if slow else "")+"\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+ str("_slow" if slow else "")+"\"")
         
 
         #copy csv and cand plot
-        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
-        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
 
         #make folder for each candidate
-        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname for lastname in allcandnames]) + "\"",output_file=cutterfile)
-        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname for lastname in allcandnames]) + "\"")
-        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"",output_file=cutterfile)
-        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname for lastname in allcandnames]) + "\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname for lastname in allcandnames]) + "\"")
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
         for lastname in allcandnames:
             #copy numpy files
-            printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
-            os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
+            printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
+            os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
             
             #once we figure out etcd, also copy voltage files
         #once we figure out etcd, also copy visibility files if offline
         
         #copy fast visibilities
-        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
 
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
     return

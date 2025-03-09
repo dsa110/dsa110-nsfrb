@@ -7,7 +7,7 @@ from dsamfs import utils as pu
 from astropy.time import Time
 from astropy import units as u
 from nsfrb.planning import nvss_cat,atnf_cat,find_fast_vis_label
-from nsfrb.config import tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS
+from nsfrb.config import tsamp_slow,tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 fsize=45
@@ -158,7 +158,7 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[],uv_diag=None,dec_obs=None):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[],uv_diag=None,dec_obs=None,slow=False):
     """
     Makes updated diagnostic plots for search system
     """
@@ -181,8 +181,10 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     csvfile.close()
     """
     fig=plt.figure(figsize=(40,40))
-    if injection:
+    if injection and not slow:
         fig.patch.set_facecolor('red')
+    elif slow:
+        fig.patch_set_facecolor('cornflowerblue')
     gs = fig.add_gridspec(4,2)
     ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
@@ -272,17 +274,17 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     #timeseries
     ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
-        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
+        plt.step((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
     ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
-    ax.set_xlim(0,tsamp*img.shape[2]/1000)
+    ax.set_xlim(0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000)
     ax.set_title("De-dispersed Timeseries")
 
     #median subtracted timeseries
     ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
-        plt.step(tsamp*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
+        plt.step((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
     #ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
-    ax.set_xlim(0,tsamp*img.shape[2]/1000)
+    ax.set_xlim(0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000)
     ax.set_title("De-dispersed Median Subtracted Timeseries")
     ax.set_ylim(ymin=0)
 
@@ -293,19 +295,20 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     printlog(names[np.argmax(snrs)],output_file)
     showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
     ax.set_title(showname)
-    ax.imshow(img[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[0,tsamp*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto',vmin=0,vmax=0.9*np.nanmax(img[int(showy),int(showx),:,:].transpose()))
+    ax.imshow(img[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto',vmin=0,vmax=0.9*np.nanmax(img[int(showy),int(showx),:,:].transpose()))
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (MHz)")
 
     t = "NSFRB " + isot
-    if injection: t = t + " (injection)"
+    if injection and not slow: t = t + " (injection)"
+    elif slow: t = t + " (slow)"
     plt.suptitle(t)
-    plt.savefig(output_dir + isot + "_NSFRBcandplot.png")
+    plt.savefig(output_dir + isot + "_NSFRBcandplot" + str("_slow" if slow else "") + ".png")
     if show:
         plt.show()
     else:
         plt.close()
-    return isot + "_NSFRBcandplot.png"
+    return isot + "_NSFRBcandplot" + str("_slow" if slow else "") + ".png"
 
 def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_file=binary_file):
     """
