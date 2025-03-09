@@ -1688,7 +1688,8 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     print("PRE-FILTER SHAPE: " + str(image_tesseract.shape) + ","  + str(PSF.shape),file=fout)
     if space_filter:
         t1 = time.time()
-        assert(gridsize_RA == gridsize_DEC)
+        if not slow:
+            assert(gridsize_RA == gridsize_DEC)
 
         #get PSF if possible
         #if gridsize in PSF_dict.keys():
@@ -1786,7 +1787,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                 RA_axis = RA_axis[RA_cutoff:]
                 gridsize_RA = len(RA_axis)
         else:
-            if PSF.shape[1]>= image_tesseract_filtered_cut.shape[1]:
+            if PSF.shape[1]>= image_tesseract_filtered.shape[1]:
                 #first trim to equal dimensions as image
                 PSF = PSF[int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2):int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2)+image_tesseract_filtered.shape[0],
                           int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2):int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2)+image_tesseract_filtered.shape[1],:,:]
@@ -1797,7 +1798,7 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                 corr_shifts_all = corr_shifts_all_no_append
                 tdelays_frac = tdelays_frac_no_append
             truensamps = nsamps = image_tesseract_filtered.shape[2]
-            image_tesseract_filtered_cut=image_tesseract_filtered_cut
+            image_tesseract_filtered_cut=image_tesseract_filtered
         assert(PSF.shape[0]<=image_tesseract_filtered_cut.shape[0])
         assert(PSF.shape[1]<=image_tesseract_filtered_cut.shape[1])
         #subgrid
@@ -1844,7 +1845,16 @@ def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             print(corr_shifts_all,file=fout)
             print(tdelays_frac,file=fout)
             print(full_boxcar_filter,file=fout)
-            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+            if append_frame:
+                outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 prev_noise_N,noiseth)
+            else:
+                outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
                                                                  jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
                                                                  jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
                                                                  jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
@@ -2273,9 +2283,9 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     else:
     """
     if np.nanmax(fullimg.image_tesseract_searched)>SNRthresh:
-        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ".csv"
+        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ".csv",slow
     else:
-        return fullimg.image_tesseract_searched,None
+        return fullimg.image_tesseract_searched,None,slow
 
 #get cands and clusters from csv file
 def read_cands(fname):
