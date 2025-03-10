@@ -1023,7 +1023,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                 else:
                     cand_mjd = Time(cand_isot,format='isot').mjd
                 
-                fl = T4m.nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + trigname + "/")
+                fl = T4m.nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + trigname + "/",slow=slow)
                 printlog(fl,output_file=cutterfile)
                 if args['trigger']:
                     T4m.submit_cand_nsfrb(fl, logfile=cutterfile)
