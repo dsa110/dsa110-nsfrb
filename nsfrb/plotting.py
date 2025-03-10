@@ -162,10 +162,13 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     """
     Makes updated diagnostic plots for search system
     """
+    print("search plots started")
+    printlog("search plots started",output_file=cutterfile)
     gridsize = len(RA_axis)
     decs,ras,wids,dms=np.array(canddict['dec_idxs'],dtype=int),np.array(canddict['ra_idxs'],dtype=int),np.array(canddict['wid_idxs'],dtype=int),np.array(canddict['dm_idxs'],dtype=int)#np.unravel_index(np.arange(32*32*2*3)[(imgsearched>2500).flatten()],(32,32,3,2))#[1].shape
     snrs = np.array(canddict['snrs'])#imgsearched.flatten()[(imgsearched>2500).flatten()]
     names = np.array(canddict['names'])
+    print("first hurdle passed")
     """
     #check if the candidate is an injection
     injection = False
@@ -184,7 +187,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     if injection and not slow:
         fig.patch.set_facecolor('red')
     elif slow:
-        fig.patch_set_facecolor('cornflowerblue')
+        fig.patch.set_facecolor('lightblue')
     gs = fig.add_gridspec(4,2)
     ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
@@ -196,7 +199,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
                                         len(DEC_axis),DEC=dec_obs,
                                         two_dim=True,manual=False,uv_diag=uv_diag)
         print("done")
-
+    
     if searched_image is not None:
         
         if uv_diag is not None and dec_obs is not None:
@@ -214,7 +217,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     print("done with new stuff")
 
 
-
+    printlog("scatter plot done",output_file=cutterfile)
     if uv_diag is not None and dec_obs is not None:
         ra_grid_2D_cut = ra_grid_2D[:,-searched_image.shape[1]:]
         dec_grid_2D_cut = dec_grid_2D[:,-searched_image.shape[1]:]
@@ -250,6 +253,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.invert_xaxis()
     ax.set_xlim(np.max(RA_axis),np.min(RA_axis))
     ax.set_ylim(np.min(DEC_axis),np.max(DEC_axis))
+    printlog("psr plot done",output_file=cutterfile)
 
     ax = fig.add_subplot(gs[0,1])#ax=plt.subplot(3,2,2)
     if 'predicts' in canddict.keys():
@@ -298,7 +302,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.imshow(img[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto',vmin=0,vmax=0.9*np.nanmax(img[int(showy),int(showx),:,:].transpose()))
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (MHz)")
-
+    printlog("dynamic spectrum done",output_file=cutterfile)
     t = "NSFRB " + isot
     if injection and not slow: t = t + " (injection)"
     elif slow: t = t + " (slow)"

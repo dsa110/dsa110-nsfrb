@@ -599,6 +599,10 @@ from PIL import Image
 def img_to_classifier_format(img,candname,output_dir):
     img_class_format = np.zeros_like(img,dtype=np.float64)
     gridsize_DEC,gridsize_RA,nchans = img.shape
+    #if not square, pad with zeros
+    if gridsize_DEC > gridsize_RA:
+        img = np.pad(img,((0,0),(int((gridsize_DEC-gridsize_RA)//2),gridsize_DEC - int((gridsize_DEC-gridsize_RA)//2)),(0,0)))
+        gridsize_DEC,gridsize_RA,nchans = img.shape
     for i in range(nchans):
         avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
         filename = f'{candname}_{avg_freq:.2f}_MHz.png'
@@ -1025,7 +1029,11 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                     T4m.submit_cand_nsfrb(fl, logfile=cutterfile)
 
 
-
+        
+        printlog("RIGHT BEFORE CANDPLOT",output_file=cutterfile)
+        printlog(canddict,output_file=cutterfile)
+        printlog(len(RA_axis),output_file=cutterfile)
+        printlog(image.shape,output_file=cutterfile)
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials,widthtrials=widthtrials,
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/",show=False,s100=args['SNRthresh']/2,

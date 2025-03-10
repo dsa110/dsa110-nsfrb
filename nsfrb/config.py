@@ -15,7 +15,7 @@ CH_WIDTH = 0.244141  # MHz
 # Time parameters
 tsamp = 0.1342182159423828*1000 #130 #ms
 bin_slow = 5 #number of samples to bin by
-tsamp_slow = 0.1342182159423828*1000*tsamp #ms
+tsamp_slow = 0.1342182159423828*1000*bin_slow #ms
 baseband_tsamp = 256e-3 #ms
 nsamps = 25
 T = tsamp*nsamps #3250 #ms
