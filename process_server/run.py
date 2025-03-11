@@ -159,6 +159,13 @@ class fullimg:
             self.shape = (self.shape[0],self.shape[1]-self.slow_RA_cutoff,self.shape[2],self.shape[3])
             self.image_tesseract = np.zeros((shape[0],shape[1]-self.slow_RA_cutoff,shape[2],shape[3]),dtype=dtype)
             self.RA_axis = self.RA_axis[self.slow_RA_cutoff:]
+
+            #make list of possible mjds
+            self.img_id_mjd_list = []
+            for i in range(self.bin_slow):
+                self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*self.shape[2]*i/1000/86400))
+            self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
+            self.slowstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
@@ -167,12 +174,24 @@ class fullimg:
         #if testmode:
         self.corrstatus[corr_node] = 1
         return
-    def slow_append_img(self,data):
+    def slow_mjd_in_img(self,mjd):
+        img_idx = np.argmin(np.abs(self.img_id_mjd_list - mjd))
+        foundmjd = np.abs(self.img_id_mjd_list[img_idx]-mjd)*86400*1000 <= config.tsamp
+        return (img_idx if foundmjd else -1),foundmjd
+    def slow_append_img(self,data,img_idx):
+        self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = data[:,self.RA_cutoff*img_idx:self.shape[1]+self.slow_RA_cutoff-self.RA_cutoff*(self.bin_slow-img_idx-1),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)
+        self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] -= np.nanmedian(self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:],axis=2,keepdims=True)
+        self.slowstatus[img_idx] = 1
+        printlog("MJD LIST:" + str(self.img_id_mjd_list),output_file=processfile)
+        printlog("SLOW STATUS:" + str(self.slowstatus),output_file=processfile)
+        """
         self.image_tesseract[:,:,self.slow_counter*self.bin_interval_slow:(self.slow_counter+1)*self.bin_interval_slow,:] = data[:,self.RA_cutoff*self.slow_counter:self.shape[1]+self.slow_RA_cutoff-self.RA_cutoff*(self.bin_slow-self.slow_counter-1),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)
+        self.image_tesseract[:,:,self.slow_counter*self.bin_interval_slow:(self.slow_counter+1)*self.bin_interval_slow,:] -= np.nanmedian(self.image_tesseract[:,:,self.slow_counter*self.bin_interval_slow:(self.slow_counter+1)*self.bin_interval_slow,:],axis=2,keepdims=True)
+        """
         self.slow_counter += 1
         return
     def slow_is_full(self):
-        return (self.slow_counter)*self.bin_interval_slow >= self.shape[2]
+        return np.all(self.slowstatus==1)#(self.slow_counter)*self.bin_interval_slow >= self.shape[2]
     def is_full(self):
         return np.all(self.corrstatus==1)
 
@@ -728,14 +747,25 @@ def main(args):
             #make slow fullimag object
             slowdone = False
             for k in slow_fullimg_dict.keys():
+                img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
+                if (not slow_fullimg_dict[k].slow_is_full()) and foundmjd:
+                    printlog("SLOW MJD:" + str(img_id_mjd),output_file=processfile)
+                    printlog(str((img_id_mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
+                    slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
+                    slowdone = True
+                    break
+                """
                 if not slow_fullimg_dict[k].slow_is_full() and (Time(img_id_isot,format='isot').mjd - Time(str(k),format='isot').mjd)*86400*1000 <= config.nsamps*config.tsamp_slow:
                     printlog(str((Time(img_id_isot,format='isot').mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
                     slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract)
                     slowdone = True
                     break
+                """
             if not slowdone:
+                printlog("FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
                 slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[args.nchans]])),slow=True)
-                slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract)
+                slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+                k = img_id_isot
             slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
 
             task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,

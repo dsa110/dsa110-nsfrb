@@ -159,6 +159,7 @@ def main(args):
         printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
         ETCD.add_watch(ETCDKEY, etcd_to_queue)
 
+    """
     testdict = dict()
     testdict['candfile'] = "candidates_2025-02-24T00:45:21.457_slow.csv"
     testdict['uv_diag'] = 475.7695064287075
@@ -166,6 +167,7 @@ def main(args):
     testdict['img_shape'] = (301, 277, 25, 16)
     testdict['img_search_shape'] = (301, 277, 5, 16)
     etcd_to_queue(testdict)
+    """
 
     #start main loop
     while True:

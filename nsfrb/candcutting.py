@@ -638,10 +638,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         printlog(str(e),output_file=cutterfile)
         return
     cand_mjd = Time(cand_isot,format='isot').mjd
-    if not slow:
-        injection_flag,postinjection_flag = is_injection(cand_isot)
-    else:
-        injection_flag = postinjection_flag = False
+    injection_flag,postinjection_flag = is_injection(cand_isot)
     RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
     RA_axis = RA_axis[-searched_image.shape[1]:]
     RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)

@@ -184,7 +184,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     csvfile.close()
     """
     fig=plt.figure(figsize=(40,40))
-    if injection and not slow:
+    if injection:
         fig.patch.set_facecolor('red')
     elif slow:
         fig.patch.set_facecolor('lightblue')
