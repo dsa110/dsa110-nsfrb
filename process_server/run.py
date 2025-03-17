@@ -175,8 +175,11 @@ class fullimg:
         self.corrstatus[corr_node] = 1
         return
     def slow_mjd_in_img(self,mjd):
+        printlog("CHECKING IF " + str(self.img_id_mjd_list) + " CONTAINS " + str(mjd),output_file=processfile)
+
         img_idx = np.argmin(np.abs(self.img_id_mjd_list - mjd))
-        foundmjd = np.abs(self.img_id_mjd_list[img_idx]-mjd)*86400*1000 <= config.tsamp
+        foundmjd = np.abs(self.img_id_mjd_list[img_idx]-mjd)*86400*1000 <= (config.tsamp*self.shape[2]/2)
+        printlog("IT DOES" + str("" if foundmjd else " NOT"),output_file=processfile)
         return (img_idx if foundmjd else -1),foundmjd
     def slow_append_img(self,data,img_idx):
         self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = data[:,self.RA_cutoff*img_idx:self.shape[1]+self.slow_RA_cutoff-self.RA_cutoff*(self.bin_slow-img_idx-1),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)

@@ -1175,6 +1175,42 @@ def LPT_cat(mjd,dd,sep=2.0*u.deg):
 
     return names[idxs],coords[idxs],Ps[idxs],Ws[idxs],S1400s[idxs]
 
+
+def read_magnetars(fl=table_dir + "MCGILL_CATALOG.csv"):
+    names = []
+    ras = []
+    decs = []
+    radio = []
+    with open(fl,"r") as csvfile:
+        rdr = csv.reader(csvfile,delimiter=',')
+        i = 0
+        for row in rdr:
+            if i == 0:
+                i += 1
+            else:
+                names.append(row[0])
+                coord = SkyCoord(row[-5]+row[-3],unit=(u.hourangle,u.deg),frame='icrs')
+                ras.append(coord.ra)
+                decs.append(coord.dec)
+                radio.append('R' in row[-6])
+    coords = SkyCoord(ra=ras,dec=decs,frame='icrs')
+    names = np.array(names)
+    radio = np.array(radio)
+    return coords,names,radio
+
+def magnetar_cat(mjd,dd,sep=2.0*u.deg):
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    coords,names,radio = read_magnetars()
+    idx = np.arange(len(coords))
+
+    d2d = c.separation(coords)
+    idxs = idx[d2d<sep]
+    
+    return names[idxs],coords[idxs],radio[idxs]
+
 #function to find visibility file label associated with candidates
 def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps):
     #get list of all visibilities on h03

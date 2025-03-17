@@ -442,8 +442,8 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
                                                    (gridsize,gridsize),
                                                    (0,0),
                                                    (0,0)),
-                                                   mode='constant',
-                                                   constant_values=np.nan)
+                                                   mode='edge')#'constant',
+                                                   #constant_values=np.nan)
 
     #cut out subimage
     minraidx = int(gridsize + ra_idx - subimgpix//2)#np.max([ra_idx - subimgpix//2,0])

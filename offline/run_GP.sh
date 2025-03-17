@@ -23,6 +23,7 @@ linenumber=1
 fname="${filedir}vis_files.csv"
 cat $fname | while read l
 do
+	echo $l
 	#array=$(echo $l | tr "," "\n")
 	IFS=',' read -r -a array <<< "$l"
 	labelinit=${array[0]}
