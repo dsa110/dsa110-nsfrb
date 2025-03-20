@@ -785,7 +785,12 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         finalcands = cands_noninf
         
     #cut by S/N if still too many
-    if len(finalcands) >args['maxcands_postcluster']:
+    if args['maxcand']:
+        printlog("Identifying max S/N candidate",output_file=cutterfile)
+        sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
+        finalcands = sortedcands[0:1]
+        finalidxs = np.arange(1)
+    elif len(finalcands) >args['maxcands_postcluster']:
         printlog(cand_isot + "has too many candidates to process post-clustering (" + str(len(finalcands)) + ">" + str(args['maxcands_postcluster']) + ") limit...",output_file=cutterfile)
         sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
         finalcands = sortedcands[:int(args['maxcands_postcluster'])]

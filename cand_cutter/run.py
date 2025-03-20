@@ -236,6 +236,7 @@ if __name__=="__main__":
     parser.add_argument('--psfcluster',action='store_true',help='PSF-based spatial clustering')
     parser.add_argument('--clusteriters',type=int,help='Number of clustering iterations; minimum cluster size reduced on each iteration; default=1',default=1)
     parser.add_argument('--realtime',action='store_true',help='Running in realtime system, pulls image data from PSRDADA buffer')
+    parser.add_argument('--maxcand',action='store_true',help='If set, takes only the maximum S/N candidate in each chunk after clustering; otherwise returns all candiddates above S/N threshold')
     args = parser.parse_args()
     main(args)
     """

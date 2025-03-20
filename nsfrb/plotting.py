@@ -274,23 +274,32 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.set_xlabel("Width (Samples)")
     ax.set_ylabel(r"DM (pc/cc)")
 
+    printlog("dm width plot done",output_file=cutterfile)
 
+    printlog(timeseries,output_file=cutterfile)
+    printlog(timeseries[0],output_file=cutterfile)
+    printlog((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[0]))/1000,output_file=cutterfile)
+    printlog(names,output_file=cutterfile)
     #timeseries
     ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
-        plt.step((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
-    ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
+        printlog("iter " + str(i),output_file=cutterfile)
+        plt.step((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[i]))/1000,timeseries[i],alpha=1/(len(timeseries)),where='post',linewidth=4,label=names[i])        
+        ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
     ax.set_xlim(0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000)
     ax.set_title("De-dispersed Timeseries")
+    printlog("herehere",output_file=cutterfile)
 
     #median subtracted timeseries
     ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
-        plt.step((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(0.5*len(timeseries)),where='post',linewidth=4,label=names[i])
-    #ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
+        printlog("iter " + str(i),output_file=cutterfile)
+        plt.step((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(len(timeseries)),where='post',linewidth=4,label=names[i])
+        #ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
     ax.set_xlim(0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000)
     ax.set_title("De-dispersed Median Subtracted Timeseries")
     ax.set_ylim(ymin=0)
+    printlog("timeseries plots done",output_file=cutterfile)
 
     #show dynamic spectrum for highest S/N burst
     ax = fig.add_subplot(gs[3,:])#ax=plt.subplot(3,2,5)
