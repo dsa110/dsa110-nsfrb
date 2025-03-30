@@ -216,6 +216,7 @@ if __name__=="__main__":
     parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
     parser.add_argument('--classify3D',action='store_true', help='Classify candidates with a machine learning convolutional neural network with time dependence')
+    parser.add_argument('--classcut',action='store_true',help='Only save candidates that the classifier passes')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights_20250212.pth")
     parser.add_argument('--model_weights3D',type=str, help='Path to the model weights file for 3D classifying',default="/dataz/dsa110/nsfrb/dsa110-nsfrb-training/NN_train/enhanced3dcnn_weights_final.pth")
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')

@@ -867,6 +867,20 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
         
 
+    #if set, cut out candidates rejected by the classifier
+    if args['classcut']:
+        printlog("Classifier rejected " + str(np.sum(predictions)) + "/" + str(len(predictions)) + " candidates",output_file=cutterfile)
+        finalcands_new = []
+        for i in range(len(finalcands)):
+            if predictions[i] == 0:
+                finalcands_new.append(finalcands[i])
+        finalcands = finalcands_new
+        if len(finalcands) == 0:
+            printlog("No remaining candidates, done",output_file=cutterfile)
+            return
+        probabilities = probabilities[predictions==0]
+        predictions = predictions[predictions==0]
+        finalidxs = np.arange(len(finalcands),dtype=int)
 
 
 
