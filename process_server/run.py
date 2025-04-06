@@ -68,17 +68,6 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
-"""
-output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
-pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
-searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
-output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
-processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
-flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
-cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
-psf_dir = cwd + "-PSF/"
-error_file = cwd + "-logfiles/error_log.txt"
-"""
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow
 
 """
@@ -91,30 +80,11 @@ from nsfrb.imaging import uv_to_pix
 """
 Dask manager
 """
-"""
-from dask.distributed import Client,Queue,fire_and_forget
-
-QSETUP = False
-if 'DASKPORT' in os.environ.keys():
-    try:
-        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1,heartbeat_interval=1000)#get_client()
-        QWORKERS = ['proc_server_WRKR']
-        QSETUP = True
-        QQUEUE = Queue("cand_cutter_queue")
-    except TimeoutError as exc:
-        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-    except OSError as exc:
-        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-"""
 import dsautils.dsa_store as ds
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/candidates'
 
 from nsfrb import searching as sl
-"""if 'DASKPORT' in os.environ.keys():
-    QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'])
-    QWORKERS = ['proc_server_WRKR']#-0','cand_cutter_WRKR-1']
-    QQUEUE = Queue("cand_cutter_queue")"""
 """
 HTTP variables
 """
@@ -555,27 +525,6 @@ def main(args):
         totalbytes = 0
         pflag = 0
 
-        """
-        #get the address size from the first chunk  of data
-        try:
-            (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(255)
-            recstatus = len(strData)
-            maxbytesaddr = len(strData[:16].decode('utf-8')[:strData[:16].decode('utf-8').index('E')])
-            printlog("ADDRESSS SIZE: " + str(maxbytesaddr),output_file=processfile)
-            fullMsg +=strData.hex()
-            totalbytes += recstatus
-        except Exception as ex:
-            if type(ex) == socket.timeout:
-                printlog("Timed out on first read, invalid start bytes: " + str(x),output_file=processfile)
-                printlog("Setting invalid start flag...",output_file=processfile,end='')
-                if pipeline.set_pflag("parse_error") == None:
-                    printlog("Error setting flags, abort",output_file=processfile)
-                    break
-                printlog("Done, continue",output_file=processfile)
-                continue
-            else:
-                raise
-        """
         #while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
         t_timeout = time.time()
         t_startread = time.time()
@@ -598,14 +547,6 @@ def main(args):
                 if recstatus == 0 and time.time()-t_timeout>args.timeout:
                     raise socket.timeout
 
-                """
-                if recstatus+totalbytes > maxbytes:
-                    printlog("Read " + str(recstatus) + " bytes, truncating to " + str(maxbytes-totalbytes) + ", total " + str(totalbytes+maxbytes-totalbytes),output_file=processfile)
-                    #printlog("Read " + str(len(strData.hex())) + " bytes, truncating to " + str((maxbytes-totalbytes)*2) + ", total " + str(fullMsg+(strData[:maxbytes-totalbytes].hex())),output_file=processfile)
-                    strData = strData[:maxbytes-totalbytes]
-                    recstatus = len(strData)
-                else:
-                """
                 printlog("Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus),output_file=processfile)
                 #printlog("Read "+ str(len(strData.hex())) + " bytes, total "+ str(len(fullMsg+strData.hex())),output_file=processfile)
                 printlog("Message flags:" + str(msg_flags),output_file=processfile)
@@ -704,20 +645,6 @@ def main(args):
         if img_id_isot not in fullimg_dict.keys():
             fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[args.nchans]])))
 
-        """
-        #if object corresponding to the image is in list
-        idx,openidx = find_id(img_id_isot,fullimg_array)
-        printlog("FIND_ID: " + str(idx) + ", " + str(openidx),output_file=processfile)#if it's not in the list, but there's an open spot, add it
-        if idx == -1 and openidx != -1:
-            #need to create new object
-            fullimg_array[openidx] = fullimg(img_id_isot,img_id_mjd,shape=tuple(np.concatenate([shape,[args.nchans]])))
-            idx = openidx
-        elif idx == -1 and openidx == -1: # shouldn't reach this case often, but if we don't have space for a new object, busy wait
-            while openidx == -1: 
-                printlog("Process server image array full, waiting for opening...",output_file=processfile,end='')
-                idx,openidx = find_id(img_id_isot,fullimg_array)
-        #otherwise, just add to the image at idx
-        """ 	
         #add image and update flags
         fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,args.testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
         #if the image is complete, start the search
@@ -733,15 +660,6 @@ def main(args):
             if args.offline:
                 sl.last_frame = sl.get_last_frame()
             
-            """
-            if "DASKPORT" in os.environ.keys() and QSETUP:
-                task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,QSETUP,workers=QWORKERS))
-                fire_and_forget(task_list[-1])
-            
-            else:   
-            """
             #initialize noise stats
             if args.fprtest or args.fnrtest:
                 printlog("FPR Test, Re-Initializing noise statistics...",output_file=processfile)
@@ -759,13 +677,6 @@ def main(args):
                     slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
                     slowdone = True
                     break
-                """
-                if not slow_fullimg_dict[k].slow_is_full() and (Time(img_id_isot,format='isot').mjd - Time(str(k),format='isot').mjd)*86400*1000 <= config.nsamps*config.tsamp_slow:
-                    printlog(str((Time(img_id_isot,format='isot').mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
-                    slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract)
-                    slowdone = True
-                    break
-                """
             if not slowdone:
                 printlog("FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
                 slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[args.nchans]])),slow=True)

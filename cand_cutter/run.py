@@ -68,20 +68,6 @@ includes clustering, classifying, and cutting out sub-images. It will run in the
 Directory for output data
 """
 import os
-"""
-output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
-pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
-searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
-output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
-processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
-cutterfile = cwd + "-logfiles/candcutter_log.txt"
-flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
-cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
-raw_cand_dir = cand_dir + "raw_cands/"
-backup_cand_dir = cand_dir + "backup_raw_cands/"
-final_cand_dir = cand_dir + "final_cands/"
-error_file = cwd + "-logfiles/candcutter_error_log.txt"
-"""
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
 
 """
@@ -94,20 +80,6 @@ from nsfrb import plotting as pl
 
 """
 Dask scheduler
-"""
-"""
-from dask.distributed import Client,Queue,fire_and_forget
-QSETUP = False
-if 'DASKPORT' in os.environ.keys():
-    try:
-        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1,heartbeat_interval=1000)#get_client()
-        QSETUP = True
-        QWORKERS = ['cand_cutter_WRKR']
-        QQUEUE = Queue("cand_cutter_queue")
-    except TimeoutError as exc:
-        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-    except OSError as exc:
-        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
 """
 from multiprocessing import Process, Queue
 import dsautils.dsa_store as ds
@@ -133,23 +105,6 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
 def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
-    """
-    #argument parsing
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--cutout', action='store_true', help='Get image cutouts around each candidate')
-    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
-    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
-    parser.add_argument('--plotclusters',action='store_true',help='Plot intermediate plots from HDBSCAN clustering')
-    parser.add_argument('--mincluster',type=int,help='Minimum number of candidates required to be made a separate HDBSCAN cluster,default=5',default=5)
-    parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
-    parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
-    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
-    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
-    parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
-    parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
-    
-    args = parser.parse_args()
-    """
     executor = ThreadPoolExecutor(args.maxProcesses)
     printlog("Starting CandCutter...",output_file=cutterfile)
     #if 'DASKPORT' in os.environ.keys() and QSETUP:
@@ -159,15 +114,6 @@ def main(args):
         printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
         ETCD.add_watch(ETCDKEY, etcd_to_queue)
 
-    """
-    testdict = dict()
-    testdict['candfile'] = "candidates_2025-02-24T00:45:21.457_slow.csv"
-    testdict['uv_diag'] = 475.7695064287075
-    testdict['dec'] = 71.6
-    testdict['img_shape'] = (301, 277, 25, 16)
-    testdict['img_search_shape'] = (301, 277, 5, 16)
-    etcd_to_queue(testdict)
-    """
 
     #start main loop
     while True:
