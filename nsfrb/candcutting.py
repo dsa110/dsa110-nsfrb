@@ -1,4 +1,8 @@
 import numpy as np
+from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY
+from realtime.rtreader import rtread_cand
+from nsfrb.planning import find_fast_vis_label
+from nsfrb import pipeline
 from dsaT4 import T4_manager as T4m
 from nsfrb.outputlogging import numpy_to_fits
 import os
@@ -28,6 +32,7 @@ import csv
 import copy
 
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
+from nsfrb.classifying_with_time import classify_images_3D
 from nsfrb.noise import init_noise,noise_update_all,get_noise_dict
 import hdbscan
 import copy
@@ -35,7 +40,7 @@ import numpy as np
 import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
-from nsfrb.config import tsamp,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c
+from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir
 from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter,default_PSF
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
@@ -126,6 +131,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     if TOAflag:
         TOAs = np.array(TOAs)
 
+    printlog("Done creating arrays of test data",output_file=output_file)
     if TOAflag:
         test_data=np.array([raidxs,decidxs,dmidxs,widthidxs,TOAs]).transpose()
     else:
@@ -133,6 +139,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
 
     #create psf binary map
     PSFbin = PSF>np.nanpercentile(PSF,perc)
+    printlog("Done creating binary map",output_file=output_file)
 
     #for each candidate, see what other candidates included in psf 
     binned_dmidxs = []
@@ -143,6 +150,10 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     if TOAflag:
         binned_TOAs = []
     for i in range(len(cands)):
+        printlog(str(i) + " ; index: ",output_file=output_file)
+        printlog(int(PSF.shape[0]//2)+np.array(decidxs-decidxs[i],int), output_file=output_file)
+        printlog(int(PSF.shape[1]//2)+np.array(raidxs-raidxs[i],int),output_file=output_file)
+        printlog(PSFbin[int(PSF.shape[0]//2)+np.array(decidxs-decidxs[i],int),int(PSF.shape[1]//2)+np.array(raidxs-raidxs[i],int)],output_file=output_file)
         inc_idxs = np.arange(len(cands))[PSFbin[int(PSF.shape[0]//2)+np.array(decidxs-decidxs[i],int),int(PSF.shape[1]//2)+np.array(raidxs-raidxs[i],int)]]
         #take the unique widths, dms, and TOAs and sum the snrs
         if TOAflag:
@@ -156,7 +167,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
         if TOAflag:
             binned_TOAs = np.concatenate([binned_TOAs,unique_cands[2,:]])
 
-
+        printlog("finished making binned indices",output_file=output_file)
 
         snrs_i = np.zeros(unique_cands.shape[1])
         for j in range(unique_cands.shape[1]):
@@ -165,6 +176,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
                 condition = np.logical_and(condition,TOAs[inc_idxs]==unique_cands[2,j])
             snrs_i[j] += np.sum(snridxs[inc_idxs][condition])
         binned_snridxs = np.concatenate([binned_snridxs,snrs_i])
+        printlog("finished getting binned snrs",output_file=output_file)
         """
         if TOAflag:
             condition = np.array([(dmidxs[j] in unique_cands[0,:]) and 
@@ -329,7 +341,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     printlog("Done gathering centroids",output_file)
 
     if TOAflag:
-        centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i],centroid_TOAs[i]) for i in range(len(centroid_ras))]
+        centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_TOAs[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
     else:
         centroid_cands = [(centroid_ras[i],centroid_decs[i],centroid_widths[i],centroid_dms[i],centroid_snrs[i]) for i in range(len(centroid_ras))]
     printlog("Done gathering centroid cands",output_file)
@@ -385,16 +397,18 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
 #code to cutout subimages
 freq_axis = np.linspace(fmin,fmax,nchans)
 def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="candidate_stamp",plot=False,output_file=cutterfile,output_dir=cand_dir,corr_shifts=corr_shifts_all_no_append,tdelays_frac=tdelays_frac_no_append,dm=None,dmidx=None,tsamp=tsamp,freq_axis=freq_axis):
+    """
     if output_file != "":
         fout = open(output_file,"a")
     else:
         fout = sys.stdout
+    """
     gridsize = image_tesseract.shape[0]
     fname = output_dir + prefix + "_" + str(ra_idx) + "_" + str(dec_idx)
     if subimgpix%2 == 0:
-        print("subimgpix must be odd",file=fout)
-        if output_file != "":
-            fout.close()
+        printlog("subimgpix must be odd",output_file=output_file)
+        #if output_file != "":
+        #    fout.close()
         return None
 
 
@@ -428,8 +442,8 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
                                                    (gridsize,gridsize),
                                                    (0,0),
                                                    (0,0)),
-                                                   mode='constant',
-                                                   constant_values=np.nan)
+                                                   mode='edge')#'constant',
+                                                   #constant_values=np.nan)
 
     #cut out subimage
     minraidx = int(gridsize + ra_idx - subimgpix//2)#np.max([ra_idx - subimgpix//2,0])
@@ -438,7 +452,7 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
     maxdecidx = int(gridsize + dec_idx + subimgpix//2 + 1)#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
 
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
-    print(minraidx,maxraidx,mindecidx,maxdecidx,file=fout)
+    printlog(str((minraidx,maxraidx,mindecidx,maxdecidx)),output_file=output_file)
 
     image_cutout = image_tesseract_dm[mindecidx:maxdecidx,minraidx:maxraidx,:,:]
 
@@ -449,8 +463,8 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
         plt.figure(figsize=(12,12))
         plt.imshow(image_cutout.mean((2,3)),aspect='auto')
         plt.show()
-    if output_file != "":
-        fout.close()
+    #if output_file != "":
+    #fout.close()
     return image_cutout
 
 
@@ -490,20 +504,23 @@ def quick_snr_fft(image_pixel,width):
 
 
 #checks injection file to see if a candidate is an injection
-def is_injection(isot,inject_file=inject_file):
+def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps):
     #check if the candidate is an injection
     injection = False
+    postinjection = False
     with open(inject_file,"r") as csvfile:
         re = csv.reader(csvfile,delimiter=',')
         i = 0
         for row in re:
             if i != 0:
-                if row[0] == isot:
+                if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
                     injection = True
+                    if row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
+                        postinjection = True
                     break
             i += 1
     csvfile.close()
-    return injection
+    return injection,postinjection
 
 
 def read_candfile(fname):
@@ -518,7 +535,63 @@ def read_candfile(fname):
     csvfile.close()
     return raw_cand_names,finalcands
 
+def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0):
 
+    t1 = time.time()
+    printlog("Searching for candidates with S/N > " + str(SNRthresh) + "...",output_file=output_file)
+    #find candidates above SNR threshold
+    #condition = (image_tesseract_binned>=SNRthresh).flatten()
+    #ncands = np.sum(condition)
+    #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
+
+
+    canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+    printlog(canddec_idxs,output_file=output_file)
+    printlog(candra_idxs,output_file=output_file)
+    printlog(candwid_idxs,output_file=output_file)
+    printlog(canddm_idxs,output_file=output_file)
+    #fout.close()
+    ncands = len(canddec_idxs)
+    #print(len(DEC_axis),np.max(canddec_idxs),len(RA_axis),np.max(candra_idxs),file=fout)
+    #fout.close()
+    canddecs = DEC_axis[canddec_idxs]
+    candras = RA_axis[candra_idxs]
+    candwids = widthtrials[candwid_idxs]
+    canddms = DM_trials[canddm_idxs]
+    candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
+    candTOAs = TOAs[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
+    candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+    cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+
+    #make a dictionary for easy plotting of results
+    canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
+    canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
+    canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+    canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
+    canddict['ras'] = copy.deepcopy(candras)
+    canddict['decs'] = copy.deepcopy(canddecs)
+    canddict['wids'] = copy.deepcopy(candwids)
+    canddict['dms'] = copy.deepcopy(canddms)
+    canddict['snrs'] = copy.deepcopy(candsnrs)
+    canddict['TOAs'] = copy.deepcopy(candTOAs)
+    printlog("Time for sorting candidates: " + str(time.time()-t1) + " s",output_file=output_file)
+    
+
+
+    
+    #write raw candidates to csv
+    printlog("Writing to file " + fname,output_file=output_file)
+    csvfile = open(fname,"w")
+    wr = csv.writer(csvfile,delimiter=',')
+    wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "TOA", "SNR"])
+    finalcands = []
+    for i in range(len(candidxs)):
+        wr.writerow(np.concatenate([[i],np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
+        finalcands.append(np.concatenate([np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
+    csvfile.close()
+    printlog("Done",output_file=output_file)
+
+    return np.arange(len(candidxs)).astype(str),finalcands
 
 #classifier format
 from torchvision import transforms
@@ -526,27 +599,65 @@ from PIL import Image
 def img_to_classifier_format(img,candname,output_dir):
     img_class_format = np.zeros_like(img,dtype=np.float64)
     gridsize_DEC,gridsize_RA,nchans = img.shape
+    #if not square, pad with zeros
+    if gridsize_DEC > gridsize_RA:
+        img = np.pad(img,((0,0),(int((gridsize_DEC-gridsize_RA)//2),gridsize_DEC - int((gridsize_DEC-gridsize_RA)//2)),(0,0)))
+        gridsize_DEC,gridsize_RA,nchans = img.shape
     for i in range(nchans):
         avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
         filename = f'{candname}_{avg_freq:.2f}_MHz.png'
         plt.imsave(output_dir + filename,img[:,:,i],cmap='gray')
         newimg = Image.open(output_dir + filename).convert('L')
+        os.system("rm " + output_dir + filename)
 
         img_class_format[:,:,i] = transforms.ToTensor()(newimg)[0] 
     return img_class_format
 
+
+
 #main cand cutter task function
-def candcutter_task(fname,args):
+def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     """
     Main task to obtain cutouts
     """
     #for each candidate get the isot and find the corresponding image
-    cand_isot = fname[fname.index("candidates_")+11:fname.index(".csv")]
+    slow = 'slow' in fname
+    cand_isot = fname[fname.index("candidates_")+11:fname.index(str("_slow" if slow else "") + ".csv")]
+    if slow: printlog("SLOW CANDCUTTING",output_file=cutterfile)
+    try:
+        if args['realtime']:
+            image = rtread_cand(key=NSFRB_CANDDADA_KEY,gridsize_dec=img_shape[0],gridsize_ra=img_shape[1],nsamps=img_shape[2],nchans=img_shape[3])
+            searched_image = rtread_cand(key=NSFRB_SRCHDADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
+            TOAs = (rtread_cand(key=NSFRB_TOADADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])).astype(int)
+        else:
+            image = np.load(raw_cand_dir + cand_isot + str("_slow" if slow else "") + ".npy")
+            searched_image = np.load(raw_cand_dir + cand_isot + str("_slow" if slow else "") + "_searched.npy")
+            TOAs = np.load(raw_cand_dir + cand_isot + str("_slow" if slow else "") + "_TOAs.npy").astype(int)
+    except Exception as e:
+        printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
+        printlog(str(e),output_file=cutterfile)
+        return
     cand_mjd = Time(cand_isot,format='isot').mjd
-    injection_flag = is_injection(cand_isot)
-    
-    #read cand file
-    raw_cand_names,finalcands = read_candfile(fname)
+    injection_flag,postinjection_flag = is_injection(cand_isot)
+    RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
+    RA_axis = RA_axis[-searched_image.shape[1]:]
+    RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)
+    RA_axis_2D = RA_axis_2D[:,-searched_image.shape[1]:]
+    DEC_axis_2D = DEC_axis_2D[:,-searched_image.shape[1]:]
+    nsamps = image.shape[2]
+    if True: #args['realtime']:
+        canddict = dict()
+        raw_cand_names,finalcands = sort_cands(fname,
+                    searched_image,TOAs,
+                    args['SNRthresh'],
+                    RA_axis,DEC_axis,
+                    widthtrials,DM_trials,canddict,
+                    raidx_offset=np.abs(image.shape[1]-searched_image.shape[1]),
+                    decidx_offset=np.abs(image.shape[0]-searched_image.shape[0]))
+
+    else:
+        #read cand file
+        raw_cand_names,finalcands = read_candfile(fname)
     #raw_cand_names = raw_cand_names[:100]
     #finalcands = finalcands[:100]
 
@@ -598,13 +709,19 @@ def candcutter_task(fname,args):
     finalidxs = np.arange(len(finalcands),dtype=int)
 
     #if getting cutouts, read image
-    try:
+    """try:
         image = np.load(raw_cand_dir + cand_isot + ".npy")
         searched_image = np.load(raw_cand_dir + cand_isot + "_searched.npy")
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
-        return
-    RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
+        return"""
+    """RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
+    RA_axis = RA_axis[-searched_image.shape[1]:]
+    RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True)
+    RA_axis_2D = RA_axis_2D[:,-searched_image.shape[1]:]
+    DEC_axis_2D = DEC_axis_2D[:,-searched_image.shape[1]:]
+    nsamps = image.shape[2]"""
+    #RA_axis = RA_axis[int((len(RA_axis)-image.shape[1])//2):int((len(RA_axis)-image.shape[1])//2) + image.shape[1]]
     #PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0]//2,True,nsamps)
 
     #get DM trials from file
@@ -617,7 +734,8 @@ def candcutter_task(fname,args):
     """
 
     #start clustering
-    if args['cluster']:
+    useTOA=args['useTOA'] and len(finalcands[0])==6
+    if args['cluster'] and len(finalidxs)>=args['mincluster']:
         printlog("clustering with HDBSCAN...",output_file=cutterfile)
         """
         #prune candidates with infinite signal-to-noise for clustering
@@ -639,25 +757,51 @@ def candcutter_task(fname,args):
         """
         #clustering with hdbscan
         if args['psfcluster']:
-            PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+            PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*image.shape[0])+1,dec_obs,nsamps=nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+            #PSF = PSF[:,int((PSF.shape[1]-image.shape[1])//2):int((PSF.shape[1]-image.shape[1])//2) + image.shape[1],:,:]
+            PSF = PSF.mean((2,3))
             printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
         else:
             PSF = None
-        useTOA=args['useTOA'] and len(finalcands[0])==6
-        if useTOA:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF,useTOA=True)
-        else:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=args['mincluster'],min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=PSF)
-        printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
-        printlog(classes,output_file=cutterfile)
-        printlog(cluster_cands,output_file=cutterfile)
+        for i in range(args['clusteriters']):
+            mincluster = int(np.max([args['mincluster']//(i+1),2]))
 
-        finalidxs = np.arange(len(cluster_cands),dtype=int)
-        finalcands = cluster_cands
+            printlog("Cluster iteration " + str(i+1) + "/" + str(args['clusteriters']) + " with min cluster size " + str(mincluster),output_file=cutterfile)
+            if useTOA:
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),useTOA=True,perc=args['psfpercentile'])
+            else:
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),perc=args['psfpercentile'])
+            if np.all(np.array(classes)==-1):
+                printlog("Minimum number of clusters reached",output_file=cutterfile)
+                break
+            else:
+                printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
+                printlog(classes,output_file=cutterfile)
+                printlog(cluster_cands,output_file=cutterfile)
+             
+                cands_noninf = cluster_cands
+            
+        finalidxs = np.arange(len(cands_noninf),dtype=int)
+        finalcands = cands_noninf
         
+    #cut by S/N if still too many
+    if args['maxcand']:
+        printlog("Identifying max S/N candidate",output_file=cutterfile)
+        sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
+        finalcands = sortedcands[0:1]
+        finalidxs = np.arange(1)
+    elif len(finalcands) >args['maxcands_postcluster']:
+        printlog(cand_isot + "has too many candidates to process post-clustering (" + str(len(finalcands)) + ">" + str(args['maxcands_postcluster']) + ") limit...",output_file=cutterfile)
+        sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
+        finalcands = sortedcands[:int(args['maxcands_postcluster'])]
+        finalidxs = np.arange(len(finalcands),dtype=int)
+        printlog("done, cut to " + str(len(finalcands)) + " candidates",output_file=cutterfile)
+    
 
 
+    classify_flag = args['classify'] or args['classify3D']
     if args['classify']:
+
         if args['subimgpix'] == image.shape[0]:
             printlog("Using full image for classification and cutouts",output_file=cutterfile)
             data_array = (img_to_classifier_format(image.mean(2),cand_isot,img_dir)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
@@ -672,9 +816,13 @@ def candcutter_task(fname,args):
                 #don't need to dedisperse(?)
                 subimg = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args['subimgpix'])
                 if useTOA:
+                    printlog("using TOA...",output_file=cutterfile)
                     loc = int(finalcands[j][4])
+                    printlog("got loc...",output_file=cutterfile)
                     wid = widthtrials[int(finalcands[j][2])]
+                    printlog("got wid...",output_file=cutterfile)
                     data_array[j,:,:,:] = img_to_classifier_format(subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),:].mean(2),cand_isot+"_"+str(j),img_dir)
+                    printlog("img to classifier formatd done...",output_file=cutterfile)
                 else:
                     data_array[j,:,:,:] = img_to_classifier_format(subimg.mean(2),cand_isot+"_"+str(j),img_dir)  #.mean(2)#subimg[:,:,np.argmax(subimg.sum((0,1,3))),:]
                 printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
@@ -692,83 +840,145 @@ def candcutter_task(fname,args):
 
         #only save bursts likely to be real
         #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
+    
+    elif args['classify3D']:
+        if args['subimgpix'] == image.shape[0]:
+            printlog("Using full image for classification and cutouts",output_file=cutterfile)
+            data_array = (image[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
+        else:
+            #make a binned copy for each candidate
+            data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[2],image.shape[3]),dtype=np.float32)
+            for j in range(len(finalcands)):
+                printlog(finalcands[j],output_file=cutterfile)
+                #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],corr_shift=corr_shifts[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:],tdelay_frac=tdelays_frac[:,:,:,int(finalcands[j][3]):int(finalcands[j][3])+1,:]),widthtrials[int(finalcands[j][2])])
+                #subimg = quick_snr_fft(get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'],dmidx=int(finalcands[j][3])),widthtrials[int(finalcands[j][2])])
+
+                #don't need to dedisperse(?)
+                data_array[j,:,:,:,:] = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args['subimgpix'])
+                printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
+
+        #run classifier
+        printlog("Start classifying " + str(data_array.shape),output_file=cutterfile)
+        predictions, probabilities = classify_images_3D(data_array, args['model_weights3D'], verbose=args['verbose'])
+        printlog(predictions,output_file=cutterfile)
+        printlog(probabilities,output_file=cutterfile)
+
+        #only save bursts likely to be real
+        #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
+        
+
+    #if set, cut out candidates rejected by the classifier
+    if args['classcut']:
+        printlog("Classifier rejected " + str(np.sum(predictions)) + "/" + str(len(predictions)) + " candidates",output_file=cutterfile)
+        finalcands_new = []
+        for i in range(len(finalcands)):
+            if predictions[i] == 0:
+                finalcands_new.append(finalcands[i])
+        finalcands = finalcands_new
+        if len(finalcands) == 0:
+            printlog("No remaining candidates, done",output_file=cutterfile)
+            return
+        probabilities = probabilities[predictions==0]
+        predictions = predictions[predictions==0]
+        finalidxs = np.arange(len(finalcands),dtype=int)
+
+
 
     #if its an injection write the highest SNR candidate to the injection tracker
     if injection_flag:
         with open(recover_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             for j in finalidxs:
-                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not args['classify'] else predictions[j]),(None if not args['classify'] else probabilities[j])])
+                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not classify_flag else predictions[j]),(None if not classify_flag else probabilities[j])])
         csvfile.close()
 
 
     #make final directory for candidates
-    os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot)
+    os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else ""))
 
     #write final candidates to csv
     prefix = "NSFRB"
-    lastname = None     #once we have etcd, change to 'names.get_lastname()'
+    with open(table_dir+"nsfrb_lastname.txt","r") as lnamefile:
+        lastname = (lnamefile.read()).strip()
+        if lastname == "None": 
+            lastname = None
+    lnamefile.close()
+
+    #lastname =      #once we have etcd, change to 'names.get_lastname()'
     allcandnames = []
-    csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + "/final_candidates_" + cand_isot + ".csv","w")
+    csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + str("_slow" if slow else "") + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
-    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index", "SNR"]
+    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
     if useTOA: hdr += ["TOA"]
-    if args['classify']: hdr += ["PROB"]
+    hdr += ["SNR"]
+    if classify_flag: hdr += ["PROB"]
     wr.writerow(hdr)
     sysstdout = sys.stdout
     for j in finalidxs:#range(len(finalidxs)):
         with open(cutterfile,"a") as sys.stdout:
             lastname = names.increment_name(cand_mjd,lastname=lastname)
         sys.stdout = sysstdout
-        if args['classify']:
+        if classify_flag:
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
         else:
             wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
         allcandnames.append(prefix + lastname)
     csvfile.close()
 
+    with open(table_dir+"nsfrb_lastname.txt","w") as lnamefile:
+        if lastname is not None:
+            lnamefile.write(lastname)
+        else:
+            lnamefile.write("None")
+    lnamefile.close()
+    printlog("done naming stuff",output_file=cutterfile)
 
     #make subdirectories for candidates
     for j in finalidxs:
 
         lastname = allcandnames[j]
         #make folder for each candidate
-        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname)
-        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
+        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname)
+        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages")
 
     #get image cutouts and write to file
-    if args['cutout'] or args['train']:
+    if (args['cutout'] or args['train'] or (args['traininject'] and injection_flag and not postinjection_flag)):
         for j in finalidxs:#range(len(finalidxs)):
             if args['subimgpix'] != image.shape[0]:
                 subimg = get_subimage(image,finalcands[j][0],finalcands[j][1],save=False,subimgpix=args['subimgpix'])#[:,:,int(finalcands[j][2]),:]
             else:
                 subimg = image
+            #median subtract
+            subimg -= np.nanmedian(subimg,(2,3),keepdims=True)
+
             lastname = allcandnames[j]
 
-            if args['train']:
+            if (not slow) and (args['train'] or (args['traininject'] and injection_flag and not postinjection_flag)):
                 printlog(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j),output_file=cutterfile)
-                for k in range(subimg.shape[3]):
-                    filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
-                    printlog(filepath,output_file=cutterfile)
-                    if useTOA:
-                        loc = int(finalcands[j][4])
-                        wid = widthtrials[int(finalcands[j][2])]
-                        plt.imsave(filepath, subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),k].mean(2), cmap='gray')
-                    else:
-                        plt.imsave(filepath, subimg[:,:,:,k].mean(2), cmap='gray')
+                for i in range(subimg.shape[2]):
+                    for k in range(subimg.shape[3]):
+                        filepath = training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + "_subband_avg_{F:.2f}_MHz".format(F=CH0 + CH_WIDTH * k * AVERAGING_FACTOR) + ".png"
+                        printlog(filepath,output_file=cutterfile)
+                        #if useTOA:
+                        #    loc = int(finalcands[j][4])
+                        #    wid = widthtrials[int(finalcands[j][2])]
+                        #    plt.imsave(filepath, subimg[:,:,int(loc+1-(wid//2)):int(loc+1-(wid//2) + wid),k].mean(2), cmap='gray')
+                        #else:
+                        #plt.imsave(filepath,subimg[:,:,:,k].mean(2),cmap='gray')
+                        plt.imsave(filepath, subimg[:,:,i,k], cmap='gray')
                 np.save(training_dir+ str("simulated/" if injection_flag else "data/") + cand_isot + "_" + str(j) + ".npy",subimg)
 
-                f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.txt","a")
+                f = open(training_dir+ str("simulated/" if injection_flag else "data/") + "labels.csv","a")
                 f.write(cand_isot + "_" + str(j) + ",-1,end\n")
                 f.close()
 
 
             #make folder for each candidate
-            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname)
-            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/voltages")
-            np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/" + lastname + ".npy",subimg)
+            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname)
+            os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages")
+            np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/" + lastname + ".npy",subimg)
 
-    #send candidates to slack
+    #send candidates to slack 
     if len(finalidxs) > 0:
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=cutterfile,end='')
@@ -778,17 +988,19 @@ def candcutter_task(fname,args):
         canddict['wid_idxs'] = [finalcands[j][2] for j in finalidxs]
         canddict['dm_idxs'] = [finalcands[j][3] for j in finalidxs]
         canddict['snrs'] = [finalcands[j][-1] for j in finalidxs]
+        printlog("SNRS:" + str(canddict['snrs']),output_file=cutterfile)
         canddict['names'] = allcandnames
-        if args['classify']:
+        if classify_flag:
             canddict['probs'] = probabilities
             canddict['predicts'] = predictions
         if useTOA: 
             canddict['TOAs'] = [finalcands[j][4] for j in finalidxs]
-        RA_axis,DEC_axis = uv_to_pix(cand_mjd,image.shape[0],Lat=37.23,Lon=-118.2851)
+            printlog("TOAS:" + str(canddict['TOAs']),output_file=cutterfile)
+        #RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs)
 
         # dedisperse to each unique dm candidate
         timeseries = []
-        sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[maxshift]+[image.shape[3]])),image],axis=2)
+        sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[0 if slow else maxshift]+[image.shape[3]])),image],axis=2)
         for i in range(len(finalidxs)):
             DM = DM_trials[int(canddict['dm_idxs'][i])]
 
@@ -796,7 +1008,7 @@ def candcutter_task(fname,args):
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
             printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc",output_file=cutterfile)
             freq_axis = np.linspace(fmin,fmax,nchans)
-            corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps,outputwraps=True,maxshift=maxshift)
+            corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp_slow if slow else tsamp,nsamps,outputwraps=True,maxshift=0 if slow else maxshift)
 
             printlog("corr shifts shape:" + str(corr_shifts_all_append.shape),output_file=cutterfile)
 
@@ -817,38 +1029,48 @@ def candcutter_task(fname,args):
                 snr=canddict['snrs'][i]
                 width=int(widthtrials[int(canddict['wid_idxs'][i])])
                 dm=int(DM_trials[int(canddict['dm_idxs'][i])])
-                ra=RA_axis[int(canddict['ra_idxs'][i])]
-                dec=DEC_axis[int(canddict['dec_idxs'][i])]
+                ra=RA_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #RA_axis[int(canddict['ra_idxs'][i])]
+                dec=DEC_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #DEC_axis[int(canddict['dec_idxs'][i])]
                 trigname = canddict['names'][i]
                 printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
                 if useTOA:
                     toa = canddict['TOAs'][i]
-                    cand_mjd = Time(Time(cand_isot,format='isot').mjd + (canddict['TOAs'][i]*tsamp/1000/86400),format='mjd').mjd
+                    cand_mjd = Time(Time(cand_isot,format='isot').mjd + (canddict['TOAs'][i]*(tsamp_slow if slow else tsamp)/1000/86400),format='mjd').mjd
                 else:
                     cand_mjd = Time(cand_isot,format='isot').mjd
                 
-                fl = T4m.nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + trigname + "/")
+                fl = T4m.nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + trigname + "/",slow=slow)
                 printlog(fl,output_file=cutterfile)
                 if args['trigger']:
                     T4m.submit_cand_nsfrb(fl, logfile=cutterfile)
 
 
-
+        
+        printlog("RIGHT BEFORE CANDPLOT",output_file=cutterfile)
+        printlog(canddict,output_file=cutterfile)
+        printlog(len(RA_axis),output_file=cutterfile)
+        printlog(image.shape,output_file=cutterfile)
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/",show=False,s100=args['SNRthresh']/2,
+                                            output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/",show=False,s100=args['SNRthresh']/2,
                                             injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],
-                                            searched_image=searched_image,timeseries=timeseries)
+                                            searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,dec_obs=dec_obs,slow=slow)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:
-            printlog("sending plot to slack...",output_file=cutterfile,end='')
-            send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
+            printlog("sending plot to slack...",output_file=cutterfile)
+            send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/")
             printlog("done!",output_file=cutterfile)
     
-    #move fast visibilities, should be labelled with ISOT timestamp
+    #cp fast visibilities
     if not injection_flag:
-        os.system("mv " + vis_dir + "lxd110*/*" + cand_isot + "*.out " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
+        fastvislabel,fastvisoffset = find_fast_vis_label(cand_mjd)
+        printlog("saving candidate visibilities labeled" + str(fastvislabel),output_file=cutterfile)
+        printlog("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/",output_file=cutterfile)
+        os.system("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/")
+    #move fast visibilities, should be labelled with ISOT timestamp
+    #if not injection_flag:
+    #    os.system("mv " + vis_dir + "lxd110*/*" + cand_isot + "*.out " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
 
 
     """
@@ -866,32 +1088,32 @@ def candcutter_task(fname,args):
             T4dir += "injections"
         else:
             T4dir += "candidates"
-        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+"\"",output_file=cutterfile)
-        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+"\"")
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+ str("_slow" if slow else "")+"\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ T4dir + "/" + cand_isot+ str("_slow" if slow else "")+"\"")
         
 
         #copy csv and cand plot
-        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
-        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
 
         #make folder for each candidate
-        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname for lastname in allcandnames]) + "\"",output_file=cutterfile)
-        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname for lastname in allcandnames]) + "\"")
-        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"",output_file=cutterfile)
-        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname for lastname in allcandnames]) + "\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname for lastname in allcandnames]) + "\"")
+        printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"",output_file=cutterfile)
+        os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
         for lastname in allcandnames:
             #copy numpy files
-            printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
-            os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
+            printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
+            os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
             
             #once we figure out etcd, also copy voltage files
         #once we figure out etcd, also copy visibility files if offline
         
         #copy fast visibilities
-        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + str("_slow" if slow else "") + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
 
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
     return

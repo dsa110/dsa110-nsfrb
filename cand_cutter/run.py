@@ -68,20 +68,6 @@ includes clustering, classifying, and cutting out sub-images. It will run in the
 Directory for output data
 """
 import os
-"""
-output_dir = "./"#"/media/ubuntu/ssd/sherman/NSFRB_search_output/"
-pipestatusfile = cwd + "/src/.pipestatus.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/.pipestatus.txt"
-searchflagsfile = cwd + "/scripts/script_flags/searchlog_flags.txt"#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/scripts/script_flags/searchlog_flags.txt"
-output_file = cwd + "-logfiles/run_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/run_log.txt"
-processfile = cwd + "-logfiles/process_log.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt"
-cutterfile = cwd + "-logfiles/candcutter_log.txt"
-flagfile = cwd + "/process_server/process_flags.txt" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_flags.txt"
-cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"#cwd + "-candidates/" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/candidates/"
-raw_cand_dir = cand_dir + "raw_cands/"
-backup_cand_dir = cand_dir + "backup_raw_cands/"
-final_cand_dir = cand_dir + "final_cands/"
-error_file = cwd + "-logfiles/candcutter_error_log.txt"
-"""
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
 
 """
@@ -94,20 +80,6 @@ from nsfrb import plotting as pl
 
 """
 Dask scheduler
-"""
-"""
-from dask.distributed import Client,Queue,fire_and_forget
-QSETUP = False
-if 'DASKPORT' in os.environ.keys():
-    try:
-        QCLIENT = Client("tcp://127.0.0.1:"+os.environ['DASKPORT'],timeout=1,heartbeat_interval=1000)#get_client()
-        QSETUP = True
-        QWORKERS = ['cand_cutter_WRKR']
-        QQUEUE = Queue("cand_cutter_queue")
-    except TimeoutError as exc:
-        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
-    except OSError as exc:
-        printlog("Scheduler not started, cannot send to queue",output_file=processfile)
 """
 from multiprocessing import Process, Queue
 import dsautils.dsa_store as ds
@@ -123,29 +95,16 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
     printlog(etcd_dict,output_file=cutterfile)
     printlog("putting in queue",output_file=cutterfile)
     queue.put(etcd_dict['candfile'])
+    queue.put(etcd_dict['uv_diag'])
+    queue.put(etcd_dict['dec'])
+    queue.put(etcd_dict['img_shape'])
+    queue.put(etcd_dict['img_search_shape'])
     return
 
 
 def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
-    """
-    #argument parsing
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--cutout', action='store_true', help='Get image cutouts around each candidate')
-    parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
-    parser.add_argument('--cluster',action='store_true',help='Enable clustering with HDBSCAN')
-    parser.add_argument('--plotclusters',action='store_true',help='Plot intermediate plots from HDBSCAN clustering')
-    parser.add_argument('--mincluster',type=int,help='Minimum number of candidates required to be made a separate HDBSCAN cluster,default=5',default=5)
-    parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
-    parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
-    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
-    parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
-    parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
-    parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
-    
-    args = parser.parse_args()
-    """
     executor = ThreadPoolExecutor(args.maxProcesses)
     printlog("Starting CandCutter...",output_file=cutterfile)
     #if 'DASKPORT' in os.environ.keys() and QSETUP:
@@ -162,8 +121,12 @@ def main(args):
         if args.etcd:#'DASKPORT' in os.environ.keys() and QSETUP:
             printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)
             fname = raw_cand_dir + str(QQUEUE.get())
+            uv_diag = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
+            dec = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
+            img_shape = tuple(QQUEUE.get())
+            img_search_shape = tuple(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-            future = executor.submit(cc.candcutter_task,fname,vars(args))
+            future = executor.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args))
             #printlog(future.result(),output_file=cutterfile)
             #fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
         else:
@@ -177,7 +140,7 @@ def main(args):
             for i in range(len(rawfiles)):
                 fname = rawfiles[i]
                 printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-                cc.candcutter_task(fname,vars(args))
+                cc.candcutter_task(fname,None,None,vars(args))
 
         if args.sleep > 0:
             printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
@@ -198,7 +161,10 @@ if __name__=="__main__":
     parser.add_argument('--minsamples',type=int,help='Minimum number of candidates to be core point,default=2',default=2)
     parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
-    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
+    parser.add_argument('--classify3D',action='store_true', help='Classify candidates with a machine learning convolutional neural network with time dependence')
+    parser.add_argument('--classcut',action='store_true',help='Only save candidates that the classifier passes')
+    parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights_20250212.pth")
+    parser.add_argument('--model_weights3D',type=str, help='Path to the model weights file for 3D classifying',default="/dataz/dsa110/nsfrb/dsa110-nsfrb-training/NN_train/enhanced3dcnn_weights_final.pth")
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
@@ -206,12 +172,18 @@ if __name__=="__main__":
     parser.add_argument('--archive',action='store_true',help='Archive candidates on dsastorage')
     parser.add_argument('--etcd',action='store_true',help='Enable etcd reading/writing of candidates')
     parser.add_argument('--maxcands',type=int,help='Maximum number of candidates searchable in one iteration. Default is full image, 300x300x5x16=7.2e6',default=int(7.2e6 +1))
+    parser.add_argument('--maxcands_postcluster',type=int,help='Maximum number of candidates post clustering. Default is full image, 300x300x5x16=7.2e6',default=int(7.2e6 +1))
     parser.add_argument('--percentile',type=float,help='Percentile above which to take candidates, e.g. if 90, candidates with s/n in 90th percentile will be clustered. Default 0',default=0.0)
+    parser.add_argument('--psfpercentile',type=float,help='Percentile to use for PSF clustering, default 70th',default=70.0)
     parser.add_argument('--SNRthresh',type=float,help='SNR threshold, default = 10',default=10)
     parser.add_argument('--train',action='store_true',help='Save candidate cutouts to the training set for the ML classifier')
+    parser.add_argument('--traininject',action='store_true',help='Save injection cutouts to the training set for the ML classifier')
     parser.add_argument('--trigger',action='store_true',help='Send T4 trigger to copy visibility buffer and voltages for each candidate event')
     parser.add_argument('--useTOA',action='store_true',help='Include TOAs in clustering algorithm')
     parser.add_argument('--psfcluster',action='store_true',help='PSF-based spatial clustering')
+    parser.add_argument('--clusteriters',type=int,help='Number of clustering iterations; minimum cluster size reduced on each iteration; default=1',default=1)
+    parser.add_argument('--realtime',action='store_true',help='Running in realtime system, pulls image data from PSRDADA buffer')
+    parser.add_argument('--maxcand',action='store_true',help='If set, takes only the maximum S/N candidate in each chunk after clustering; otherwise returns all candiddates above S/N threshold')
     args = parser.parse_args()
     main(args)
     """

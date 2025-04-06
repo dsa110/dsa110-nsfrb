@@ -13,8 +13,9 @@ do
 	#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 --filedir "3C286_vis" --timestamp $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
 	
 
-	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 --filedir "3C286_vis" --timestamp $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --snr_inject 10000 --dm_inject 0 --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
+	#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 --filedir "3C286_vis" --timestamp $(date +%FT%I:%M:%S) --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --snr_inject 10000 --dm_inject 0 --search >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
 
+	python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _3C286_040924 --filedir "3C286_vis" --timestamp "2024-11-25T18:45:00" --verbose --offline --num_gulps 1 --save --num_time_samples 25 --inject --solo_inject --snr_inject 10000 --dm_inject 0 --offsetRA_inject 0 --offsetDEC_inject 0 --width_inject 1 >>"/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt" 2>&1
 
 
 	#uniform illumination test

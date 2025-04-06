@@ -36,7 +36,7 @@ import glob
 from nsfrb.outputlogging import printlog
 from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.config import *
-from nsfrb.searching import gen_dm_shifts,DM_trials
+from nsfrb.searching import gen_dm,gen_dm_shifts,minDM,maxDM
 
 """
 minDM = 171
@@ -44,8 +44,8 @@ maxDM = 4000
 DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw))#[0:1]
 nDMtrials = len(DM_trials)
 """
-freq_axis = np.linspace(fmin,fmax,nchans)
-corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
+#freq_axis = np.linspace(fmin,fmax,nchans)
+#corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
 """
 error_file = cwd + "-logfiles/inject_error_log.txt"
 log_file = cwd + "-logfiles/inject_log.txt"
@@ -56,13 +56,13 @@ frame_dir = cwd + "-frames/"
 noise_dir = cwd + "-noise/"
 inject_dir = cwd + "-injections/"
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,inject_log_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,inject_log_file,chanbw,fc,fmin,fmax,bmin
 
 PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
 
 
-def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True):
+def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True,bmin=bmin,robust=2):
     """
     Uses functions from simulations_and_classifications to make injections
     """
@@ -73,19 +73,22 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     
     #for proper normalization need to scale snr
     #snr = snr*100*1000*0.75*75/15#40.625#*100/3
-    snr = snr*(1000/20)*16*((10/28)**2)#*1000/2 
+    snr = snr*100*(1000/20)*16*((10/28)**2)#*1000/2 
     
    
     #estimate noise to inject from raw data
-    if not noiseless:
-        #imgnoise = np.nanmean(np.load(noise_dir + "raw_noise_300x300.npy"))
-        visnoise = np.nanmean(np.load(noise_dir + "raw_vis_noise_real.npy"))
-        scalenoise = vis_to_img_slope #imgnoise/visnoise
+    #if not noiseless:
+    #imgnoise = np.nanmean(np.load(noise_dir + "raw_noise_300x300.npy"))
+    visnoise = np.nanmean(np.load(noise_dir + "raw_vis_noise_real.npy"))
+    scalenoise = vis_to_img_slope #imgnoise/visnoise
         
-        injectnoise = PSFSUM/((snr/width)*scalenoise)
+    injectnoise = PSFSUM/((snr/width)*scalenoise)
+    if not noiseless:
         print("INJECTING NOISE:" + str(injectnoise),file=fout)
         print("RESCALEFACTOR:" + str(scalenoise),file=fout)
-    else:
+    vi_scale = visnoise/injectnoise
+    print("VISCALE:",vi_scale,file=fout)
+    if noiseless:
         injectnoise = 0
 
 
@@ -101,19 +104,20 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
                                     srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
                                     srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180)"""
     if not noiseonly:
-        PSFimg = scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize//2,True,nsamps=width,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
+        PSFimg = np.abs(scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize,True,nsamps=width,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
                                     srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
-                                    srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180)
+                                    srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180,
+                                    bmin=bmin,robust=robust))
         if width == 1:
             PSFimg = PSFimg[:,:,np.newaxis,:]
 
 
     if not noiseless:
-        if not noiseonly: PSFimg *= visnoise/injectnoise
+        if not noiseonly: PSFimg *= vi_scale
         if offline:
             nn = nsamps+maxshift+maxshift
             if not noiseonly: nn -=width
-            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
+            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True,bmin=bmin,robust=robust)*visnoise/injectnoise
             if nsamps-width+maxshift+maxshift == 1:
                 noiseimg = noiseimg[:,:,np.newaxis,:]
             last_frame = noiseimg[:,:,:maxshift,:]
@@ -125,20 +129,24 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         else:
             nn = nsamps+maxshift
             if not noiseonly: nn -= width
-            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
+            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True,bmin=bmin,robust=robust)*visnoise/injectnoise
             if nsamps-width+maxshift == 1:
                 noiseimg = noiseimg[:,:,np.newaxis,:]
         
         noiseimg1 = noiseimg[:,:,:int(loc*nsamps)+maxshift,:]
         noiseimg2 = noiseimg[:,:,int(loc*nsamps)+maxshift:,:]
-
-        #print(noiseimg1.shape,noiseimg2.shape,noiseimg.shape,PSFimg.shape,file=fout)
+        
+        print(noiseimg1.shape,noiseimg2.shape,noiseimg.shape,PSFimg.shape,vi_scale,file=fout)
         if noiseonly:
             PSFimg = noiseimg
         else:
             PSFimg = np.concatenate([noiseimg2,PSFimg,noiseimg1],axis=2)
     else:
-        PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps - int(loc*nsamps),nchans))],axis=2)[:,:,::-1,:]
+        nn = nsamps+maxshift
+        if not noiseonly: nn -= width
+        print(nn,PSFimg.shape,vi_scale,file=fout)
+        PSFimg = np.concatenate([np.zeros((gridsize,gridsize,(int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,nn-(int(loc*nsamps)+maxshift),nchans))],axis=2)[:,:,::-1,:]*vi_scale
+        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps - int(loc*nsamps),nchans))],axis=2)[:,:,::-1,:]
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans))],axis=2)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans))],axis=2)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (maxshift-int(loc*nsamps)),nchans)),PSFimg,np.zeros((gridsize,gridsize,(-int(loc*nsamps)+maxshift),nchans))],axis=2)
@@ -201,6 +209,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     #if DM is given, disperse before adding noise
     if DM != 0:
         print("COMPUTING SHIFTS FOR DM=",DM,"pc/cc",file=fout)
+        DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))#[0:1]
         freq_axis = np.linspace(fmin,fmax,nchans)
         corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps,outputwraps=True,maxshift=maxshift)
 
@@ -216,7 +225,6 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps,nchans] + [2])).sum(4))[:,:,::-1,:]
     else:
         sourceimg_dm = sourceimg
-
 
     """
         if DM in DM_trials:
@@ -296,11 +304,13 @@ def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width
     """
     Randomly draws injected burst parameters from set of trial DMs, widths and RA/DEC grid
     """
+    DMtrials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))
+    widthtrials = widthtrials[widthtrials<nsamps]
     
     #get RA,DEC axes
     time_start = Time(time_start_isot,format='isot')
     if RA_axis is None or DEC_axis is None:
-        RA_axis,DEC_axis = uv_to_pix(time_start.mjd,gridsize,Lat=37.23,Lon=-118.2851)
+        RA_axis,DEC_axis,tmp = uv_to_pix(time_start.mjd,gridsize,Lat=Lat,Lon=Lon)
     offsetRA = np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int))
     offsetDEC = np.random.choice(np.arange(-gridsize//3,gridsize//3,dtype=int))
 

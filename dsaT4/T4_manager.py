@@ -4,7 +4,7 @@ import os
 import sys
 import numpy as np
 from astropy.time import Time
-from nsfrb.config import tsamp,baseband_tsamp
+from nsfrb.config import tsamp,baseband_tsamp,tsamp_slow
 from nsfrb.outputlogging import printlog
 from event import event
 from dsaT4 import data_manager
@@ -44,7 +44,7 @@ OUTPUT_PATH = os.environ["DSA110DIR"] + "operations/T4/"
 IP_GUANO = '3.13.26.235'
 
 final_cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/final_cands/candidates/"
-def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir):
+def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir,slow=False):
     """
     Takes the following arguments and saves to a json file in the specified cand dir
     cand_isot: str
@@ -56,7 +56,10 @@ def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=fin
     trigname: str
     """
     #mjds = Time(cand_isot,format='isot').mjd
-    ibox = int(np.ceil(width*tsamp/baseband_tsamp))
+    if slow:
+        ibox = int(np.ceil(width*tsamp_slow/baseband_tsamp))
+    else:
+        ibox = int(np.ceil(width*tsamp/baseband_tsamp))
     f = open(final_cand_dir + "/" + trigname + ".json","w")
     json.dump({"mjds":mjds,
                "isot":cand_isot,

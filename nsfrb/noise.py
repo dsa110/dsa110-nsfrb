@@ -124,7 +124,7 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
             elif writeonly: #writeonly set to true if noise has already been updated, so just increment the number and write the new noise
                 prevN, prevnoise = noise_dict[DM][width]
                 nextN = prevN + 1
-                noise_dict[DM][width] = [nextN+1, noise[j,i]]
+                noise_dict[DM][width] = [nextN, noise[j,i]]
             elif readonly:
                 prevN, prevnoise = noise_dict[DM][width]
             noise_final[j,i] = noise_dict[DM][width][1]
@@ -139,7 +139,7 @@ def noise_update_all(noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,noise_
         return noise_final, prevN
     return noise_final 
 
-def init_noise(DM_trials,widthtrials,gridsize_RA,gridsize_DEC,noise_dir=noise_dir,img=False,suff=""):
+def init_noise(DM_trials,widthtrials,gridsize_RA,gridsize_DEC,noise_dir=noise_dir,img=False,suff="",zero=False):
     if output_file != "":
         fout = open(output_file,"a")
     else:
@@ -151,7 +151,19 @@ def init_noise(DM_trials,widthtrials,gridsize_RA,gridsize_DEC,noise_dir=noise_di
             os.system("rm " + n)
     
     #initialize
-    if img:
+    if zero:
+        print("initializing noise to zero",file=fout)
+        all_noise = dict()
+        for i in range(len(DM_trials)):
+            all_noise[DM_trials[i]] = dict()
+            for j in range(len(widthtrials)):
+                all_noise[DM_trials[i]][widthtrials[j]] = [0,0.0]
+        fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + str(suff) +".pkl"
+        noisefile = open(fname,"wb")
+        pkl.dump(all_noise,noisefile)
+        noisefile.close()
+
+    elif img:
         noisefiles = glob.glob(noise_dir + "/*pkl")
         for n in noisefiles:
             if '_sim' in n:
@@ -164,7 +176,7 @@ def init_noise(DM_trials,widthtrials,gridsize_RA,gridsize_DEC,noise_dir=noise_di
         for i in range(len(DM_trials)):
             all_noise[DM_trials[i]] = dict()
             for j in range(len(widthtrials)):
-                all_noise[DM_trials[i]][widthtrials[j]] = [10,vis_to_img_slope*vis_noise*np.sqrt(widthtrials[j])]
+                all_noise[DM_trials[i]][widthtrials[j]] = [1,vis_to_img_slope*vis_noise*np.sqrt(widthtrials[j])]
         fname = noise_dir + "noise_" + str(gridsize_RA) + "x" + str(gridsize_DEC) + str(suff) +".pkl"
         noisefile = open(fname,"wb")
         pkl.dump(all_noise,noisefile)
