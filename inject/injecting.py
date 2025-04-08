@@ -144,8 +144,8 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     else:
         nn = nsamps+maxshift
         if not noiseonly: nn -= width
-        print(nn,PSFimg.shape,vi_scale,file=fout)
         PSFimg = np.concatenate([np.zeros((gridsize,gridsize,(int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,nn-(int(loc*nsamps)+maxshift),nchans))],axis=2)[:,:,::-1,:]*vi_scale
+        print(nn,PSFimg.shape,vi_scale,file=fout)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps - int(loc*nsamps),nchans))],axis=2)[:,:,::-1,:]
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans))],axis=2)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans))],axis=2)

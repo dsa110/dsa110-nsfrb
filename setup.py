@@ -82,7 +82,7 @@ if not CORR_INSTALL:
         wr.writerow(['ISOT','DM','WIDTH','SNR','PREDICT','PROB'])
     csvfile.close()
     """
-    """
+    
     with open(os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/fpr_test.csv","w") as csvfile:
         csvfile.write("ISOT,SNR")
         #wr = csv.writer(csvfile,delimiter=',')
@@ -93,7 +93,7 @@ if not CORR_INSTALL:
         #wr = csv.writer(csvfile,delimiter=',')
         #wr.writerow(['ISOT','SNR'])
     csvfile.close()
-    """
+    
 
 
 
