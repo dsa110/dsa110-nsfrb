@@ -3,5 +3,15 @@
 systemctl --user start procserver_fpr.service 
 cd /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline
 #ls /dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/lxd110h03/*out
-cat /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/fpr_set.txt | xargs -I {} basename {} .out | tail --bytes=+11 | xargs -I {} ./run.sh {} 100 1 0 0
+#cat /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/fpr_set.txt | xargs -I {} basename {} .out | tail --bytes=+11 | xargs -I {} ./run.sh {} 100 90 0 0
+#< /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/fpr_set.txt xargs -d '\n' -I {} basename {} .out | tail --bytes=+11 | xargs -I {} ./run.sh {} 100 90 0 0
+
+cat /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/fpr_set.txt | while read l
+do
+	bname=$(basename $l .out)
+	fnum="${bname:10}"
+
+	echo $fnum
+	./run.sh $fnum 100 90 0 0
+done
 systemctl --user stop procserver_fpr.service 

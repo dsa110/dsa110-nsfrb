@@ -6,7 +6,7 @@ from nsfrb import pipeline
 from nsfrb import config
 def main():
     fpr_set = open(config.table_dir + "/fpr_set.txt","w")
-    fnames = glob.glob(config.vis_dir + "/lxd110h03/*.out")
+    fnames = np.sort(glob.glob(config.vis_dir + "/lxd110h03/*.out"))
     final_fnums = []
     for f in fnames:
         flag = 1
