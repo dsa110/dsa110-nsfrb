@@ -1212,15 +1212,28 @@ def magnetar_cat(mjd,dd,sep=2.0*u.deg):
     return names[idxs],coords[idxs],radio[idxs]
 
 #function to find visibility file label associated with candidates
-def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path=''):
+def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path='',return_dec=False):
     #get list of all visibilities on h03
     if len(path) == 0:
-        allvisfiles = glob.glob(vis_dir + "lxd110h03/*out")
+        allvisfiles = np.sort(glob.glob(vis_dir + "lxd110h03/*out"))
     else:
-        allvisfiles = glob.glob(path + "/*sb00*.out")
-    for visfile in allvisfiles:
+        allvisfiles = np.sort(glob.glob(path + "/*sb00*.out"))
+    found = 0
+    for i in range(len(allvisfiles)):
+        visfile = allvisfiles[i]
         sb_f,mjd_f,dec_f = pipeline.read_raw_vis(visfile,headersize=16,get_header=True)
         if (sb_f >= 0 and sb_f <= 15) and (dec_f>=-90 and dec_f<= 90) and ((mjd-mjd_f)*86400/60 >= 0) and ((mjd-mjd_f)*86400/60 <= (tsamp*nsamps*90/1000/60)):
             #print((mjd-mjd)*86400/60, (tsamp*nsamps*90/1000/60))
+            found=1
             break
-    return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp))
+        elif i == 0 and mjd < mjd_f: return -1, -1, -1
+    if found == 1:
+        if return_dec:
+            return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp)),dec_f
+        else:
+            return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp))
+    else:
+        if return_dec:
+            return -1,-1,-1,-1
+        else:
+            return -1,-1,-1

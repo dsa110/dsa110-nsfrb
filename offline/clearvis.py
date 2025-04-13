@@ -104,6 +104,10 @@ def main(args):
                     
                     try:
                         file.unlink()
+                        #also check for files in NVSS directories
+                        #for nvssfile in (operations_dir).glob("/NVSS*/" + os.path.basename(str(file))):
+                        #    print(nvssfile)
+                        #    nvssfile.unlink()
                     except Exception as exc:
                         print("File unlink failed:",exc)
                         shutil.rmtree(file)

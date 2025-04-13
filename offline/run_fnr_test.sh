@@ -10,6 +10,6 @@ do
         fnum="${bname:10}"
 
         echo $fnum
-        ./run.sh $fnum 100 90 0 90 "--snr_min_inject 1e5 --snr_max_inject 1e8"
+        ./run.sh $fnum 100 90 0 90 "--snr_min_inject 1e1 --snr_max_inject 1e5"
 done
 systemctl --user stop procserver_fnr.service 

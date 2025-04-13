@@ -6,7 +6,7 @@ from nsfrb.outputlogging import printlog
 from scipy.interpolate import interp1d
 from astropy import wcs
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,crpix_dict
+from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,crpix_dict,pixperFWHM
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord,FK5
@@ -114,7 +114,7 @@ def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: 
     return np.real(dirty_image) if not return_complex else dirty_image
 
 
-def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18) -> np.ndarray:
+def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,pixperFWHM=pixperFWHM) -> np.ndarray:
     """
     Process visibility data and create a dirty image using FFT and Briggs weighting.
 
@@ -128,7 +128,7 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
     The resulting 'dirty' image.
     """
     if pixel_resolution is None:
-        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / pixperFWHM #radians if UV in meters
     #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
@@ -177,16 +177,16 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
         #print("IN THE WRONG PLACE")
         if wstack and w is not None:
             if inject_flat:
-                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2)
-                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2)
+                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
             else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2)
+                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
         else:
             if inject_flat:
-                visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices]
-                visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices]
+                visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)[i_indices,j_indices]
+                visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)[i_conj_indices,j_conj_indices]
             else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
+                visibility_grid += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)
 
     #updated sign convention
     if wstack and w is not None:
@@ -205,7 +205,7 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
 
 
 
-def subrevised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,xidxs=None,yidxs=None) -> np.ndarray:
+def subrevised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,xidxs=None,yidxs=None,pixperFWHM=pixperFWHM) -> np.ndarray:
     """
     Process visibility data and create a dirty image using FFT and Briggs weighting.
 
@@ -219,7 +219,7 @@ def subrevised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, i
     The resulting 'dirty' image.
     """
     if pixel_resolution is None:
-        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
+        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / pixperFWHM #radians if UV in meters
     #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
@@ -397,7 +397,7 @@ def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, ima
     return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
     
 
-def inverse_revised_uniform_image(dirty_image,u,v):
+def inverse_revised_uniform_image(dirty_image,u,v,pixperFWHM=pixperFWHM):
     """
     Inverse of uniform_image, used for injection purposes; inverts image to get gridded visibilities
 
@@ -408,7 +408,7 @@ def inverse_revised_uniform_image(dirty_image,u,v):
     """
 
     image_size = dirty_image.shape[0]
-    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3
+    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / pixperFWHM
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
@@ -570,7 +570,7 @@ def dec_to_m(dec0,dec_offset,d=1,Lat=Lat):
     
 #revision of uv_to_pix to be consistent with FRB search code
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=pixperFWHM):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -621,7 +621,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         #x_m,y_m,z_m = simulating.get_all_coordinates(flagged_antennas) #meters
         #U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,DEC*np.pi/180) #meters
         #uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
-    pixel_resolution = (ref_wav / uv_diag) / 3
+    pixel_resolution = (ref_wav / uv_diag) / pixperFWHM
     w2 = create_WCS(pointing,-pixel_resolution*u.rad,image_size)
     
     #get axes
@@ -642,7 +642,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
 
 #added this function to output the RA and DEC coordinates of each pixel in an image
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix_manual(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0):
+def uv_to_pix_manual(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=3):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -755,10 +755,10 @@ def uv_to_pix_manual(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangem
         x_m,y_m,z_m = simulating.get_all_coordinates(flagged_antennas) #meters
         U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
         uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
-    pixel_resolution = (ref_wav / uv_diag) / 3
+    pixel_resolution = (ref_wav / uv_diag) / pixperFWHM
 
     #make grid of l,m
-    uv_res = 1 / (image_size * (ref_wav/uv_diag/3))
+    uv_res = 1 / (image_size * (ref_wav/uv_diag/pixperFWHM))
     m_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))[::-1]
     l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))[::-1]
     

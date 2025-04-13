@@ -4,6 +4,7 @@
 NUM_CHANNELS = 768
 AVERAGING_FACTOR = 48
 IMAGE_SIZE = 301#301#300  # pixels
+pixperFWHM = 3
 
 # Speed of light
 c = 299792458  # m/s
@@ -51,7 +52,7 @@ robust=-2 #default to uniform weighting
 #flagged_antennas = [48,103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 outrigger_antennas = [103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 flagged_corrs = []
-bad_antennas = [48]
+bad_antennas = [48,85]
 flagged_antennas = bad_antennas+outrigger_antennas
 
 import numpy as np
