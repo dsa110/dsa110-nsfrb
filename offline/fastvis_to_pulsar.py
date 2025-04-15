@@ -6,7 +6,7 @@ import csv
 from matplotlib import pyplot as plt
 import os
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX
+from nsfrb.config import IMAGE_SIZE,UVMAX,pixperFWHM
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
@@ -92,13 +92,13 @@ def make_subint_BinTable(self):
     subint_draft = self.make_HDU_rec_array(self.nsubint, self.subint_dtype)
     return subint_draft
 
-def numpy_to_psrfits(data,path,fnum,fobs,dec,mjd,sample_size=tsamp_ms,nsblk=25,BMIN=3.5,BMAJ=3.5):
+def numpy_to_psrfits(data,path,fnum,fobs,ra,dec,mjd,sample_size=tsamp_ms,nsblk=25,BMIN=3.5,BMAJ=3.5,suffix=""):
     assert(data.shape[1]==len(fobs))
     assert(data.shape[0]%nsblk==0)
     #based on https://pulsardatatoolbox.readthedocs.io/en/latest/psrfits_write.html
 
     #create file from template
-    fname = path + "/nsfrb_" +str(fnum)+"_pulsarsearch.fits"
+    fname = path + "/nsfrb_" +str(fnum)+"_pulsarsearch" + suffix + ".fits"
     psrfits1=pdat.psrfits(fname,from_template="/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/search_template.fits")
 
 
@@ -126,7 +126,7 @@ def numpy_to_psrfits(data,path,fnum,fobs,dec,mjd,sample_size=tsamp_ms,nsblk=25,B
         offs_sub[jj] = offs_sub_init + (jj * tsubint)
 
     #get RA and galactic coords
-    ra = imaging.get_ra(mjd,dec)
+    #ra = imaging.get_ra(mjd,dec)
     coord = SkyCoord(ra=ra*u.deg,dec=dec*u.deg,frame='icrs')
     gl,gb = coord.galactic.l.value,coord.galactic.b.value
     obstime = Time(mjd,format='mjd')
@@ -191,36 +191,75 @@ def numpy_to_psrfits(data,path,fnum,fobs,dec,mjd,sample_size=tsamp_ms,nsblk=25,B
 def main(args):
 
     #make list of files in given path to image
-    fnames = glob.glob(args.path + "/nsfrb_sb00*.out")
-    fnums = np.sort(np.array([int(f[f.index("sb00") + 5:f.index(".out")]) for f in fnames]))
-    print(fnums)
+    fnames_ = glob.glob(args.path + "/nsfrb_sb00*.out")
+    fnums_ = np.sort(np.array([int(f[f.index("sb00") + 5:f.index(".out")]) for f in fnames_]))
+    print(fnums_)
+    
+    if args.fnums != []:
+        fnums = []
+        fnames = []
+        for i in range(len(args.fnums)):
+            if args.fnums[i] in fnums_:
+                fnums.append(args.fnums[i])
+                fnames.append(fnames_[list(fnums_).index(args.fnums[i])])
+            else:
+                print("fnum " + str(args.fnums[i]) + " not in provided path")
+        fnums = np.array(fnums)
+        fnames = np.array(fnames)
+
+    else:
+        fnums = fnums_
+        fnames = fnames_
+    fnames = fnames[np.argsort(fnums)]
+    fnums = fnums[np.argsort(fnums)]
+    
 
     #for each fnum, create dynamic spectrum
     nchans = len(corrs)
     nchans_per_node = args.nchans_per_node
     gridsize = image_size = args.gridsize
-    NGULPS = args.gulps
+    if args.concat: print("Overriding args.gulps and concatenating full file spectra")
+    NGULPS = (90 if args.concat else args.gulps)
     bmin=  args.bmin
     fdir = args.path + "/"
-
-    dynspec = np.zeros((nsamps*NGULPS,nchans*nchans_per_node),dtype=np.float32)
     gulpsize = nsamps
-    for fnum in fnums: 
+
+    for fnumidx in range(len(fnums)):
+        fnum = fnums[fnumidx] 
 
         #first get ra and dec axes to get better pixel size estimate
         sb,mjd,dec = pipeline.read_raw_vis(args.path + "/nsfrb_sb00_" + str(fnum) + ".out",nchan=nchans_per_node,nsamps=nsamps,gulp=0,headersize=16,get_header=True)
-        ra_grid_2D_,dec_grid_2D_,elev = uv_to_pix(mjd,gridsize,DEC=dec,two_dim=True,manual=False)
+        if args.concat and fnum == fnums[0]: fdec = dec
+        if args.concat and fnum != fnums[0] and dec != fdec: 
+            print("Files cannot be concatenated because " + str(fnums[0]) + " is at DEC=" + str(fdec) + ", but " + str(fnum) + " is at DEC=" + str(dec))
+            return
+        ra_grid_2D_,dec_grid_2D_,elev = uv_to_pix(mjd,gridsize,DEC=dec,two_dim=True,manual=False,pixperFWHM=args.pixperFWHM)
         pixelsize = np.abs(ra_grid_2D_[0,1]-ra_grid_2D_[0,0])
 
         #get RA cutoff
         racutoff_ = searching.get_RA_cutoff(dec,tsamp_ms*gulpsize,pixelsize)
         print("RA cutoff:",racutoff_,"pixels")
-        min_gridsize = int(gridsize - racutoff_*(NGULPS - 1))
+        min_gridsize = int(gridsize - racutoff_*(NGULPS*(len(fnums) if args.concat else 1) - 1))
+        
+        if args.perpix:
+            dynspec = np.zeros((gridsize,min_gridsize,nsamps*NGULPS,nchans*nchans_per_node),dtype=np.float32)
+            if args.concat:
+                full_dynspec = np.zeros((gridsize,min_gridsize,nsamps*NGULPS*len(fnums),nchans*nchans_per_node),dtype=np.float32)
+        else:
+            dynspec = np.zeros((nsamps*NGULPS,nchans*nchans_per_node),dtype=np.float32)
+            if args.concat:
+                full_dynspec = np.zeros((nsamps*NGULPS*len(fnums),nchans*nchans_per_node),dtype=np.float32)
+
         i = 0
-        ra_grid_2D = ra_grid_2D_[:,gridsize-min_gridsize - racutoff_*(NGULPS - 1 - i):gridsize-racutoff_*(NGULPS - 1 - i)]
-        dec_grid_2D = dec_grid_2D_[:,gridsize-min_gridsize - racutoff_*(NGULPS - 1 - i):gridsize-racutoff_*(NGULPS - 1 - i)]
+        ra_grid_2D = ra_grid_2D_[:,gridsize-min_gridsize - racutoff_*(NGULPS*(len(fnums) if args.concat else 1)- 1 - i):gridsize-racutoff_*(NGULPS*(len(fnums) if args.concat else 1) - 1 - i)]
+        dec_grid_2D = dec_grid_2D_[:,gridsize-min_gridsize - racutoff_*(NGULPS*(len(fnums) if args.concat else 1) - 1 - i):gridsize-racutoff_*(NGULPS*(len(fnums) if args.concat else 1) - 1 - i)]
         BMIN = np.abs(np.max(ra_grid_2D) - np.min(ra_grid_2D))
         BMAJ = np.abs(np.max(dec_grid_2D) - np.min(dec_grid_2D))
+        if args.concat and fnumidx == 0:
+            ra_grid_2D_full = copy.deepcopy(ra_grid_2D)
+            dec_grid_2D_full = copy.deepcopy(dec_grid_2D)
+            BMIN_full = BMIN
+            BMAJ_full = BMAJ
 
 
         ff = 1.53-np.arange(8192)*0.25/8192
@@ -231,9 +270,39 @@ def main(args):
 
     
         #check if it already exists
-        if len(glob.glob(args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch.npy"))>0 and not args.overwrite:
-            print("Numpy file already exists")
-            dynspec = np.load(args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch.npy")
+        if len(glob.glob(args.path + "_pulsarsearch/nsfrb_" + str("CONCAT" if args.concat else str(fnum)) + "_pulsarsearch" + str("_J*_"+str(gridsize) + "-" + str(min_gridsize) if args.perpix else "") + ".npy"))>0 and not args.overwrite:
+            print("Numpy file(s) already exist")
+            if not args.perpix:
+                full_dynspec = np.load(args.path + "_pulsarsearch/nsfrb_" + str("CONCAT" if args.concat else str(fnum)) + "_pulsarsearch.npy")
+                if args.concat: break
+            elif args.concat:
+                for i in range(gridsize):
+                    for j in range(min_gridsize):
+                        pos = SkyCoord(ra=ra_grid_2D_full[i,j]*u.deg,dec=dec_grid_2D_full[i,j]*u.deg,frame='icrs')
+                        poslabel = str('J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(pos.ra.hms.h),
+                                                               RM=int(pos.ra.hms.m),
+                                                               RS=int(pos.ra.hms.s)) +
+                                        str("+" if pos.dec>=0 else "-") +
+                                            '{DD:02d}{DM:02d}{DS:02d}'.format(DD=int(pos.dec.dms.d),
+                                                               DM=int(pos.dec.dms.m),
+                                                               DS=int(pos.dec.dms.s)))
+                        fname=args.path + "_pulsarsearch/nsfrb_CONCAT_pulsarsearch_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize) + ".npy"
+                        full_dynspec[i,j,:,:] = np.load(fname)
+                break
+            else:
+                for i in range(gridsize):
+                    for j in range(min_gridsize):
+                        pos = SkyCoord(ra=ra_grid_2D_full[i,j]*u.deg,dec=dec_grid_2D_full[i,j]*u.deg,frame='icrs')
+                        poslabel = str('J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(pos.ra.hms.h),
+                                                               RM=int(pos.ra.hms.m),
+                                                               RS=int(pos.ra.hms.s)) +
+                                        str("+" if pos.dec>=0 else "-") +
+                                            '{DD:02d}{DM:02d}{DS:02d}'.format(DD=int(pos.dec.dms.d),
+                                                               DM=int(pos.dec.dms.m),
+                                                               DS=int(pos.dec.dms.s)))
+                        fname=args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize) + ".npy"
+                        dynspec[i,j,:,:] = np.load(fname)
+
         else:
             for g in range(NGULPS):
                 gulp = g
@@ -285,26 +354,113 @@ def main(args):
                                                V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                image_size,robust=-2)[:,gridsize-min_gridsize - racutoff_*(NGULPS - 1 - g):gridsize-racutoff_*(NGULPS - 1 - g)]
                         
-
-                dynspec[(g*gulpsize):((g+1)*gulpsize),:] = np.nansum(tmpimg - np.nanmedian(tmpimg,axis=2,keepdims=True),axis=(0,1))
+                if args.perpix:
+                    dynspec[:,:,(g*gulpsize):((g+1)*gulpsize),:] = tmpimg - np.nanmedian(tmpimg,axis=2,keepdims=True)
+                    if args.concat:
+                        full_dynspec[:,:,fnumidx*NGULPS*gulpsize + (g*gulpsize):fnumidx*NGULPS*gulpsize + ((g+1)*gulpsize),:] = dynspec[:,:,(g*gulpsize):((g+1)*gulpsize),:]
+                else:
+                    dynspec[(g*gulpsize):((g+1)*gulpsize),:] = np.nansum(tmpimg - np.nanmedian(tmpimg,axis=2,keepdims=True),axis=(0,1))
+                    if args.concat:
+                        full_dynspec[fnumidx*NGULPS*gulpsize + (g*gulpsize):fnumidx*NGULPS*gulpsize + ((g+1)*gulpsize),:] = dynspec[(g*gulpsize):((g+1)*gulpsize),:]
 
             #write to npy file
             os.system("mkdir " + args.path + "_pulsarsearch/")
-            np.save(args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch.npy",dynspec)
+            if args.perpix and not args.concat:
+                for i in range(dynspec.shape[0]):
+                    for j in range(dynspec.shape[1]):
+                        pos = SkyCoord(ra=ra_grid_2D[i,j]*u.deg,dec=dec_grid_2D[i,j]*u.deg,frame='icrs')
+                        poslabel = str('J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(pos.ra.hms.h),
+                                                               RM=int(pos.ra.hms.m),
+                                                               RS=int(pos.ra.hms.s)) +
+                                        str("+" if pos.dec>=0 else "-") +
+                                            '{DD:02d}{DM:02d}{DS:02d}'.format(DD=int(pos.dec.dms.d),
+                                                               DM=int(pos.dec.dms.m),
+                                                               DS=int(pos.dec.dms.s)))
+                        fname=args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize) + ".npy"
+                        np.save(fname,dynspec[i,j,:,:])
+            elif not args.concat:
+                np.save(args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch.npy",dynspec)
     
-        #write to psrfits
-        if len(glob.glob(args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch.fits"))>0 and not args.overwrite:
-            print("PSRFITS file already exists")
+            #write to psrfits
+            if not args.npyonly and not args.concat:
+                if args.perpix:
+                    for i in range(dynspec.shape[0]):
+                        for j in range(dynspec.shape[1]):
+                            pos = SkyCoord(ra=ra_grid_2D[i,j]*u.deg,dec=dec_grid_2D[i,j]*u.deg,frame='icrs')
+                            poslabel = str('J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(pos.ra.hms.h),
+                                                               RM=int(pos.ra.hms.m),
+                                                               RS=int(pos.ra.hms.s)) +
+                                        str("+" if pos.dec>=0 else "-") +
+                                            '{DD:02d}{DM:02d}{DS:02d}'.format(DD=int(pos.dec.dms.d),
+                                                               DM=int(pos.dec.dms.m),
+                                                               DS=int(pos.dec.dms.s)))
+                            fname=args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize) + ".fits"
+                            if len(glob.glob(fname))>0 and not args.overwrite:
+                                print("PSRFITS file already exists")
+                            else:
+                                numpy_to_psrfits(dynspec[i,j,:,:],args.path+"_pulsarsearch",fnum,fobs,ra_grid_2D[i,j],dec_grid_2D[i,j],mjd,sample_size=tsamp_ms,nsblk=nsamps,BMIN=BMIN,BMAJ=BMAJ,suffix="_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize))
+                else:
+                    if len(glob.glob(args.path + "_pulsarsearch/nsfrb_" + str(fnum) + "_pulsarsearch.fits"))>0 and not args.overwrite:
+                        print("PSRFITS file already exists")
+                    else:
+                        numpy_to_psrfits(dynspec,args.path+"_pulsarsearch",fnum,fobs,imaging.get_ra(mjd,dec),dec,mjd,sample_size=tsamp_ms,nsblk=nsamps,BMIN=BMIN,BMAJ=BMAJ)
+
+    if args.concat:
+        if args.perpix:
+            for i in range(full_dynspec.shape[0]):
+                for j in range(full_dynspec.shape[1]):
+                    pos = SkyCoord(ra=ra_grid_2D_full[i,j]*u.deg,dec=dec_grid_2D_full[i,j]*u.deg,frame='icrs')
+                    poslabel = str('J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(pos.ra.hms.h),
+                                                               RM=int(pos.ra.hms.m),
+                                                               RS=int(pos.ra.hms.s)) +
+                                        str("+" if pos.dec>=0 else "-") +
+                                            '{DD:02d}{DM:02d}{DS:02d}'.format(DD=int(pos.dec.dms.d),
+                                                               DM=int(pos.dec.dms.m),
+                                                               DS=int(pos.dec.dms.s)))
+                    fname=args.path + "_pulsarsearch/nsfrb_CONCAT_pulsarsearch_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize) + ".npy"
+                    np.save(fname,full_dynspec[i,j,:,:])
         else:
-            numpy_to_psrfits(dynspec,args.path+"_pulsarsearch",fnum,fobs,dec,mjd,sample_size=tsamp_ms,nsblk=nsamps,BMIN=BMIN,BMAJ=BMAJ)
+            np.save(args.path + "_pulsarsearch/nsfrb_CONCAT_pulsarsearch.npy",full_dynspec)
+            
+        #write to psrfits
+        if not args.npyonly:
+            if args.perpix:
+                for i in range(full_dynspec.shape[0]):
+                    for j in range(full_dynspec.shape[1]):
+                        pos = SkyCoord(ra=ra_grid_2D_full[i,j]*u.deg,dec=dec_grid_2D_full[i,j]*u.deg,frame='icrs')
+                        poslabel = str('J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(pos.ra.hms.h),
+                                                               RM=int(pos.ra.hms.m),
+                                                               RS=int(pos.ra.hms.s)) +
+                                        str("+" if pos.dec>=0 else "-") +
+                                            '{DD:02d}{DM:02d}{DS:02d}'.format(DD=int(pos.dec.dms.d),
+                                                               DM=int(pos.dec.dms.m),
+                                                               DS=int(pos.dec.dms.s)))
+                        fname=args.path + "_pulsarsearch/nsfrb_CONCAT_pulsarsearch_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize) + ".fits"
+                        if len(glob.glob(fname))>0 and not args.overwrite:
+                            print("PSRFITS file already exists")
+                        else:
+                            numpy_to_psrfits(full_dynspec[i,j,:,:],args.path+"_pulsarsearch","CONCAT",fobs,ra_grid_2D[i,j],dec_grid_2D[i,j],mjd,sample_size=tsamp_ms,nsblk=nsamps,BMIN=BMIN,BMAJ=BMAJ,suffix="_" + poslabel + "_" + str(gridsize) + "-" + str(min_gridsize))
+            else:
+                if len(glob.glob(args.path + "_pulsarsearch/nsfrb_CONCAT_pulsarsearch.fits"))>0 and not args.overwrite:
+                    print("PSRFITS file already exists")
+                else:
+                    numpy_to_psrfits(full_dynspec,args.path+"_pulsarsearch","CONCAT",fobs,imaging.get_ra(mjd,dec),dec,mjd,sample_size=tsamp_ms,nsblk=nsamps,BMIN=BMIN,BMAJ=BMAJ)
+
+
+
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Images and averages fast visibilities to create periodicity search mode data')
     parser.add_argument('path')           # positional argument
+    parser.add_argument('--fnums',type=int,nargs='+',default=[],help='Fast visibility file numbers; if not specified, runs through all files')
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=2)
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
     parser.add_argument('--gulps',type=int,help='Number of gulps to image, default = 90',default=90)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     parser.add_argument('--overwrite',action='store_true',help='Overwrite existing files')
+    parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
+    parser.add_argument('--npyonly',action='store_true',help='Only save numpy files')
+    parser.add_argument('--perpix',action='store_true',help='Store a separate dynamic spectrum for each pixel')
+    parser.add_argument('--concat',action='store_true',help='Concatenates fnums in mjd order. This will override --gulps and use the full file (gulps=90)')
     args = parser.parse_args()
     main(args)
