@@ -74,8 +74,7 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
             if briggs:
                 if k is None:
                     for kk in range(dat.shape[-1]):
-                        if kk == 0:
-                            outimage[:,:,i] = revised_robust_image(dat[i:i+1, :, jj,kk],
+                        outimage[:,:,i] = np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_robust_image(dat[i:i+1, :, jj,kk],
                                                         U_wav,
                                                         V_wav,
                                                         gridsize,
@@ -94,31 +93,10 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
                                                         None if not wstack else k_indices,
                                                         i_conj_indices,
                                                         j_conj_indices,
-                                                        None if not wstack else k_conj_indices)
-                        else:
-                            outimage[:,:,i] += revised_robust_image(dat[i:i+1, :, jj,kk],
-                                                        U_wav,
-                                                        V_wav,
-                                                        gridsize,
-                                                        robust,
-                                                        False,
-                                                        None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
-                                                        inject_flat,
-                                                        pixel_resolution,
-                                                        wstack,
-                                                        W_wav,
-                                                        Nlayers_w,
-                                                        pixperFWHM,
-                                                        bweights,
-                                                        i_indices,
-                                                        j_indices,
-                                                        None if not wstack else k_indices,
-                                                        i_conj_indices,
-                                                        j_conj_indices,
-                                                        None if not wstack else k_conj_indices)
-
+                                                        None if not wstack else k_conj_indices)[:,:,np.newaxis]],axis=2),axis=2)
+                        
                 else:
-                    outimage[:,:,i] = revised_robust_image(dat[i:i+1, :, jj],
+                    outimage[:,:,i] = np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_robust_image(dat[i:i+1, :, jj],
                                                         U_wav,
                                                         V_wav,
                                                         gridsize,
@@ -137,12 +115,11 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
                                                         None if not wstack else k_indices,
                                                         i_conj_indices,
                                                         j_conj_indices,
-                                                        None if not wstack else k_conj_indices)
+                                                        None if not wstack else k_conj_indices)[:,:,np.newaxis]],axis=2),axis=2)
             else:
                 if k is None:
                     for kk in range(dat.shape[-1]):
-                        if kk == 0:
-                            outimage[:,:,i] = revised_uniform_image(dat[i:i+1, :, jj,kk],
+                        outimage[:,:,i] = np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_uniform_image(dat[i:i+1, :, jj,kk],
                                         U_wav,
                                         V_wav,
                                         gridsize,
@@ -153,22 +130,10 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
                                         wstack,
                                         W_wav,
                                         Nlayers_w,
-                                        pixperFWHM)
-                        else:
-                            outimage[:,:,i] += revised_uniform_image(dat[i:i+1, :, jj,kk],
-                                        U_wav,
-                                        V_wav,
-                                        gridsize,
-                                        False,
-                                        None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
-                                        inject_flat,
-                                        pixel_resolution,
-                                        wstack,
-                                        W_wav,
-                                        Nlayers_w,
-                                        pixperFWHM)
+                                        pixperFWHM)[:,:,np.newaxis]],axis=2),axis=2)
+
                 else:
-                    outimage[:,:,i] = revised_uniform_image(dat[i:i+1, :, jj],
+                    outimage[:,:,i] =  np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_uniform_image(dat[i:i+1, :, jj],
                                         U_wav,
                                         V_wav,
                                         gridsize,
@@ -179,7 +144,7 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
                                         wstack,
                                         W_wav,
                                         Nlayers_w,
-                                        pixperFWHM)
+                                        pixperFWHM)[:,:,np.newaxis]],axis=2),axis=2)
     if k is None:
         return outimage,j,-1
     else:
@@ -642,8 +607,10 @@ def main(args):
                 print("Writing to last_frame.npy")
                 np.save(frame_dir + "last_frame.npy",dirty_img)
         time.sleep(args.sleeptime)
-    executor.shutdown()
-    TXexecutor.shutdown()
+    if args.multiimage:
+        executor.shutdown()
+    if args.multisend:
+        TXexecutor.shutdown()
     return
 
 
