@@ -219,7 +219,7 @@ def main(args):
             if args.inject and (gulp in inject_gulps) and filelabels[g]==args.filelabel:
                 print("Injecting pulse in gulp",gulp)
                 from inject import injecting
-                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=10000000,SNRmax=100000000)
+                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=args.snr_min_inject,SNRmax=args.snr_max_inject)
                 #offsetRA = offsetDEC = 0
 
                 if args.snr_inject > 0:
@@ -340,6 +340,8 @@ if __name__=="__main__":
     parser.add_argument('--inject',action='store_true',default=False,help='Inject a burst into the gridded visibilities. Unless the --solo_inject flag is set, a noiseless injection will be integrated into the data.')
     parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
     parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=-1)
+    parser.add_argument('--snr_min_inject',type=float,help='Minimum injection S/N, default 1e7',default=1e7)
+    parser.add_argument('--snr_max_inject',type=float,help='Maximum injection S/N, default 1e8',default=1e8)
     parser.add_argument('--dm_inject',type=float,help='DM of injection; default -1 which chooses a random DM',default=-1)
     parser.add_argument('--width_inject',type=int,help='Width of injection in samples; default -1 which chooses a random width',default=-1)
     parser.add_argument('--offsetRA_inject',type=int,help='Offset RA of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))

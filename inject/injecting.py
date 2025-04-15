@@ -62,7 +62,7 @@ PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
 
 
-def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True,bmin=bmin,robust=2):
+def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True,bmin=bmin,robust=2):
     """
     Uses functions from simulations_and_classifications to make injections
     """
@@ -144,8 +144,8 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     else:
         nn = nsamps+maxshift
         if not noiseonly: nn -= width
-        print(nn,PSFimg.shape,vi_scale,file=fout)
         PSFimg = np.concatenate([np.zeros((gridsize,gridsize,(int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,nn-(int(loc*nsamps)+maxshift),nchans))],axis=2)[:,:,::-1,:]*vi_scale
+        print(nn,PSFimg.shape,vi_scale,file=fout)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps - int(loc*nsamps),nchans))],axis=2)[:,:,::-1,:]
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans))],axis=2)
         #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans))],axis=2)

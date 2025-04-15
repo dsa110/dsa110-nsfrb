@@ -13,7 +13,9 @@ if ([[ $inject > 0 ]]); then
 	injectflag=" --inject"
 fi
 
-filedir=$6
+extraflags=$6
+echo $extraflags
+filedir=$7
 echo "here"
 echo $filedir
 echo "here"
@@ -57,10 +59,10 @@ do
 			fi
 		done
 		if (( $prerun==0 )); then
-			if [ -z "$6" ]; then
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8$injectflag --num_inject $inject --width_inject 2 --inject_noiseless --search --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --briggs --robust 2 --flagcorrs 8 12 13 ##>>/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/inject_log.txt 2>&1
+			if [ -z "$7" ]; then
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8$injectflag --num_inject $inject --inject_noiseless --width_inject 2 --search --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --briggs --robust 2 $extraflags
 			else
-				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8 --filedir $filedir$injectflag --num_inject $inject --width_inject 2 --inject_noiseless --search --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --briggs --robust 2 --flagcorrs 8 12 13
+				python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8 --filedir $filedir$injectflag --num_inject $inject --width_inject 2 --inject_noiseless --search --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --briggs --robust 2 $extraflags
 
 			fi
 			donefiles+=($label)
