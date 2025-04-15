@@ -123,7 +123,7 @@ jaxdev = 0
 
 
 #create axes
-RA_axis,DEC_axis,elev = uv_to_pix(Time.now().mjd,gridsize)
+RA_axis,DEC_axis,elev = uv_to_pix(Time.now().mjd,gridsize,pixperFWHM=config.pixperFWHM)
 print(DEC_axis)
 #RA_axis = np.linspace(RA_point-(pixsize*gridsize/2),RA_point+(pixsize*gridsize/2),gridsize)
 #DEC_axis = np.linspace(DEC_point-(pixsize*gridsize/2),DEC_point+(pixsize*gridsize/2),gridsize)
