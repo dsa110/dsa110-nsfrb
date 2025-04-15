@@ -25,7 +25,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM
 from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
-from nsfrb.TXclient import send_data
+from nsfrb.TXclient import send_data,ipaddress
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
 from tqdm import tqdm
 import time
@@ -215,6 +215,9 @@ def main(args):
     if args.multiimage:
         print("Using multi-threaded imaging with ",args.maxProcesses,"threads")
         executor = ThreadPoolExecutor(args.maxProcesses)
+    if args.multisend:
+        print("Using multi-threaded TX client ",args.maxProcesses,"threads")
+        TXexecutor = ThreadPoolExecutor(args.maxProcesses)
 
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,args.num_chans))
     #dirty_img_init = dict()
@@ -621,17 +624,26 @@ def main(args):
             if args.search:
                 
                 if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                    if args.multisend:
+                        TXtask_list = []
                     for i in range(args.num_chans):
-                        #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-                        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10)
-                        if args.verbose: print(msg)
-                        time.sleep(1)
-                
+                        if args.multisend:
+                            TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,None,23,'',128,args.verbose,5,10,args.port+i,ipaddress))
+                            time.sleep(1)
+                        else:
+                            #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
+                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port+i)
+                            if args.verbose: print(msg)
+                            time.sleep(1)
+                    if args.multisend:
+                        wait(TXtask_list)
+                        for t in TXtask_list: print(t.result())
             if filelabels[g] != args.filelabel or gulp < args.gulp_offset:#else:
                 print("Writing to last_frame.npy")
                 np.save(frame_dir + "last_frame.npy",dirty_img)
         time.sleep(args.sleeptime)
     executor.shutdown()
+    TXexecutor.shutdown()
     return
 
 
@@ -687,6 +699,8 @@ if __name__=="__main__":
     parser.add_argument('--multiimage',action='store_true',help='If set, uses multithreading for imaging')
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     parser.add_argument('--multiimagepol',action='store_true',help='If set with --multiimage flag, runs separate threads for each polarization, otherwise ignored')
+    parser.add_argument('--multisend',action='store_true',help='If set, uses multithreading to send data to the process server')
+    parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     args = parser.parse_args()
     main(args)
 
