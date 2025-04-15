@@ -211,12 +211,17 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
     #$print(v_avg.shape,i_indices.shape,j_indices.shape,i_conj_indices.shape,j_conj_indices.shape)
     if wstack and w is not None:
         visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
+        np.add.at(visibility_grid, (np.concatenate([i_indices,i_conj_indices]), 
+                                    np.concatenate([j_indices,j_conj_indices]), 
+                                    np.concatenate([k_indices,k_conj_indices])), 
+                                    np.concatenate([v_avg,np.conj(v_avg)]))
+        #np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
     else:
         visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
+        np.add.at(visibility_grid, (np.concatenate([i_indices,i_conj_indices]),
+                                    np.concatenate([j_indices,j_conj_indices])),
+                                    np.concatenate([v_avg,np.conj(v_avg)]))
+        #np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
 
     if inject_img is not None:
         #print("IN THE WRONG PLACE")
