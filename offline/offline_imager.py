@@ -180,8 +180,8 @@ def main(args):
     if args.multiimage:
         print("Using multi-threaded imaging with ",args.maxProcesses,"threads")
         executor = ThreadPoolExecutor(args.maxProcesses)
-    if args.multisend:
-        print("Using multi-threaded TX client ",args.maxProcesses,"threads")
+    if args.multisend and len(args.multiport)>0:
+        print("Using multi-threaded TX client ",args.maxProcesses,"threads and " + str(len(args.multiport)) + " ports")
         TXexecutor = ThreadPoolExecutor(args.maxProcesses)
 
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,args.num_chans))
@@ -589,18 +589,18 @@ def main(args):
             if args.search:
                 
                 if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
-                    if args.multisend:
+                    if args.multisend and len(args.multiport)>0:
                         TXtask_list = []
                     for i in range(args.num_chans):
-                        if args.multisend:
-                            TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,None,23,'',128,args.verbose,5,10,args.port+i,ipaddress))
+                        if args.multisend and len(args.multiport)>0:
+                            TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,None,23,'',128,args.verbose,5,10,args.multiport[int(i%len(args.multiport))],ipaddress))
                             time.sleep(1)
                         else:
                             #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port+i)
+                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
                             if args.verbose: print(msg)
                             time.sleep(1)
-                    if args.multisend:
+                    if args.multisend and len(args.multiport)>0:
                         wait(TXtask_list)
                         for t in TXtask_list: print(t.result())
             if filelabels[g] != args.filelabel or gulp < args.gulp_offset:#else:
@@ -609,7 +609,7 @@ def main(args):
         time.sleep(args.sleeptime)
     if args.multiimage:
         executor.shutdown()
-    if args.multisend:
+    if args.multisend and len(args.multiport)>0:
         TXexecutor.shutdown()
     return
 
@@ -668,6 +668,7 @@ if __name__=="__main__":
     parser.add_argument('--multiimagepol',action='store_true',help='If set with --multiimage flag, runs separate threads for each polarization, otherwise ignored')
     parser.add_argument('--multisend',action='store_true',help='If set, uses multithreading to send data to the process server')
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
+    parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
     args = parser.parse_args()
     main(args)
 

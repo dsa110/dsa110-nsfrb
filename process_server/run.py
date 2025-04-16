@@ -68,7 +68,7 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file
 
 """
 NSFRB modules
@@ -219,7 +219,8 @@ corraddrs = {'10.41.0.91' : 0, #sb00/corr03
             '10.42.0.228' : 0
 }
 
-testport_corrs = {8810:0,
+testport_corrs = {8080:0,
+                  8810:0,
                   8811:1,
                   8812:2,
                   8813:3,
@@ -275,6 +276,10 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
     #corr_address = address#HTTPheaderMsgStr[HTTPheaderMsgStr.index('Host')+6:HTTPheaderMsgStr.index(':'+str(port))]
     if testh23:
         corr_node = testport_corrs[port]
+        if port == 8080:
+            testport_corrs[port] +=1
+            if testport_corrs[port] > 15:
+                testport_corrs[port] = 0
     else:
         corr_node = corraddrs[corr_address]
 
@@ -537,6 +542,7 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
         #task_list.append(stask)
         if slowsearch_now:
             printlog(socksuffix+"SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
+            printlog(socksuffix+str(slow_fullimg_dict[k].image_tesseract),output_file=output_file)
             sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,

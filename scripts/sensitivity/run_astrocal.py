@@ -704,8 +704,8 @@ def main(args):
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
         plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=(full_img.mean((2,3))).flatten(),alpha=1,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_nvsscoords[bright_idx].ra.to(u.deg).value,bright_nvsscoords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
-        plt.xlim(bright_nvsscoords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1),bright_nvsscoords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1))
-        plt.ylim(bright_nvsscoords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1),bright_nvsscoords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1))
+        plt.xlim(bright_nvsscoords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
+        plt.ylim(bright_nvsscoords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))
         plt.plot([ra_grid_2D[bbox[0],bbox[2]],
               ra_grid_2D[bbox[0],bbox[3]-1],
               ra_grid_2D[bbox[1]-1,bbox[3]-1],
@@ -746,7 +746,9 @@ def main(args):
         vis_model = fringestopping.zenith_visibility_model(fobs, fstable=table_dir + '/tmp_fringestopping_table_cal.npz')[0,:,:,:,:].repeat(2,3)
         dat_copy /= vis_model
         print("Reflagging...")
+        print("Vis shape:",dat_copy.shape)
         dat, bname, blen, UVW, antenna_order = flag_vis(dat_copy, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+        print("Vis shape:",dat.shape)
         print("Done")
         bright_measfluxs.append(np.nanmean(np.real(dat)))
         bright_measfluxerrs.append(np.nanstd(np.real(dat))/np.sqrt(len(dat.flatten())))
@@ -755,18 +757,21 @@ def main(args):
             bright_measfluxerrs[-1] = -1
             continue
         print("Beamformed flux arb. units:",bright_measfluxs[-1]," +- ",bright_measfluxerrs[-1])
+        print(dat.shape)
         print("-"*20)
         print("")
         
         #plotting
         bright_dynspec = np.real(dat.mean((1,3)))
+        print(bright_dynspec.shape)
+        print(bright_dynspec)
         plt.figure(figsize=(16,12))
         plt.subplot(2,2,1,facecolor='black')
-        plt.step(np.arange(gulpsize)*tsamp_ms,bright_dynspec.mean(1),linewidth=4)
-        plt.xlim(0,tsamp_ms*gulpsize)
+        plt.step(np.arange(gulpsize)*tsamp_ms/1000,bright_dynspec.mean(1),linewidth=4)
+        plt.xlim(0,tsamp_ms*gulpsize/1000)
+
         plt.subplot(2,2,4,facecolor='black')
         plt.step(bright_dynspec.sum(0),fobs,linewidth=1)
-
         cm = plt.get_cmap('Blues')
         for i in range(gulpsize):
             plt.step(bright_dynspec[:i+1,:].sum(0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
@@ -777,6 +782,8 @@ def main(args):
 
         plt.subplot(2,2,3)
         plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize/1000,fobs[-1],fobs[0]))
+        plt.xlim(0,tsamp_ms*gulpsize/1000)
+        plt.ylim(fobs[-1],fobs[0])
         plt.xlabel("Time (s)")
         plt.ylabel("Frequency (GHz)")
         plt.subplots_adjust(hspace=0,wspace=0)
@@ -789,11 +796,11 @@ def main(args):
         bright_dynspec = np.imag(dat.mean((1,3)))
         plt.figure(figsize=(16,12))
         plt.subplot(2,2,1,facecolor='black')
-        plt.step(np.arange(gulpsize)*tsamp_ms,bright_dynspec.mean(1),linewidth=4)
-        plt.xlim(0,tsamp_ms*gulpsize)
+        plt.step(np.arange(gulpsize)*tsamp_ms/1000,bright_dynspec.mean(1),linewidth=4)
+        plt.xlim(0,tsamp_ms*gulpsize/1000)
+
         plt.subplot(2,2,4,facecolor='black')
         plt.step(bright_dynspec.sum(0),fobs,linewidth=1)
-
         cm = plt.get_cmap('Blues')
         for i in range(gulpsize):
             plt.step(bright_dynspec[:i+1,:].sum(0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
@@ -804,6 +811,8 @@ def main(args):
 
         plt.subplot(2,2,3)
         plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize/1000,fobs[-1],fobs[0]))
+        plt.xlim(0,tsamp_ms*gulpsize/1000)
+        plt.ylim(fobs[-1],fobs[0])
         plt.xlabel("Time (s)")
         plt.ylabel("Frequency (GHz)")
         plt.subplots_adjust(hspace=0,wspace=0)
