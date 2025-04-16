@@ -153,7 +153,7 @@ class fullimg:
         return (img_idx if foundmjd else -1),foundmjd
     def slow_append_img(self,data,img_idx):
         #gridsize-min_gridsize - racutoff_*(NGULPS - 1 - g):gridsize-racutoff_*(NGULPS - 1 - g)
-        self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = data[:,self.shape[0]-self.shape[1]-self.RA_cutoff*(self.bin_slow-1-img_idx):self.shape[0]-self.RA_cutoff*(self.bin_slow-1-img_idx),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)
+        self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = np.nanmean(data[:,self.shape[0]-self.shape[1]-self.RA_cutoff*(self.bin_slow-1-img_idx):self.shape[0]-self.RA_cutoff*(self.bin_slow-1-img_idx),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])),3)
         printlog("FROM SLOW APPEND_1 " + str(img_idx) + ":" + str(self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:]),output_file=processfile)
         #self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = data[:,self.RA_cutoff*img_idx:self.shape[1]+self.slow_RA_cutoff-self.RA_cutoff*(self.bin_slow-img_idx-1),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)
         self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] -= np.nanmedian(self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:],axis=2,keepdims=True)
@@ -545,6 +545,7 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
         if slowsearch_now:
             printlog(socksuffix+"SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
             printlog(socksuffix+str(slow_fullimg_dict[k].image_tesseract),output_file=output_file)
+            np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
             sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,

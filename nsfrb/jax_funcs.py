@@ -151,7 +151,7 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract_input,PSFimg,corr_shifts_a
     #create masks
     #mask = ((image_tesseract_binned < jnp.nanquantile(jnp.nanmax(image_tesseract_binned,axis=4,keepdims=True),noiseth,axis=(1,2),keepdims=True)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
     #mask = ((image_tesseract_binned < noiseth*noise[:,np.newaxis,np.newaxis,:,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(truensamps,4)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
-    print(image_tesseract_binned)
+    print("FROM JAX:",image_tesseract_binned)
     mask = ((image_tesseract_binned - jnp.nanmedian(image_tesseract_binned,axis=4,keepdims=True) < noiseth*noise[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(nDM,3).repeat(truensamps,4)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
     mask = mask.at[:].set((mask + ((noise==0)[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(nDM,3).repeat(truensamps,4)))>0)
     #compute noise and update
@@ -162,6 +162,7 @@ def matched_filter_dedisp_snr_fft_jit(image_tesseract_input,PSFimg,corr_shifts_a
                                                 ),axis=1
                                             ),axis=1
                                         ))))/(past_noise_N+1))
+    print("FROM JAX:",noise)
     
     """
     noise = noise.at[:,:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
