@@ -727,10 +727,17 @@ def main(args):
 
         #FLUX CAL
 
-        #re-do baselines
+        #re-do baselines and plot visibilities
         test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
         pt_dec = dec*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+
+        plt.figure(figsize=(12,12))
+        plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='grey',markersize=3)
+        if outriggers:
+            plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
+            plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
+
         ff = 1.53-np.arange(8192)*0.25/8192
         fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
         fobs = np.reshape(fobs,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)
@@ -739,6 +746,7 @@ def main(args):
 
         HA = (get_ra(mjd + gulps[0]*tsamp_ms*gulpsize/1000/86400,dec) - bright_pixcoord.ra.value)
         srcdec = bright_pixcoord.dec.value
+        
         print("Phasing Visibilities to Hour Angle ",HA," deg, Declination ",srcdec," and beamforming...")
         generate_rephasing_table(
                 HA, srcdec, blen, pt_dec, gulpsize, tsamp, antenna_order, outrigger_delays, bname, refmjd,
@@ -747,9 +755,26 @@ def main(args):
         dat_copy /= vis_model
         print("Reflagging...")
         print("Vis shape:",dat_copy.shape)
+        
         dat, bname, blen, UVW, antenna_order = flag_vis(dat_copy, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
         print("Vis shape:",dat.shape)
         print("Done")
+        
+
+        plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='red',markersize=5)
+        if not outriggers:
+            plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
+            plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
+        plt.scatter(UVW[0,:,0],UVW[0,:,1],marker='o',c=np.real(np.nanmean(dat,(0,2,3))),s=100,alpha=0.8,cmap='cool',zorder=100)
+        plt.xlabel("U (m)")
+        plt.ylabel("V (m)")
+        plt.colorbar(label="Real Mean Visibility")
+        plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
+        if savestuff:
+            plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"baselinecal.png")
+        plt.close()
+        
+
         bright_measfluxs.append(np.nanmean(np.real(dat)))
         bright_measfluxerrs.append(np.nanstd(np.real(dat))/np.sqrt(len(dat.flatten())))
         if np.nanmean(np.real(dat))<0:
@@ -762,19 +787,19 @@ def main(args):
         print("")
         
         #plotting
-        bright_dynspec = np.real(dat.mean((1,3)))
+        bright_dynspec = np.real(np.nanmean(dat,(1,3)))
         print(bright_dynspec.shape)
         print(bright_dynspec)
         plt.figure(figsize=(16,12))
         plt.subplot(2,2,1,facecolor='black')
-        plt.step(np.arange(gulpsize)*tsamp_ms/1000,bright_dynspec.mean(1),linewidth=4)
+        plt.step(np.arange(gulpsize)*tsamp_ms/1000,np.nanmean(bright_dynspec,1),linewidth=4)
         plt.xlim(0,tsamp_ms*gulpsize/1000)
 
         plt.subplot(2,2,4,facecolor='black')
-        plt.step(bright_dynspec.sum(0),fobs,linewidth=1)
+        plt.step(np.nansum(bright_dynspec,0),fobs,linewidth=1)
         cm = plt.get_cmap('Blues')
         for i in range(gulpsize):
-            plt.step(bright_dynspec[:i+1,:].sum(0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
+            plt.step(np.nansum(bright_dynspec[:i+1,:],0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
         plt.ylim(fobs[-1],fobs[0])
         plt.scatter([],[],c=[],vmin=0,vmax=tsamp_ms*gulpsize/1000,cmap='Blues')
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
@@ -793,17 +818,17 @@ def main(args):
 
         plt.close()
 
-        bright_dynspec = np.imag(dat.mean((1,3)))
+        bright_dynspec = np.imag(np.nanmean(dat,(1,3)))
         plt.figure(figsize=(16,12))
         plt.subplot(2,2,1,facecolor='black')
-        plt.step(np.arange(gulpsize)*tsamp_ms/1000,bright_dynspec.mean(1),linewidth=4)
+        plt.step(np.arange(gulpsize)*tsamp_ms/1000,np.nanmean(bright_dynspec,1),linewidth=4)
         plt.xlim(0,tsamp_ms*gulpsize/1000)
 
         plt.subplot(2,2,4,facecolor='black')
-        plt.step(bright_dynspec.sum(0),fobs,linewidth=1)
+        plt.step(np.nansum(bright_dynspec,0),fobs,linewidth=1)
         cm = plt.get_cmap('Blues')
         for i in range(gulpsize):
-            plt.step(bright_dynspec[:i+1,:].sum(0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
+            plt.step(np.nansum(bright_dynspec[:i+1,:],0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
         plt.ylim(fobs[-1],fobs[0])
         plt.scatter([],[],c=[],vmin=0,vmax=tsamp_ms*gulpsize/1000,cmap='Blues')
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
