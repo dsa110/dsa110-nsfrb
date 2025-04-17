@@ -19,7 +19,7 @@ import argparse
 from astropy.time import Time
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
-from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor,wait
 
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
@@ -783,44 +783,48 @@ def main(args):
                task_list += list(ret) 
         else:
             for ii in range(len(servSockD_list)):
-                if multiport_accepting[ii]:
-                    #printlog("TASK " + str(ii),output_file=processfile)
-                    multiport_task_list.append(executor.submit(multiport_task,servSockD_list[ii],ii,args.multiport[ii],maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
+                #if multiport_accepting[ii]:
+                #printlog("TASK " + str(ii),output_file=processfile)
+                
+                #try submitting immediately then waiting for all tasks from this iteration to finish
+                multiport_task_list.append(executor.submit(multiport_task,servSockD_list[ii],ii,args.multiport[ii],maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor))
-                    multiport_num_list.append(ii)
+                multiport_num_list.append(ii)
+            wait(multiport_task_list)
 
             #check if any have finished
-            donetasks = []
+            #donetasks = []
             for jj in range(len(multiport_task_list)):
-                if multiport_task_list[jj].done():
-                    ret = multiport_task_list[jj].result()
-                    if type(ret) == int:
-                        if ret == ECODE_CONT:
-                            printlog("multiport task exited with error code " + str(ret),output_file=processfile)
-                            printlog("--continuing",output_file=processfile)
-                            continue
-                        elif ret == ECODE_BREAK:
-                            printlog("multiport task exited with error code " + str(ret),output_file=processfile)
-                            printlog("--aborting",output_file=processfile)
-                            break
-                        elif ret == ECODE_SUCCESS:
-                            printlog("--normal, no search, continue",output_file=processfile)
-                        else:
-                            printlog("multiport task exited with error code " + str(ret),output_file=processfile)
-                            printlog("--unknown error code, aborting",output_file=processfile)
-                            break
+                #if multiport_task_list[jj].done():
+                ret = multiport_task_list[jj].result()
+                if type(ret) == int:
+                    if ret == ECODE_CONT:
+                        printlog("multiport task exited with error code " + str(ret),output_file=processfile)
+                        printlog("--continuing",output_file=processfile)
+                        continue
+                    elif ret == ECODE_BREAK:
+                        printlog("multiport task exited with error code " + str(ret),output_file=processfile)
+                        printlog("--aborting",output_file=processfile)
+                        break
+                    elif ret == ECODE_SUCCESS:
+                        printlog("--normal, no search, continue",output_file=processfile)
                     else:
-                        printlog("returned search tasks:" + str(ret),output_file=processfile)
-                        task_list += list(ret)
-                    donetasks.append(jj)
-
+                        printlog("multiport task exited with error code " + str(ret),output_file=processfile)
+                        printlog("--unknown error code, aborting",output_file=processfile)
+                        break
+                else:
+                    printlog("returned search tasks:" + str(ret),output_file=processfile)
+                    task_list += list(ret)
+                    #donetasks.append(jj)
+            multiport_task_list = []
+            multiport_num_list = []
             #remove completed tasks
-            for jj in donetasks:
-                multiport_task_list.pop(jj)
-                multiport_num_list.pop(jj)
+            #for jj in donetasks:
+            #    multiport_task_list.pop(jj)
+            #    multiport_num_list.pop(jj)
 
 
         """

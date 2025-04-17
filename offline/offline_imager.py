@@ -54,7 +54,10 @@ freqs = np.linspace(fmin,fmax,len(corrs))
 wavs = c/(freqs*1e6) #m
 
 #flagged antennas/
-def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W=None, Nlayers_w=18,pixperFWHM=pixperFWHM):
+TXtask_list = []
+def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W=None, Nlayers_w=18,pixperFWHM=pixperFWHM,
+                        port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
+
     outimage = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,1)) 
 
     #for j in range(args.num_chans):
@@ -138,112 +141,18 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
                                             Nlayers_w=Nlayers_w,
                                             pixperFWHM=pixperFWHM)
 
+    if port > 0 and len(ipaddress)>0:
+        if TXexecutor is not None:
+            TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, outimage[:,:,:,0] ,None,23,'',128,True,5,10,port,ipaddress))
+            if stagger>0: time.sleep(stagger)
+        else:
+            msg=send_data(time_start_isot, uv_diag, Dec, outimage ,verbose=True,retries=5,keepalive_time=10,port=port,ipaddress=ipaddress)
+            print(msg)
     return outimage,j
 
 
 
 
-
-
-
-
-    """
-
-
-    outimage = np.nan*np.ones((gridsize,gridsize,dat.shape[0]))
-    for jj in range(nchans_per_node):
-        #chanidx = (args.nchans_per_node*j)+jj
-        U_wav = U/(2.998e8/fobs_j[jj]/1e9)
-        V_wav = V/(2.998e8/fobs_j[jj]/1e9)
-        W_wav = None if not wstack else W/(2.998e8/fobs_j[jj]/1e9)
-        uniform_grid(U_wav, V_wav, gridsize, pixel_resolution, pixperFWHM, w=W_wav, wstack=wstack)
-        if briggs:
-            if wstack:
-                i_indices,j_indices,k_indices,i_conj_indices,j_conj_indices,k_conj_indices = uniform_grid(U_wav, V_wav, gridsize, pixel_resolution, pixperFWHM, w=W_wav, wstack=wstack)
-            else:
-                i_indices,j_indices,i_conj_indices,j_conj_indices = uniform_grid(U_wav, V_wav, gridsize, pixel_resolution, pixperFWHM, w=W_wav, wstack=wstack)
-                bweights = briggs_weighting(U_wav, V_wav, gridsize, robust=robust,pixel_resolution=pixel_resolution)
-
-        for i in range(dat.shape[0]):
-            if briggs:
-                if k is None:
-                    for kk in range(dat.shape[-1]):
-                        outimage[:,:,i] = np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_robust_image(dat[i:i+1, :, jj,kk],
-                                                        U_wav,
-                                                        V_wav,
-                                                        gridsize,
-                                                        robust,
-                                                        False,
-                                                        None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
-                                                        inject_flat,
-                                                        pixel_resolution,
-                                                        wstack,
-                                                        W_wav,
-                                                        Nlayers_w,
-                                                        pixperFWHM,
-                                                        bweights,
-                                                        i_indices,
-                                                        j_indices,
-                                                        None if not wstack else k_indices,
-                                                        i_conj_indices,
-                                                        j_conj_indices,
-                                                        None if not wstack else k_conj_indices)[:,:,np.newaxis]],axis=2),axis=2)
-                        
-                else:
-                    outimage[:,:,i] = np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_robust_image(dat[i:i+1, :, jj],
-                                                        U_wav,
-                                                        V_wav,
-                                                        gridsize,
-                                                        robust,
-                                                        False,
-                                                        None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
-                                                        inject_flat,
-                                                        pixel_resolution,
-                                                        wstack,
-                                                        W_wav,
-                                                        Nlayers_w,
-                                                        pixperFWHM,
-                                                        bweights,
-                                                        i_indices,
-                                                        j_indices,
-                                                        None if not wstack else k_indices,
-                                                        i_conj_indices,
-                                                        j_conj_indices,
-                                                        None if not wstack else k_conj_indices)[:,:,np.newaxis]],axis=2),axis=2)
-            else:
-                if k is None:
-                    for kk in range(dat.shape[-1]):
-                        outimage[:,:,i] = np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_uniform_image(dat[i:i+1, :, jj,kk],
-                                        U_wav,
-                                        V_wav,
-                                        gridsize,
-                                        False,
-                                        None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
-                                        inject_flat,
-                                        pixel_resolution,
-                                        wstack,
-                                        W_wav,
-                                        Nlayers_w,
-                                        pixperFWHM)[:,:,np.newaxis]],axis=2),axis=2)
-
-                else:
-                    outimage[:,:,i] =  np.nansum(np.concatenate([outimage[:,:,i:i+1],revised_uniform_image(dat[i:i+1, :, jj],
-                                        U_wav,
-                                        V_wav,
-                                        gridsize,
-                                        False,
-                                        None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
-                                        inject_flat,
-                                        pixel_resolution,
-                                        wstack,
-                                        W_wav,
-                                        Nlayers_w,
-                                        pixperFWHM)[:,:,np.newaxis]],axis=2),axis=2)
-    if k is None:
-        return outimage,j,-1
-    else:
-        return outimage,j,k
-    """
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
 
@@ -487,31 +396,14 @@ def main(args):
             if args.multiimage:
                 task_list = []
                 for j in range(args.num_chans):
-                    """
-                    if args.multiimagepol:
-                        for k in range(dat.shape[-1]):
-                            print("submitting task:",j)
-                            task_list.append(executor.submit(offline_image_task,dat[:,:,j*args.nchans_per_node:(j+1)*args.nchans_per_node,k],
-                                                    U,
-                                                    V,
-                                                    args.gridsize,
-                                                    pixel_resolution,
-                                                    args.nchans_per_node,
-                                                    fobs[j*args.nchans_per_node:(j+1)*args.nchans_per_node],
-                                                    j,k,
-                                                    args.briggs,
-                                                    args.robust,
-                                                    False,
-                                                    inject_img[:,:,:,j],
-                                                    (args.point_field or args.gauss_field or args.flat_field),
-                                                    args.wstack,
-                                                    W,
-                                                    args.Nlayers,
-                                                    args.pixperFWHM))
-                            task_list[-1].add_done_callback(image_future_callback)
-                    else:
-                    """
                     print("submitting task:",j)
+                    if args.search and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                        if (args.multisend and len(args.multiport)>0):
+                            port_j = args.multiport[int(j%len(args.multiport))]
+                        else:
+                            port_j = args.port
+                    else:
+                        port_j = -1
                     task_list.append(executor.submit(offline_image_task,dat[:,:,j*args.nchans_per_node:(j+1)*args.nchans_per_node,:],
                                                     U,
                                                     V,
@@ -528,7 +420,14 @@ def main(args):
                                                     args.wstack,
                                                     W,
                                                     args.Nlayers,
-                                                    args.pixperFWHM))
+                                                    args.pixperFWHM,
+                                                    port_j,
+                                                    ipaddress,
+                                                    time_start_isot, 
+                                                    uv_diag, 
+                                                    Dec,
+                                                    TXexecutor,
+                                                    args.stagger_multisend))
                     task_list[-1].add_done_callback(image_future_callback)
                 wait(task_list)
             else:
@@ -611,58 +510,6 @@ def main(args):
                                             w=W_wav,
                                             Nlayers_w=args.Nlayers,
                                             pixperFWHM=args.pixperFWHM)
-            """
-            for i in range(dat.shape[0]):
-                for j in range(args.num_chans):
-                    for k in range(dat.shape[-1]):
-                    
-                        #print(i,j,k)
-                        for jj in range(args.nchans_per_node):
-                            if args.briggs:
-                                if args.multiimage:
-                                    task_list.append(executor.submit(revised_robust_image,dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],
-                                                        U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),
-                                                        V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),
-                                                        args.gridsize,
-                                                        args.robust,
-                                                        False,
-                                                        None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,
-                                                        (args.point_field or args.gauss_field or args.flat_field),
-                                                        pixel_resolution,
-                                                        args.wstack,
-                                                        None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),
-                                                        args.Nlayers,
-                                                        args.pixperFWHM))
-                                    task_list[-1].add_done_callback(lambda future: image_future_callback(future,i,j))
-                            
-
-                                elif k == 0 and jj == 0:
-                                    dirty_img[:,:,i,j] = revised_robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers,pixperFWHM=args.pixperFWHM)
-                                else:
-                                    dirty_img[:,:,i,j] += revised_robust_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers,pixperFWHM=args.pixperFWHM)
-                            else:
-                                if args.multiimage:
-                                    task_list.append(executor.submit(revised_uniform_image,dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],
-                                        U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),
-                                        V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),
-                                        args.gridsize,
-                                        False,
-                                        None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,
-                                        (args.point_field or args.gauss_field or args.flat_field),
-                                        pixel_resolution,
-                                        args.wstack,
-                                        None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),
-                                        args.Nlayers,
-                                        args.pixperFWHM))
-                                    task_list[-1].add_done_callback(lambda future: image_future_callback(future,i,j))
-
-                                elif k == 0 and jj == 0:
-                                    dirty_img[:,:,i,j] = revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers,pixperFWHM=args.pixperFWHM)
-                                else:
-                                    dirty_img[:,:,i,j] += revised_uniform_image(dat[i:i+1, :, (args.nchans_per_node*j)+jj, k],U/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i,j]==0) else inject_img[:,:,i,j]/dat.shape[-1]/args.nchans_per_node,inject_flat=(args.point_field or args.gauss_field or args.flat_field),pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*j)+jj]/1e9),Nlayers_w=args.Nlayers,pixperFWHM=args.pixperFWHM)
-            if args.multiimage:
-                wait(task_list)
-            """
             print("Imaging complete:",time.time()-timage,"s")            
             print(dirty_img)
         
@@ -682,6 +529,25 @@ def main(args):
                     numpy_to_fits(np.nanmean(dirty_img,(2,3))/np.nanmean(inject_img,(2,3)),args.outpath + "/" + time_start_isot + "_response.fits")        
 
             #send to proc server
+            if args.search and not (args.multisend and len(args.multiport)>0):
+
+                if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                    #if args.multisend and len(args.multiport)>0:
+                    #    TXtask_list = []
+                    for i in range(args.num_chans):
+                        #if args.multisend and len(args.multiport)>0:
+                        #    TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,None,23,'',128,args.verbose,5,10,args.multiport[int(i%len(args.multiport))],ipaddress))
+                        #    if args.stagger_multisend>0: time.sleep(args.stagger_multisend)
+
+                        #else:
+                        #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
+                        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
+                        if args.verbose: print(msg)
+                        time.sleep(1)
+                    #if args.multisend and len(args.multiport)>0:
+                        #wait(TXtask_list)
+                        #for t in TXtask_list: print(t.result())
+            """
             if args.search:
                 
                 if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
@@ -690,7 +556,8 @@ def main(args):
                     for i in range(args.num_chans):
                         if args.multisend and len(args.multiport)>0:
                             TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,None,23,'',128,args.verbose,5,10,args.multiport[int(i%len(args.multiport))],ipaddress))
-                            time.sleep(1)
+                            if args.stagger_multisend>0: time.sleep(args.stagger_multisend)
+                            
                         else:
                             #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
                             msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
@@ -699,6 +566,7 @@ def main(args):
                     if args.multisend and len(args.multiport)>0:
                         wait(TXtask_list)
                         for t in TXtask_list: print(t.result())
+            """
             if filelabels[g] != args.filelabel or gulp < args.gulp_offset:#else:
                 print("Writing to last_frame.npy")
                 np.save(frame_dir + "last_frame.npy",dirty_img)
@@ -763,6 +631,7 @@ if __name__=="__main__":
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     #parser.add_argument('--multiimagepol',action='store_true',help='If set with --multiimage flag, runs separate threads for each polarization, otherwise ignored')
     parser.add_argument('--multisend',action='store_true',help='If set, uses multithreading to send data to the process server')
+    parser.add_argument('--stagger_multisend',type=float,help='Specifies the time in seconds between sending each subband, default 0 sends all at once',default=0)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
     args = parser.parse_args()
