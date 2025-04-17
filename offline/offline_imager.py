@@ -741,7 +741,7 @@ if __name__=="__main__":
     parser.add_argument('--num_inject',type=int,help='Number of injections, must be less than number of gulps',default=1)
     parser.add_argument('--sb',action='store_true',default=False,help='Use nsfrb_sbxx names')
     parser.add_argument('--num_chans',type=int,help='Number of channels',default=int(NUM_CHANNELS//AVERAGING_FACTOR))
-    parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)
+    parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=8)
     parser.add_argument('--flat_field',action='store_true',help='Illuminate all pixels uniformly')
     parser.add_argument('--gauss_field',action='store_true',help='Illuminate a gaussian source')
     parser.add_argument('--point_field',action='store_true',help='Illuminate a point source')

@@ -74,9 +74,9 @@ from nsfrb.config import tsamp as tsamp_ms
 from nsfrb.config import IMAGE_SIZE,bmin,flagged_antennas,bad_antennas,pixperFWHM,NUM_CHANNELS
 import json
 
-def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json"):
+def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json",image_flux=False):
     print("Initializing table " + astrocal_table)
-    arraykey = str('outriggers' if outriggers else 'core')
+    arraykey = str('outriggers' if outriggers else 'core') + str("_image" if image_flux else "")
     #read current table
     if len(glob.glob(astrocal_table))>0:
         f = open(astrocal_table,"r")
@@ -92,16 +92,16 @@ def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json
     f.close()
     return
 
-def update_speccal_table(bright_nvssnames,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,bright_resid,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,resid_th=np.inf,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps):
+def update_speccal_table(bright_nvssnames,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,bright_resid,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,resid_th=np.inf,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False):
     """
     This function updates the flux calibration table with the most
     recent NVSS observations.
     """
     #read current table
     if init:
-        init_table(outriggers,speccal_table)
+        init_table(outriggers,speccal_table,image_flux=image_flux)
     f = open(speccal_table,"r")
-    arraykey = str('outriggers' if outriggers else 'core')
+    arraykey = str('outriggers' if outriggers else 'core') + str("_image" if image_flux else "")
     tab = json.load(f)
     f.close()
 
@@ -159,17 +159,17 @@ def update_speccal_table(bright_nvssnames,bright_fnames,bright_measfluxs,bright_
         pfunc = np.poly1d(popt)
         pfunc_down = np.poly1d(popt - popterrs)
         pfunc_up = np.poly1d(popt + popterrs)
-        tab[str('outriggers' if outriggers else 'core') + "_slope"] = float(popt[0])
-        tab[str('outriggers' if outriggers else 'core') + "_slope_error"] = float(popterrs[0])
-        tab[str('outriggers' if outriggers else 'core') + "_int"] = float(popt[1])
-        tab[str('outriggers' if outriggers else 'core') + "_int_error"] = float(popterrs[1])
+        tab[arraykey + "_slope"] = float(popt[0])
+        tab[arraykey + "_slope_error"] = float(popterrs[0])
+        tab[arraykey + "_int"] = float(popt[1])
+        tab[arraykey + "_int_error"] = float(popterrs[1])
         print("Updated flux conversion fit: FLUX = (",popt[1],"+-",popterrs[1],") + (",popt[0],"+-",popterrs[0],")MEAS_FLUX") 
         if np.sum(allresids>resid_th)>0:
             Smin = np.nanpercentile(allnvssfluxes[allresids>resid_th],90)
             print("Estimating sensitivity limit from 90th percentile of sources with residuals>",resid_th,": Smin=",Smin,"mJy")
-            tab[str('outriggers' if outriggers else 'core') + "_Smin"] = Smin
+            tab[arraykey + "_Smin"] = Smin
         else:
-            tab[str('outriggers' if outriggers else 'core') + "_Smin"] = np.nan
+            tab[arraykey + "_Smin"] = np.nan
     except Exception as exc:
         badsoln = True
         print("Flux cal linear fit failed with error:",exc)
@@ -195,12 +195,12 @@ def update_speccal_table(bright_nvssnames,bright_fnames,bright_measfluxs,bright_
     plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
     plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
-    if not badsoln and not np.isnan(tab[str('outriggers' if outriggers else 'core') + "_Smin"]):
-        plt.axhline(tab[str('outriggers' if outriggers else 'core') + "_Smin"],color='purple',linestyle='--')
+    if not badsoln and not np.isnan(tab[arraykey + "_Smin"]):
+        plt.axhline(tab[arraykey+ "_Smin"],color='purple',linestyle='--')
     #plt.yscale("log")
     #plt.xscale("log")
     plt.colorbar(label="Normalized RMS Residual")
-    plt.savefig(img_dir+"NVSStotal_"+ str("outriggers_" if outriggers else "")+"speccal.png")
+    plt.savefig(img_dir+"NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + "speccal.png")
     plt.close()
     
     return
@@ -418,11 +418,30 @@ def main(args):
     vis_nvsscoords = allnvsscoords[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
     vis_nvssfluxes = allnvssfluxes[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
     vis_nvssms = allnvssms[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
-    fluxth = np.sort(vis_nvssfluxes)[-args.numsources]
-    bright_nvsscoords = vis_nvsscoords[vis_nvssfluxes>=fluxth]
-    bright_nvssfluxes = vis_nvssfluxes[vis_nvssfluxes>=fluxth]
-    bright_nvssms = vis_nvssms[vis_nvssfluxes>=fluxth]
-    print("Running astrometric calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest NVSS sources at dec=" + str(search_dec) + ":")
+
+    #single nvss source
+    if len(args.nvss)>0:
+        idxs = []
+        idxnames = []
+        for i in range(len(args.nvss)):
+            print(args.nvss[i])
+            idx = np.argmin(SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords).value)
+            if SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords).to(u.arcsecond).value[idx] < 1:
+                idxs.append(np.argmin(SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords).value))
+                idxnames.append(args.nvss[i])
+            else:
+                print(args.nvss[i],"not found")
+        idxs = np.array(idxs)
+        bright_nvsscoords = vis_nvsscoords[idxs]
+        bright_nvssfluxes = vis_nvssfluxes[idxs]
+        bright_nvssms = vis_nvssms[idxs]
+        print("Running astrometric calibration pipeline with NVSS sources ",idxnames)
+    else:
+        fluxth = np.sort(vis_nvssfluxes)[-args.numsources]
+        bright_nvsscoords = vis_nvsscoords[vis_nvssfluxes>=fluxth]
+        bright_nvssfluxes = vis_nvssfluxes[vis_nvssfluxes>=fluxth]
+        bright_nvssms = vis_nvssms[vis_nvssfluxes>=fluxth]
+        print("Running astrometric calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest NVSS sources at dec=" + str(search_dec) + ":")
 
     #find the files within the timestamp
     besttime = []
@@ -531,6 +550,7 @@ def main(args):
                         os.system("cp " + vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out " + copydir)
                         dat_i,sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
                     else:
+                        print(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")
                         dat_i,sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
 
                     print(mjd,dec,sb)
@@ -698,11 +718,11 @@ def main(args):
         plt.figure(figsize=(12,12))
         fullmean = True
         median_sub = False
-        vmin=None#None#-np.nanmax(full_img.mean((2,3)))/4#-1
-        vmax=None#None#np.nanmax(full_img.mean((2,3)))/4#1 #0.2#1
+        vmin=args.vmin#None#-np.nanmax(full_img.mean((2,3)))/4#-1
+        vmax=args.vmax#None#np.nanmax(full_img.mean((2,3)))/4#1 #0.2#1
 
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=(full_img.mean((2,3))).flatten(),alpha=1,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=(full_img.mean((2,3))).flatten(),alpha=0.5,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_nvsscoords[bright_idx].ra.to(u.deg).value,bright_nvsscoords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
         plt.xlim(bright_nvsscoords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
         plt.ylim(bright_nvsscoords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))
@@ -723,61 +743,72 @@ def main(args):
         if savestuff:
             plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
         plt.close()
-
+        print("NEW FIG SAVED:",img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
 
         #FLUX CAL
-
-        #re-do baselines and plot visibilities
-        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
-        pt_dec = dec*np.pi/180.
-        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-
-        plt.figure(figsize=(12,12))
-        plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='grey',markersize=3)
-        if outriggers:
-            plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
-            plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
-
         ff = 1.53-np.arange(8192)*0.25/8192
         fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
         fobs = np.reshape(fobs,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)
-
-
-
-        HA = (get_ra(mjd + gulps[0]*tsamp_ms*gulpsize/1000/86400,dec) - bright_pixcoord.ra.value)
-        srcdec = bright_pixcoord.dec.value
         
-        print("Phasing Visibilities to Hour Angle ",HA," deg, Declination ",srcdec," and beamforming...")
-        generate_rephasing_table(
+        if args.image_flux:
+            bright_pixel = np.unravel_index(np.argmin(bright_pixcoord.separation(SkyCoord(ra=ra_grid_2D*u.deg,dec=dec_grid_2D*u.deg,frame='icrs')).value),ra_grid_2D.shape)
+            bright_dynspec = full_img[bright_pixel[0],bright_pixel[1],:,:]
+            bright_measfluxs.append(np.nanmean(bright_dynspec))
+            bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
+        else:
+            #re-do baselines and plot visibilities
+            test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+            pt_dec = dec*np.pi/180.
+            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+
+            ff = 1.53-np.arange(8192)*0.25/8192
+            fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+            fobs = np.reshape(fobs,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)
+    
+    
+
+            plt.figure(figsize=(12,12))
+            plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='grey',markersize=3)
+            if outriggers:
+                plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
+                plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
+
+
+
+            HA = (get_ra(mjd + gulps[0]*tsamp_ms*gulpsize/1000/86400,dec) - bright_pixcoord.ra.value)
+            srcdec = bright_pixcoord.dec.value
+        
+            print("Phasing Visibilities to Hour Angle ",HA," deg, Declination ",srcdec," and beamforming...")
+            generate_rephasing_table(
                 HA, srcdec, blen, pt_dec, gulpsize, tsamp, antenna_order, outrigger_delays, bname, refmjd,
                 outname=table_dir + "/tmp_fringestopping_table_cal")
-        vis_model = fringestopping.zenith_visibility_model(fobs, fstable=table_dir + '/tmp_fringestopping_table_cal.npz')[0,:,:,:,:].repeat(2,3)
-        dat_copy /= vis_model
-        print("Reflagging...")
-        print("Vis shape:",dat_copy.shape)
+            vis_model = fringestopping.zenith_visibility_model(fobs, fstable=table_dir + '/tmp_fringestopping_table_cal.npz')[0,:,:,:,:].repeat(2,3)
+            dat_copy /= vis_model
+            print("Reflagging...")
+            print("Vis shape:",dat_copy.shape)
         
-        dat, bname, blen, UVW, antenna_order = flag_vis(dat_copy, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
-        print("Vis shape:",dat.shape)
-        print("Done")
-        
-
-        plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='red',markersize=5)
-        if not outriggers:
-            plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
-            plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
-        plt.scatter(UVW[0,:,0],UVW[0,:,1],marker='o',c=np.real(np.nanmean(dat,(0,2,3))),s=100,alpha=0.8,cmap='cool',zorder=100)
-        plt.xlabel("U (m)")
-        plt.ylabel("V (m)")
-        plt.colorbar(label="Real Mean Visibility")
-        plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-        if savestuff:
-            plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"baselinecal.png")
-        plt.close()
+            dat, bname, blen, UVW, antenna_order = flag_vis(dat_copy, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+            print("Vis shape:",dat.shape)
+            print("Done")
         
 
-        bright_measfluxs.append(np.nanmean(np.real(dat)))
-        bright_measfluxerrs.append(np.nanstd(np.real(dat))/np.sqrt(len(dat.flatten())))
-        if np.nanmean(np.real(dat))<0:
+            plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='red',markersize=5)
+            if not outriggers:
+                plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
+                plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
+            plt.scatter(UVW[0,:,0],UVW[0,:,1],marker='o',c=np.real(np.nanmean(dat,(0,2,3))),s=100,alpha=0.8,cmap='cool',zorder=100)
+            plt.xlabel("U (m)")
+            plt.ylabel("V (m)")
+            plt.colorbar(label="Real Mean Visibility")
+            plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
+            if savestuff:
+                plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"baselinecal.png")
+            plt.close()
+        
+            bright_dynspec = np.real(np.nanmean(dat,(1,3)))
+            bright_measfluxs.append(np.nanmean(np.real(dat)))
+            bright_measfluxerrs.append(np.nanstd(np.real(dat))/np.sqrt(len(dat.flatten())))
+        if bright_measfluxs[-1]<0:
             bright_measfluxs[-1] = -1
             bright_measfluxerrs[-1] = -1
             continue
@@ -787,7 +818,6 @@ def main(args):
         print("")
         
         #plotting
-        bright_dynspec = np.real(np.nanmean(dat,(1,3)))
         print(bright_dynspec.shape)
         print(bright_dynspec)
         plt.figure(figsize=(16,12))
@@ -814,43 +844,44 @@ def main(args):
         plt.subplots_adjust(hspace=0,wspace=0)
         plt.suptitle("real",fontsize=25)
         if savestuff:
-            plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"realvisspeccal.png")
+            plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+str("image" if args.image_flux else "realvis")+"speccal.png")
 
         plt.close()
 
-        bright_dynspec = np.imag(np.nanmean(dat,(1,3)))
-        plt.figure(figsize=(16,12))
-        plt.subplot(2,2,1,facecolor='black')
-        plt.step(np.arange(gulpsize)*tsamp_ms/1000,np.nanmean(bright_dynspec,1),linewidth=4)
-        plt.xlim(0,tsamp_ms*gulpsize/1000)
+        if not args.image_flux:
+            bright_dynspec = np.imag(np.nanmean(dat,(1,3)))
+            plt.figure(figsize=(16,12))
+            plt.subplot(2,2,1,facecolor='black')
+            plt.step(np.arange(gulpsize)*tsamp_ms/1000,np.nanmean(bright_dynspec,1),linewidth=4)
+            plt.xlim(0,tsamp_ms*gulpsize/1000)
 
-        plt.subplot(2,2,4,facecolor='black')
-        plt.step(np.nansum(bright_dynspec,0),fobs,linewidth=1)
-        cm = plt.get_cmap('Blues')
-        for i in range(gulpsize):
-            plt.step(np.nansum(bright_dynspec[:i+1,:],0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
-        plt.ylim(fobs[-1],fobs[0])
-        plt.scatter([],[],c=[],vmin=0,vmax=tsamp_ms*gulpsize/1000,cmap='Blues')
-        plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-        plt.colorbar(label='Time (s)')
+            plt.subplot(2,2,4,facecolor='black')
+            plt.step(np.nansum(bright_dynspec,0),fobs,linewidth=1)
+            cm = plt.get_cmap('Blues')
+            for i in range(gulpsize):
+                plt.step(np.nansum(bright_dynspec[:i+1,:],0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
+            plt.ylim(fobs[-1],fobs[0])
+            plt.scatter([],[],c=[],vmin=0,vmax=tsamp_ms*gulpsize/1000,cmap='Blues')
+            plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
+            plt.colorbar(label='Time (s)')
 
-        plt.subplot(2,2,3)
-        plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize/1000,fobs[-1],fobs[0]))
-        plt.xlim(0,tsamp_ms*gulpsize/1000)
-        plt.ylim(fobs[-1],fobs[0])
-        plt.xlabel("Time (s)")
-        plt.ylabel("Frequency (GHz)")
-        plt.subplots_adjust(hspace=0,wspace=0)
-        plt.suptitle("imaginary",fontsize=25)
+            plt.subplot(2,2,3)
+            plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize/1000,fobs[-1],fobs[0]))
+            plt.xlim(0,tsamp_ms*gulpsize/1000)
+            plt.ylim(fobs[-1],fobs[0])
+            plt.xlabel("Time (s)")
+            plt.ylabel("Frequency (GHz)")
+            plt.subplots_adjust(hspace=0,wspace=0)
+            plt.suptitle("imaginary",fontsize=25)
 
-        if savestuff:
-            plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"imagvisspeccal.png")
-        plt.close()
+            if savestuff:
+                plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"imagvisspeccal.png")
+            plt.close()
     
     print(bright_measfluxs)
 
     update_astrocal_table(bright_nvssnames,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,outriggers,init=args.init_astrocal,resid_th=args.resid_th,exclude_table=exclude_table)
-    update_speccal_table(bright_nvssnames,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,bright_resid,outriggers,init=args.init_speccal,resid_th=args.resid_th,exclude_table=exclude_table)
+    update_speccal_table(bright_nvssnames,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,bright_resid,outriggers,init=args.init_speccal,resid_th=args.resid_th,exclude_table=exclude_table,image_flux=args.image_flux)
     return
 
 if __name__=="__main__":
@@ -859,7 +890,7 @@ if __name__=="__main__":
     parser.add_argument('--init_speccal',action='store_true',help='Initialize json flux cal table')
     parser.add_argument('--UTCday',type=str,help='UTC day to run fluxcal with in ISO format (e.g. 2024-06-12); if not given, uses the previous day',default=Time(Time.now().mjd,format='mjd').isot[:10])
     parser.add_argument('--numsources',type=int,help='Maximum number of sources to use for fluxcal, takes the brightest within 0.5 degrees of the current dec, default=10',default=10)
-    parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)
+    parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=8)
     parser.add_argument('--image_size',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     parser.add_argument('--buff',type=int,help='Radius in pixels around the NVSS position to search for peak pixel, default=5',default=5)
@@ -872,5 +903,9 @@ if __name__=="__main__":
     parser.add_argument('--dec',type=float,help='Pointing declination to search for calibrators, ideally the one that the array has targeted over the day in question, default pulls the dec on the given day at 12:00:00 UTC from ETCD',default=180)
     parser.add_argument('--outriggers',action='store_true',help='Includes outrigger antennas in imaging')
     parser.add_argument('--resid_th',type=float,help='Maximum allowed normalized residual to include in astrometric or flux cal; default=0.2',default=0.2)
+    parser.add_argument('--image_flux',action='store_true',help='Derive flux from image instead of beamformed flux')
+    parser.add_argument('--nvss',nargs='+',type=str,help='J-name of specific NVSS source to calibrate on; e.g. \'J182210+160015\'',default=[])
+    parser.add_argument('--vmin',type=float,help='VMIN for astrocal plot',default=0)
+    parser.add_argument('--vmax',type=float,help='VMAX for astrocal plot',default=5e-5)
     args = parser.parse_args()
     main(args)
