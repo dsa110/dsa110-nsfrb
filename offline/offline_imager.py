@@ -186,6 +186,7 @@ def main(args):
     if args.multisend and len(args.multiport)>0:
         print("Using multi-threaded TX client ",args.maxProcesses,"threads and " + str(len(args.multiport)) + " ports")
         TXexecutor = ThreadPoolExecutor(args.maxProcesses)
+        global TXtask_list
 
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,args.num_chans))
     #dirty_img_init = dict()
@@ -547,6 +548,10 @@ def main(args):
                     #if args.multisend and len(args.multiport)>0:
                         #wait(TXtask_list)
                         #for t in TXtask_list: print(t.result())
+            elif args.search and args.multisend and len(args.multiport)>0:
+                wait(TXtask_list)
+                for t in TXtask_list: print(t.result())
+                TXtask_list = []
             """
             if args.search:
                 
