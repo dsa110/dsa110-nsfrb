@@ -55,8 +55,8 @@ wavs = c/(freqs*1e6) #m
 
 #flagged antennas/
 TXtask_list = []
-def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W=None, Nlayers_w=18,pixperFWHM=pixperFWHM,
-                        port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
+"""
+def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W=None, Nlayers_w=18,pixperFWHM=pixperFWHM):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
 
     outimage = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,1)) 
 
@@ -67,7 +67,7 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
         U_wav = U/(2.998e8/fobs_j[jj]/1e9)
         V_wav = V/(2.998e8/fobs_j[jj]/1e9)
         W_wav = None if not wstack else W/(2.998e8/fobs_j[jj]/1e9)
-        uniform_grid(U_wav, V_wav, gridsize, pixel_resolution, pixperFWHM, w=W_wav, wstack=wstack)
+        #uniform_grid(U_wav, V_wav, gridsize, pixel_resolution, pixperFWHM, w=W_wav, wstack=wstack)
         if briggs:
             if wstack:
                 i_indices,j_indices,k_indices,i_conj_indices,j_conj_indices,k_conj_indices = uniform_grid(U_wav, V_wav, gridsize, pixel_resolution, pixperFWHM, w=W_wav, wstack=wstack)
@@ -75,72 +75,101 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
                 i_indices,j_indices,i_conj_indices,j_conj_indices = uniform_grid(U_wav, V_wav, gridsize, pixel_resolution, pixperFWHM, w=W_wav, wstack=wstack)
                 #print("indices:",i_indices,j_indices,i_conj_indices,j_conj_indices)
                 bweights = briggs_weighting(U_wav, V_wav, args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
+"""
+def offline_image_task(dat, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None, k_indices_all=None, k_conj_indices_all=None, Nlayers_w=18,pixperFWHM=pixperFWHM):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
 
-        for i in range(dat.shape[0]):
-            for k in range(dat.shape[-1]):
+    outimage = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples))
+    for jj in range(nchans_per_node):
+        if briggs:
+            #print("INPUT SHAPE",dat[:,:,jj,:].mean(2))#dat[:,:,jj,:].transpose((0,2,1)).shape)
+            outimage = revised_robust_image(dat[:,:,jj,:].mean(2),#.transpose((0,2,1)),#dat[i:i+1, :, jj, k],
+                                            U_wavs[:,jj],
+                                            V_wavs[:,jj],
+                                            gridsize,
+                                            inject_img=None if np.all(inject_img==0) else inject_img/dat.shape[-1]/nchans_per_node,
+                                            robust=robust,
+                                            inject_flat=inject_flat,
+                                            pixel_resolution=pixel_resolution,
+                                            wstack=wstack,
+                                            w=None if W_wavs is None else W_wavs[:,jj],
+                                            Nlayers_w=Nlayers_w,
+                                            pixperFWHM=pixperFWHM,
+                                            i_indices=i_indices_all[:,jj],
+                                            j_indices=j_indices_all[:,jj],
+                                            k_indices=None if not wstack else k_indices_all[:,jj],
+                                            i_conj_indices=i_conj_indices_all[:,jj],
+                                            j_conj_indices=j_conj_indices_all[:,jj],
+                                            k_conj_indices=None if not wstack else k_conj_indices_all[:,jj],clipuv=False,keeptime=True)
+        else:
+            for i in range(dat.shape[0]):
+                #for k in range(dat.shape[-1]):
+                """
                 if briggs:
-                    if k == 0 and jj == 0:
-                        outimage[:,:,i,0] = revised_robust_image(dat[i:i+1, :, jj, k],
-                                            U_wav,
-                                            V_wav,
+                    if jj==0:#k == 0 and jj == 0:
+                    outimage[:,:,i,0] = revised_robust_image(dat[i,:,jj,:].transpose((1,0)),#dat[i:i+1, :, jj, k],
+                                            U_wavs[:,jj],
+                                            V_wavs[:,jj],
                                             gridsize,
                                             inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
                                             robust=robust,
                                             inject_flat=inject_flat,
                                             pixel_resolution=pixel_resolution,
                                             wstack=wstack,
-                                            w=W_wav,
+                                            w=None if W_wavs is None else W_wavs[:,jj],
                                             Nlayers_w=Nlayers_w,
                                             pixperFWHM=pixperFWHM,
-                                            i_indices=i_indices,
-                                            j_indices=j_indices,
-                                            k_indices=None if not wstack else k_indices,
-                                            i_conj_indices=i_conj_indices,
-                                            j_conj_indices=j_conj_indices,
-                                            k_conj_indices=None if not wstack else k_conj_indices)
-                    else:
-                        outimage[:,:,i,0] += revised_robust_image(dat[i:i+1, :, jj, k],
-                                            U_wav,
-                                            V_wav,
+                                            i_indices=i_indices_all[:,jj],
+                                            j_indices=j_indices_all[:,jj],
+                                            k_indices=None if not wstack else k_indices_all[:,jj],
+                                            i_conj_indices=i_conj_indices_all[:,jj],
+                                            j_conj_indices=j_conj_indices_all[:,jj],
+                                            k_conj_indices=None if not wstack else k_conj_indices_all[:,jj],clipuv=False)
+                else:
+                
+                outimage[:,:,i,0] += revised_robust_image(dat[i,:,jj,:].transpose((1,0)),#dat[i:i+1, :, jj, k],
+                                            U_wavs[:,jj],
+                                            V_wavs[:,jj],
                                             gridsize,
                                             inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
                                             robust=args.robust,
                                             inject_flat=inject_flat,
                                             pixel_resolution=pixel_resolution,
                                             wstack=wstack,
-                                            w=W_wav,
+                                            w=None if W_wavs is None else W_wavs[:,jj],
                                             Nlayers_w=Nlayers_w,
                                             pixperFWHM=pixperFWHM,
-                                            i_indices=i_indices,
-                                            j_indices=j_indices,
-                                            k_indices=None if not wstack else k_indices,
-                                            i_conj_indices=i_conj_indices,
-                                            j_conj_indices=j_conj_indices,
-                                            k_conj_indices=None if not wstack else k_conj_indices)
+                                            i_indices=i_indices_all[:,jj],
+                                            j_indices=j_indices_all[:,jj],
+                                            k_indices=None if not wstack else k_indices_all[:,jj],
+                                            i_conj_indices=i_conj_indices_all[:,jj],
+                                            j_conj_indices=j_conj_indices_all[:,jj],
+                                            k_conj_indices=None if not wstack else k_conj_indices_all[:,jj],clipuv=False)
+                
                 else:
-                    if k == 0 and jj == 0:
-                        outimage[:,:,i,0] = revised_uniform_image(dat[i:i+1, :, jj, k],
-                                            U_wav,
-                                            V_wav,
+                """
+                if jj==0:#k == 0 and jj == 0:
+                    outimage[:,:,i] = revised_uniform_image(dat[i,:,jj,:].transpose((1,0)),#dat[i:i+1, :, jj, k],
+                                            U_wavs[:,jj],
+                                            V_wavs[:,jj],
                                             gridsize,
                                             inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
                                             inject_flat=inject_flat,
                                             pixel_resolution=pixel_resolution,wstack=wstack,
-                                            w=W_wav,
+                                            w=W_wavs[:,jj],
                                             Nlayers_w=Nlayers_w,
                                             pixperFWHM=pixperFWHM)
-                    else:
-                        outimage[:,:,i,0] += revised_uniform_image(dat[i:i+1, :, jj, k],
-                                            U_wav,
-                                            V_wav,
+                else:
+                    outimage[:,:,i] += revised_uniform_image(dat[i,:,jj,:].transpose((1,0)),#dat[i:i+1, :, jj, k],
+                                            U_wavs[:,jj],
+                                            V_wavs[:,jj],
                                             gridsize,
                                             inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/nchans_per_node,
                                             inject_flat=inject_flat,
                                             pixel_resolution=pixel_resolution,wstack=wstack,
-                                            w=W_wav,
+                                            w=W_wavs[:,jj],
                                             Nlayers_w=Nlayers_w,
                                             pixperFWHM=pixperFWHM)
-
+    """
     print("it's sending from here")
     if port > 0 and len(ipaddress)>0:
         if TXexecutor is not None:
@@ -149,6 +178,7 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
         else:
             msg=send_data(time_start_isot, uv_diag, Dec, outimage ,verbose=True,retries=5,keepalive_time=10,port=port,ipaddress=ipaddress)
             print(msg)
+    """
     return outimage,j
 
 
@@ -192,21 +222,12 @@ def main(args):
     else: TXexecutor = None
 
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,args.num_chans))
-    #dirty_img_init = dict()
-    #for i in range(args.num_chans):
-    #    dirty_img_init[i] = False
+    """
     def image_future_callback(future):
         print("Callback ",future.result()[1])#,future.result()[2])
         dirty_img[:,:,:,future.result()[1]] = future.result()[0][:,:,:,0] #np.nansum(np.concatenate([dirty_img[:,:,:,future.result()[1],np.newaxis],future.result()[0][:,:,:,np.newaxis]],3),axis=3)
-        """
-        if not dirty_img_init[future.result()[1]]: 
-            print(">>initializing")
-            dirty_img[:,:,:,future.result()[1]] = future.result()[0]
-            dirty_img_init[future.result()[1]] = True
-            print(">>",dirty_img_init)
-        else: dirty_img[:,:,:,future.result()[1]] += future.result()[0]
-        """
         return
+    """
 
     for gulp in range(args.gulp_offset - (1 if args.gulp_offset>0 and args.search else 0),args.gulp_offset + num_gulps):
         
@@ -307,6 +328,12 @@ def main(args):
             W = UVW[0,:,2]
             uv_diag=np.max(np.sqrt(U**2 + V**2))
             pixel_resolution = (0.20 / uv_diag) / args.pixperFWHM
+
+            #use pixel resolution to get uv max and re-flag
+            bmax = (2.998e8/np.max(fobs)/1e9)/pixel_resolution/2
+            print("Max baseline:",bmax,"meters")
+            dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, [], bmin, [], flag_channel_templates =[] , bmax=bmax)
+
             if verbose: print(antenna_order,len(antenna_order))#x_m.shape,y_m.shape,z_m.shape)
             if verbose: print(UVW.shape,U.shape,V.shape,W.shape)
             if verbose: print(UVW)
@@ -400,6 +427,36 @@ def main(args):
             if args.multiimage:
                 task_list = []
                 for j in range(args.num_chans):
+                    tgrid = time.time()
+                    print("gridding in advance...")
+                    #make U,V,Ws in advance
+                    U_wavs = np.zeros((len(U),args.nchans_per_node))
+                    V_wavs = np.zeros((len(V),args.nchans_per_node))
+                    W_wavs = np.zeros((len(W),args.nchans_per_node))
+                    i_indices_all = np.zeros(U_wavs.shape,dtype=int)
+                    j_indices_all = np.zeros(V_wavs.shape,dtype=int)
+                    k_indices_all = np.zeros(W_wavs.shape,dtype=int)
+                    i_conj_indices_all = np.zeros(U_wavs.shape,dtype=int)
+                    j_conj_indices_all = np.zeros(V_wavs.shape,dtype=int)
+                    k_conj_indices_all = np.zeros(W_wavs.shape,dtype=int)
+                    bweights_all = np.zeros(U_wavs.shape)
+                    for jj in range(args.nchans_per_node):
+                        chanidx = (args.nchans_per_node*j)+jj
+                        U_wavs[:,jj] = U/(2.998e8/fobs[chanidx]/1e9)
+                        V_wavs[:,jj] = V/(2.998e8/fobs[chanidx]/1e9)
+                        if args.wstack:
+                            W_wavs[:,jj] = W/(2.998e8/fobs[chanidx]/1e9)
+                        if args.briggs:
+                            if args.wstack:
+                                i_indices_all[:,jj],j_indices_all[:,jj],k_indices_all[:,jj],i_conj_indices_all[:,jj],j_conj_indices_all[:,jj],k_conj_indices_all[:,jj] = uniform_grid(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, pixel_resolution, args.pixperFWHM, w=W_wavs[:,jj], wstack=args.wstack)
+                            else:
+                                i_indices_all[:,jj],j_indices_all[:,jj],i_conj_indices_all[:,jj],j_conj_indices_all[:,jj] = uniform_grid(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, pixel_resolution, args.pixperFWHM, w=W_wavs[:,jj], wstack=args.wstack)
+                            bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
+                    #ftime = open(timelogfile,"a")
+                    #ftime.write("[grid] " + str(time.time()-tgrid)+"\n")
+                    #ftime.close()
+                    
+
                     print("submitting task:",j)
                     if args.search and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
                         if (args.multisend and len(args.multiport)>0):
@@ -410,6 +467,32 @@ def main(args):
                             port_j = -1
                     else:
                         port_j = -1
+                    task_list.append(executor.submit(offline_image_task,dat[:,:,j*args.nchans_per_node:(j+1)*args.nchans_per_node,:],
+                                                    U_wavs,
+                                                    V_wavs,
+                                                    i_indices_all,
+                                                    j_indices_all,
+                                                    i_conj_indices_all,
+                                                    j_conj_indices_all,
+                                                    bweights_all,
+                                                    args.gridsize,
+                                                    pixel_resolution,
+                                                    args.nchans_per_node,
+                                                    fobs[j*args.nchans_per_node:(j+1)*args.nchans_per_node],
+                                                    j,
+                                                    args.briggs,
+                                                    args.robust,
+                                                    False,
+                                                    inject_img[:,:,:,j],
+                                                    (args.point_field or args.gauss_field or args.flat_field),
+                                                    args.wstack,
+                                                    W_wavs,
+                                                    k_indices_all,
+                                                    k_conj_indices_all,
+                                                    args.Nlayers,
+                                                    args.pixperFWHM))
+                    #task_list[-1].add_done_callback(image_future_callback)
+                    """
                     task_list.append(executor.submit(offline_image_task,dat[:,:,j*args.nchans_per_node:(j+1)*args.nchans_per_node,:],
                                                     U,
                                                     V,
@@ -426,16 +509,23 @@ def main(args):
                                                     args.wstack,
                                                     W,
                                                     args.Nlayers,
-                                                    args.pixperFWHM,
-                                                    port_j,
-                                                    ipaddress,
-                                                    time_start_isot, 
-                                                    uv_diag, 
-                                                    Dec,
-                                                    TXexecutor,
-                                                    args.stagger_multisend))
+                                                    args.pixperFWHM))
+                                                    #,
+                                                    #port_j,
+                                                    #ipaddress,
+                                                    #time_start_isot, 
+                                                    #uv_diag, 
+                                                    #Dec,
+                                                    #TXexecutor,
+                                                    #args.stagger_multisend))
                     task_list[-1].add_done_callback(image_future_callback)
+                    """
                 wait(task_list)
+                for t in task_list:
+                    dirty_img[:,:,:,t.result()[1]] = t.result()[0]
+                ftime = open(timelogfile,"a")
+                ftime.write("[image] " + str(time.time()-timage)+"\n")
+                ftime.close()
             else:
                 for j in range(args.num_chans):
                     for jj in range(args.nchans_per_node):
@@ -443,7 +533,7 @@ def main(args):
                         U_wav = U/(2.998e8/fobs[chanidx]/1e9)
                         V_wav = V/(2.998e8/fobs[chanidx]/1e9)
                         W_wav = None if not args.wstack else W/(2.998e8/fobs[chanidx]/1e9)
-                        uniform_grid(U_wav, V_wav, args.gridsize, pixel_resolution, args.pixperFWHM, w=W_wav, wstack=args.wstack)
+                        #uniform_grid(U_wav, V_wav, args.gridsize, pixel_resolution, args.pixperFWHM, w=W_wav, wstack=args.wstack)
                         if args.briggs:
                             if args.wstack:
                                 i_indices,j_indices,k_indices,i_conj_indices,j_conj_indices,k_conj_indices = uniform_grid(U_wav, V_wav, args.gridsize, pixel_resolution, args.pixperFWHM, w=W_wav, wstack=args.wstack)
@@ -522,7 +612,7 @@ def main(args):
         
         
         
-        
+            timage = time.time() 
         
             #save image to fits, numpy file
             if args.save and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
@@ -535,7 +625,7 @@ def main(args):
                     numpy_to_fits(np.nanmean(dirty_img,(2,3))/np.nanmean(inject_img,(2,3)),args.outpath + "/" + time_start_isot + "_response.fits")        
 
             #send to proc server
-            if args.search and filelabels[g] == args.filelabel and gulp>=args.gulp_offset and not args.multisend:
+            if args.search and filelabels[g] == args.filelabel and gulp>=args.gulp_offset and (not args.multisend) or (args.multisend and len(args.multiport)==0):
 
                 #if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
                 #if args.multisend and len(args.multiport)>0:
@@ -555,12 +645,19 @@ def main(args):
                     #wait(TXtask_list)
                     #for t in TXtask_list: print(t.result())
             elif args.search and args.multisend and len(args.multiport)>0 and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                for i in range(args.num_chans):
+                    print("SENDING IMAGE OF SHAPE:",dirty_img[:,:,:,i].shape,"on port",args.multiport[int(i%len(args.multiport))])
+                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(i%len(args.multiport))])
+                    if args.verbose: print(msg)
+                    if args.stagger_multisend>0: time.sleep(args.stagger_multisend)
+                """
                 print(TXtask_list)
                 wait(TXtask_list)
                 for t in TXtask_list: print(t.result())
                 TXtask_list = []
+                """
             ftime = open(timelogfile,"a")
-            ftime.write("[image/send] " + str(time.time()-timage)+"\n")
+            ftime.write("[send] " + str(time.time()-timage)+"\n")
             ftime.close()
             """
             if args.search:
