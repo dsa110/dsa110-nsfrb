@@ -2001,7 +2001,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
     ftime = open(timelogfile,"a")
-    ftime.write(str(time.time()-timing1)+"\n")
+    ftime.write("[search] " + str(time.time()-timing1)+"\n")
     ftime.close()
 
     if np.nanmax(fullimg.image_tesseract_searched)>SNRthresh:

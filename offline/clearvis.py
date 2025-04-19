@@ -1,4 +1,6 @@
 from pathlib import Path
+import copy
+from astropy.time import Time
 import glob
 import argparse
 import csv
@@ -7,14 +9,14 @@ import time
 import os
 import shutil
 import numpy as np
-
+from nsfrb.pipeline import read_raw_vis
 """
 This script waits for visibilities to pass their 1-day expiration, then deletes them
 """
 
 
 operations_dir = Path(os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/")
-subdirs_to_clear = [
+subdirs_to_clear_init = [
     ("lxd110h03","*.out"),
     ("lxd110h04","*.out"),
     ("lxd110h05","*.out"),
@@ -48,7 +50,6 @@ def main(args):
         print("Populated csv, returning")
         return 0
     """
-
     if args.populate:
         with open(vis_file,"w") as csvfile:
             for subdir, pattern in subdirs_to_clear:
@@ -61,8 +62,35 @@ def main(args):
         print("Populated csv, returning")
         return 0
 
+
     while True:
-        
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.waittime)
+        cutoff2 = Time.now().datetime - datetime.timedelta(days=args.waittime)
+        print(
+            f"Removing operation files last modified prior to "
+            f"{cutoff.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
+
+        #clear nvss and RFC calibrator stuff
+        subdirs_to_clear = copy.deepcopy(subdirs_to_clear_init)
+        if args.clearcal:
+            #print("Clearing NVSS and RFC data...")
+            caldirs = list(glob.glob(str(operations_dir) + "/NVSS*")) + list(glob.glob(str(operations_dir) + "/RFC*"))
+            subdirs_to_clear += [(os.path.basename(c),"*.out") for c in caldirs]
+            
+            """
+            for c in caldirs:
+                for file in Path(c).glob("*out"):
+                    tmp,mjd,tmp = read_raw_vis(str(file),get_header=True)
+                    if Time(mjd,format='mjd').datetime < cutoff2:
+                        print("Deleting " + str(file))
+                        try:
+                            file.unlink()
+                        except Exception as exc:
+                            print("File unlink failed:",exc)
+            print("Done")
+            """
+        print("SUBDIRS TO CLEAR:",subdirs_to_clear)
+
         #read vis files
         delidx_labels = dict()
         with open(vis_file,"r") as csvfile:
@@ -74,10 +102,6 @@ def main(args):
                 i+= 1
         delidx = []
         
-        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.waittime)
-        print(
-            f"Removing operation files last modified prior to "
-            f"{cutoff.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
         
         
         #first see if any have already been removed
@@ -97,21 +121,16 @@ def main(args):
                 # modtime is timezone naive, so we set it to utc
                 # lxc managed containers are all using utc
                 modtime = modtime.replace(tzinfo=cutoff.tzinfo)
-                if "59484" in str(file): print(modtime,cutoff,modtime<cutoff)
                 if modtime < cutoff:
                     print(modtime,cutoff)
                     print(f'Removing {file}')
                     
                     try:
                         file.unlink()
-                        #also check for files in NVSS directories
-                        #for nvssfile in (operations_dir).glob("/NVSS*/" + os.path.basename(str(file))):
-                        #    print(nvssfile)
-                        #    nvssfile.unlink()
                     except Exception as exc:
                         print("File unlink failed:",exc)
                         shutil.rmtree(file)
-                    if os.path.basename(str(file)) in delidx_labels.keys():
+                    if "lxd110" in str(subdir) and os.path.basename(str(file)) in delidx_labels.keys():
                         delidx.append(delidx_labels[os.path.basename(str(file))])
                     
         #remove from csv
@@ -131,6 +150,7 @@ if __name__=="__main__":
     parser.add_argument('--waittime',type=float,help='Time between clearing visibilities in days, default 1',default=1.0)
     parser.add_argument('--cadence',type=float,help='Time between checking for new vis to clear in hours, default 2',default=2.0)
     parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
+    parser.add_argument('--clearcal',action='store_true',default=False,help='Clear calibration data dirs (NVSS*, RFC*)')
     args = parser.parse_args()
 
     main(args)

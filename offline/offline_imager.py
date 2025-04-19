@@ -39,7 +39,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,timelogfile
 
 
 """
@@ -141,6 +141,7 @@ def offline_image_task(dat, U, V, gridsize,  pixel_resolution, nchans_per_node, 
                                             Nlayers_w=Nlayers_w,
                                             pixperFWHM=pixperFWHM)
 
+    print("it's sending from here")
     if port > 0 and len(ipaddress)>0:
         if TXexecutor is not None:
             TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, outimage[:,:,:,0] ,None,23,'',128,True,5,10,port,ipaddress))
@@ -183,10 +184,12 @@ def main(args):
     if args.multiimage:
         print("Using multi-threaded imaging with ",args.maxProcesses,"threads")
         executor = ThreadPoolExecutor(args.maxProcesses)
+    else: executor = None
     if args.multisend and len(args.multiport)>0:
         print("Using multi-threaded TX client ",args.maxProcesses,"threads and " + str(len(args.multiport)) + " ports")
         TXexecutor = ThreadPoolExecutor(args.maxProcesses)
         global TXtask_list
+    else: TXexecutor = None
 
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,args.num_chans))
     #dirty_img_init = dict()
@@ -401,8 +404,10 @@ def main(args):
                     if args.search and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
                         if (args.multisend and len(args.multiport)>0):
                             port_j = args.multiport[int(j%len(args.multiport))]
-                        else:
+                        elif args.multisend and len(args.multiport)==0:
                             port_j = args.port
+                        else:
+                            port_j = -1
                     else:
                         port_j = -1
                     task_list.append(executor.submit(offline_image_task,dat[:,:,j*args.nchans_per_node:(j+1)*args.nchans_per_node,:],
@@ -530,28 +535,33 @@ def main(args):
                     numpy_to_fits(np.nanmean(dirty_img,(2,3))/np.nanmean(inject_img,(2,3)),args.outpath + "/" + time_start_isot + "_response.fits")        
 
             #send to proc server
-            if args.search and not (args.multisend and len(args.multiport)>0):
+            if args.search and filelabels[g] == args.filelabel and gulp>=args.gulp_offset and not args.multisend:
 
-                if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                #if filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                #if args.multisend and len(args.multiport)>0:
+                #    TXtask_list = []
+                for i in range(args.num_chans):
                     #if args.multisend and len(args.multiport)>0:
-                    #    TXtask_list = []
-                    for i in range(args.num_chans):
-                        #if args.multisend and len(args.multiport)>0:
-                        #    TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,None,23,'',128,args.verbose,5,10,args.multiport[int(i%len(args.multiport))],ipaddress))
-                        #    if args.stagger_multisend>0: time.sleep(args.stagger_multisend)
+                    #    TXtask_list.append(TXexecutor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,None,23,'',128,args.verbose,5,10,args.multiport[int(i%len(args.multiport))],ipaddress))
+                    #    if args.stagger_multisend>0: time.sleep(args.stagger_multisend)
 
-                        #else:
-                        #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
-                        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
-                        if args.verbose: print(msg)
-                        time.sleep(1)
-                    #if args.multisend and len(args.multiport)>0:
-                        #wait(TXtask_list)
-                        #for t in TXtask_list: print(t.result())
-            elif args.search and args.multisend and len(args.multiport)>0:
+                    #else:
+                    #dirty_images_all_bytes = dirty_images_all.transpose((2, 3, 0, 1))[:,:,:,i].tobytes()
+                    print("SENDING IMAGE OF SHAPE:",dirty_img[:,:,:,i].shape)
+                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,i] ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.port)
+                    if args.verbose: print(msg)
+                    time.sleep(1)
+                #if args.multisend and len(args.multiport)>0:
+                    #wait(TXtask_list)
+                    #for t in TXtask_list: print(t.result())
+            elif args.search and args.multisend and len(args.multiport)>0 and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
+                print(TXtask_list)
                 wait(TXtask_list)
                 for t in TXtask_list: print(t.result())
                 TXtask_list = []
+            ftime = open(timelogfile,"a")
+            ftime.write("[image/send] " + str(time.time()-timage)+"\n")
+            ftime.close()
             """
             if args.search:
                 

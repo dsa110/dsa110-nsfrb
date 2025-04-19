@@ -286,7 +286,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
         corr_node = corraddrs[corr_address]
 
     content_length = int(HTTPheaderMsgStr[HTTPheaderMsgStr.index('Content-Length')+16:HTTPheaderMsgStr.index('Expect')-2])
-    shape = pipeline.get_shape_from_raw(bytes(NPheaderMsgHex,'utf-8'),headersize)#tuple(NPheaderMsgStr[NPheaderMsgStr.index('shape')+8:NPheaderMsgStr.index(')')+1])
+    shape = pipeline.get_shape_from_raw(bytes(NPheaderMsgHex,'utf-8'),headersize)[:3]#tuple(NPheaderMsgStr[NPheaderMsgStr.index('shape')+8:NPheaderMsgStr.index(')')+1])
     printlog("address:"+str(corr_address),output_file=processfile)
     printlog("corr:"+str(corr_node),output_file=processfile)
     printlog("img_id:" +str(img_id_isot),output_file=processfile)
@@ -496,6 +496,7 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
     if img_id_isot not in fullimg_dict.keys():
         fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])))
 
+    printlog("IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
     #add image and update flags
     fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
     #if the image is complete, start the search
@@ -827,204 +828,6 @@ def main(args):
             #    multiport_num_list.pop(jj)
 
 
-        """
-        printlog("accepting connection...",output_file=processfile,end='')
-        clientSocket,address = servSockD.accept()
-        clientSocket.setblocking(0)
-        corr_address, tmp = clientSocket.getpeername()
-        printlog("client: " + str(corr_address) + "...",output_file=processfile,end='')
-        recstatus = 1
-        fullMsg = ""
-        printlog("Done!",output_file=processfile)
-        printlog("Receiving data...",output_file=processfile)
-        
-        #set timeout and expected number of bytes to read
-        clientSocket.settimeout(args.timeout) 
-        totalbytes = 0
-        pflag = 0
-
-        #while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
-        t_timeout = time.time()
-        t_startread = time.time()
-        totalbyteshex =0
-        while (totalbyteshex < maxbyteshex) and time.time()-t_startread<60:# and time.time()-t_timeout<args.timeout:
-            try:
-                #check if data is ready to read first
-                t_ready = time.time()
-                while not select.select([clientSocket],[],[],args.timeout) and time.time()-t_ready<args.timeout:
-                    continue
-                if not select.select([clientSocket],[],[],args.timeout):
-                    raise socket.timeout
-                printlog("Data ready",output_file=processfile)
-                
-                (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(args.chunksize)#255)
-                #printlog(strData,output_file=processfile)
-                recstatus = len(strData)
-                if recstatus > 0: 
-                    t_timeout = time.time()
-                if recstatus == 0 and time.time()-t_timeout>args.timeout:
-                    raise socket.timeout
-
-                printlog("Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus),output_file=processfile)
-                #printlog("Read "+ str(len(strData.hex())) + " bytes, total "+ str(len(fullMsg+strData.hex())),output_file=processfile)
-                printlog("Message flags:" + str(msg_flags),output_file=processfile)
-                printlog("AncData:" + str(ancdata),output_file=processfile)
-                #if recstatus < args.chunksize:
-                #    printlog("--->" + str(strData),output_file=processfile)
-
-                #printlog(strData.hex(),output_file=processfile,end='')
-                fullMsg += strData.hex()
-                totalbytes += recstatus
-                totalbyteshex += len(strData.hex())
-                #don't know how long the header is, so don't start counting until hit NP data
-                if "93" in fullMsg:
-                    printlog("Found start byte at index " + str(fullMsg.index("93")),output_file=processfile)
-                    totalbytes = (len(fullMsg) - fullMsg.index("93"))//2
-                #if totalbytes >= maxbytes: printlog(strData,output_file=processfile)        
-            except Exception as ex:
-                if type(ex) == socket.timeout:
-                    printlog("Timed out after reading " + str(totalbytes) + " bytes; proceeding...",output_file=processfile)
-                    break
-                else:
-                    raise
-        printlog("Done! Total bytes read:" + str(totalbytes),output_file=processfile)
-        #printlog(bytes.fromhex(fullMsg[-7:-1]).decode('utf-8'),output_file=processfile)
-        #printlog(bytes.fromhex(fullMsg[:1024]).decode('utf-8'),output_file=processfile)
-        totalbytessend = 0
-        #successmsg = bytes(success + '0\n','utf-8')
-        #printlog("Sending response...",output_file=processfile,end='')
-        #while (totalbytessend < len(successmsg)):
-        #    totalbytessend += clientSocket.send(successmsg)        
-        #printlog("Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
-        
-        #check if data is the size we expect
-        try:
-            #assert(totalbytes>=maxbytes)
-            assert(totalbyteshex>=maxbyteshex)
-        except AssertionError as exc:
-            printlog("Invalid data size, " + str(totalbytes) + " received when expected at least " + str(maxbytes) + ": " + str(exc),output_file=processfile)
-            
-            printlog("Invalid data size, " + str(totalbyteshex) + " received when expected at least " + str(maxbyteshex) + ": " + str(exc),output_file=processfile)
-            printlog("Setting truncated data size flag...",output_file=processfile,end='')
-            pflag = set_pflag_loc("datasize_error")
-            if pflag == None:
-                printlog("Error setting flags, abort",output_file=processfile)
-                break
-            printlog("Done, continue",output_file=processfile)
-            #continue
-        if pflag != 0:
-            successmsg = bytes(success + str(pflag) + '\n','utf-8')
-            printlog("Sending response...",output_file=processfile,end='')
-            while (totalbytessend < len(successmsg)):
-                totalbytessend += clientSocket.send(successmsg)
-            printlog("Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)        
-            continue
-
-
-        #try to parse to get address
-        try:
-            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=args.headersize,datasize=args.datasize,port=args.port,corr_address=corr_address,testh23=args.testh23)
-            #if set_pflag_loc("all",on=False) == None:
-            #    printlog("Error setting flags, abort",processfile=processfile)
-            #    break
-        except Exception as exc:
-            if type(exc) == UnicodeDecodeError: 
-                printlog("Error parsing data: " + str(exc),output_file=processfile)
-                printlog("Setting parse error flag...",output_file=processfile,end='')
-                pflag = set_pflag_loc("parse_error")
-                if pflag == None: 
-                    printlog("Error setting flags, abort",processfile=processfile)
-                    break
-                printlog("Done, continue",output_file=processfile)
-                #continue
-            if type(exc) == ValueError:
-                printlog("Invalid data size: " + str(exc),output_file=processfile)
-                printlog("Setting datasize flag...",output_file=processfile,end='')
-                pflag = set_pflag_loc("datasize_error")
-                if pflag == None:
-                    printlog("Error setting flags, abort",processfile=processfile)
-                    break
-                printlog("Done, continue",output_file=processfile)
-                #continue
-            else:
-                clientSocket.close()
-                raise exc 
-        
-        successmsg = bytes(success + str(pflag) + '\n','utf-8')
-        printlog("Sending response...",output_file=processfile,end='')
-        while (totalbytessend < len(successmsg)):
-            totalbytessend += clientSocket.send(successmsg)
-        printlog("Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
-        if pflag != 0:
-            continue
-        printlog("Data: " + str(arrData),output_file=processfile)
-
-        #if object is in dict
-        if img_id_isot not in fullimg_dict.keys():
-            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[args.nchans]])))
-
-        #add image and update flags
-        fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,args.testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
-        #if the image is complete, start the search
-        printlog("corrstatus:",output_file=processfile,end='')
-        printlog(fullimg_dict[img_id_isot].corrstatus,output_file=processfile)
-        if fullimg_dict[img_id_isot].is_full(): #fullimg_array[idx].is_full():
-            #submit a search task to the process pool
-            printlog("Submitting new task for image " + str(img_id_isot),output_file=processfile)
-            RA_axis_idx = copy.deepcopy(fullimg_dict[img_id_isot].RA_axis) #copy.deepcopy(fullimg_array[idx].RA_axis)
-            DEC_axis_idx= copy.deepcopy(fullimg_dict[img_id_isot].DEC_axis) #copy.deepcopy(fullimg_array[idx].DEC_axis)
-
-            #update noise from file if offline
-            if args.offline:
-                sl.last_frame = sl.get_last_frame()
-            
-            #initialize noise stats
-            if args.fprtest or args.fnrtest:
-                printlog("FPR Test, Re-Initializing noise statistics...",output_file=processfile)
-                init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
-                sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
-
-
-            #make slow fullimag object
-            slowdone = False
-            for k in slow_fullimg_dict.keys():
-                img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
-                if (not slow_fullimg_dict[k].slow_is_full()) and foundmjd:
-                    printlog("SLOW MJD:" + str(img_id_mjd),output_file=processfile)
-                    printlog(str((img_id_mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
-                    slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
-                    slowdone = True
-                    break
-            if not slowdone:
-                printlog("FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
-                slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[args.nchans]])),slow=True)
-                slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
-                k = img_id_isot
-            slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
-
-            task_list.append(executor.submit(sl.search_task,fullimg_dict[img_id_isot],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,False))
-            
-            if slowsearch_now:
-                printlog("SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
-                task_list.append(executor.submit(sl.search_task,slow_fullimg_dict[k],args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,False,args.DMbatches,args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,True))
-            if slowsearch_now:
-                task_list[-2].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
-                task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,args.etcd))
-            else:
-                task_list[-1].add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
-            #after finishes execution, remove from list by setting element to None
-            #fullimg_array[idx] = None
-    
-                    
-
-        
-
-        #sys.stdout.flush()
-        """
     executor.shutdown()
     clientSocket.close()
 
