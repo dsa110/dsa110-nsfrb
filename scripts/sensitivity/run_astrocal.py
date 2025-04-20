@@ -10,7 +10,7 @@ from dsacalib.fringestopping import calc_uvw
 import numba
 
 from nsfrb.config import *
-from nsfrb.imaging import get_ra
+from nsfrb.imaging import get_ra,get_RA_cutoff
 from matplotlib.patches import Ellipse
 from nsfrb.config import *
 import numpy as np
@@ -369,8 +369,8 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
     plt.ylabel("DEC Error (arcmin)")
     plt.title("Last Updated: " + Time.now().isot)
     plt.colorbar(label="Normalized RMS Residual")
-    plt.xlim(-np.max(allposerrs)*60*2,np.max(allposerrs)*60*2)
-    plt.ylim(-np.max(allposerrs)*60*2,np.max(allposerrs)*60*2)
+    plt.xlim(-np.max(allposerrs)*60*1.1,np.max(allposerrs)*60*1.1)
+    plt.ylim(-np.max(allposerrs)*60*1.1,np.max(allposerrs)*60*1.1)
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") +"RFCtotal_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
     plt.close()
 
@@ -515,8 +515,10 @@ def astrocal(args):
         idxnames = []
         for i in range(len(args.rfc)):
             print(args.rfc[i])
+            print(SkyCoord(args.rfc[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_coords))
+            print(vis_coords)
             idx = np.argmin(SkyCoord(args.rfc[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_coords).value)
-            if SkyCoord(args.rfc[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_coords).to(u.arcsecond).value[idx] < 1:
+            if SkyCoord(args.rfc[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_coords).to(u.arcsecond).value[idx] < 30:
                 idxs.append(np.argmin(SkyCoord(args.rfc[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_coords).value))
                 idxnames.append(args.rfc[i])
             else:
@@ -606,7 +608,6 @@ def astrocal(args):
     outriggers = args.outriggers
     ref_wav=0.20
     bmin=args.bmin
-    full_img = np.zeros((image_size,image_size,gulpsize,16*nchan_per_node))
     savestuff = True
     for bright_idx in range(len(bright_fnames)):
         if bright_fnames[bright_idx] == -1:
@@ -623,10 +624,32 @@ def astrocal(args):
 
         print("Reading data for "+ bright_names[bright_idx])
         fnum = int(bright_fnames[bright_idx])
-        gulps = np.arange(bright_offsets[bright_idx]//gulpsize,(bright_offsets[bright_idx]//gulpsize)+1,dtype=int)
+        gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
+        ngulps = len(gulps)
         print(bright_idx,fnum,gulps)
+       
         g=0
-        full_img[:,:,:,:] = 0
+        
+        #get RA cutoff
+        """
+        if ngulps>1:
+            copydir = vis_dir + bright_names[bright_idx].replace(" ","") + "/"
+            if len(glob.glob(copydir + "nsfrb_sb00_" + str(fnum) + ".out")) == 0:
+                sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110h03/nsfrb_sb00_" + str(fnum) + ".out",get_header=True)
+            else:
+                sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb00_" + str(fnum) + ".out",get_header=True)
+            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False)
+        
+            racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
+            print("RA cutoff:",racutoff_,"pixels")
+            min_gridsize = int(gridsize - racutoff_*(args.ngulps - 1))
+            full_img = np.zeros((image_size,min_gridsize))
+        else:
+        """
+        min_gridsize = image_size
+        full_img = np.zeros((image_size,image_size))#,gulpsize,16*nchan_per_node))
+        print("Image shape:",full_img.shape)
+        #full_img[:,:,:,:] = 0
         for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
 
             dat = None
@@ -644,6 +667,7 @@ def astrocal(args):
                         dat_i,sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
 
                     print(mjd,dec,sb)
+                    print(dat_i.shape)
 
                     if dat is None:
                         dat = np.nan*np.ones(dat_i.shape,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
@@ -692,19 +716,34 @@ def astrocal(args):
             uv_diag=np.max(np.sqrt(U**2 + V**2))
             pixel_resolution = (0.20/uv_diag/pixperFWHM)
             dat[np.isnan(dat)] = 0
-
-            for i in range(dat.shape[0]):
-                for j in range(len(corrs)):
-                    for k in range(dat.shape[-1]):
-                        for jj in range(nchans_per_node):
-                            tmpimg = revised_robust_image(dat[i:i+1,:,(j*nchans_per_node) + jj,k],
+            
+            
+            if len(gulps) >1 and g == 0:
+                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+                racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
+                print("RA cutoff:",racutoff_,"pixels")
+                min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
+                full_img = np.zeros((image_size,min_gridsize))
+                print("Updated image size:",full_img.shape)
+            
+            #for i in range(dat.shape[0]):
+            for j in range(len(corrs)):
+                for k in range(dat.shape[-1]):
+                    for jj in range(nchans_per_node):
+                        if args.ngulps>1:
+                            full_img += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                                   U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
+                                                   V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
+                                                    image_size,robust=-2)[:,image_size-min_gridsize - racutoff_*(ngulps - 1 - g):image_size-racutoff_*(ngulps- 1 - g)]
+                        else:
+                            full_img += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
                                                    U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    image_size,robust=-2)
-
-                            full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
-
+                        #full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
+            
             g += 1
+        full_img /= (gulpsize*ngulps)
         if dat is None or int(dec) != int(search_dec):
             continue
         np.save(copydir+bright_names[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
@@ -713,6 +752,11 @@ def astrocal(args):
         # find the peak pixel in the vicinity of the coordinates
         buff = args.buff#50
         ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+        if ngulps>1:
+            ra_grid_2D = ra_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
+            dec_grid_2D = dec_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
+        
+
 
         if (bright_coords[bright_idx].ra.value < np.min(ra_grid_2D) or
             bright_coords[bright_idx].ra.value > np.max(ra_grid_2D) or
@@ -730,12 +774,15 @@ def astrocal(args):
 
 
         closepix = np.unravel_index(np.argmin(bright_coords[bright_idx].separation(SkyCoord(ra_grid_2D*u.deg,
-                                                                                           dec_grid_2D*u.deg,frame='icrs'))),ra_grid_2D.shape)
+                                                                                        dec_grid_2D*u.deg,frame='icrs'))),ra_grid_2D.shape)
         bbox = (max([closepix[0]-buff,0]),
-            min([closepix[0]+buff+1,image_size]),
-            max([closepix[1]-buff,0]),
-            min([closepix[1]+buff+1,image_size]))
-        input_img = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((2,3))
+                min([closepix[0]+buff+1,image_size]),
+                max([closepix[1]-buff,0]),
+                min([closepix[1]+buff+1,min_gridsize]))
+        input_img = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3]]#.mean((2,3))
+        print(input_img)
+        input_img[np.isnan(input_img)] = np.nanmedian(input_img)
+
         peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
         bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
         bright_pixcoord = SkyCoord(ra_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
@@ -800,7 +847,7 @@ def astrocal(args):
         vmax=args.vmax#None#np.nanmax(full_img.mean((2,3)))/4#1 #0.2#1
 
         plt.title("SOURCE: " + bright_names[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=(full_img.mean((2,3))).flatten(),alpha=0.5,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=full_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
         plt.errorbar(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,xerr=bright_RAerrs_mas[bright_idx]/3600,yerr=bright_DECerrs_mas[bright_idx]/3600,color='red',elinewidth=3)
         plt.xlim(bright_coords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_coords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
@@ -869,8 +916,10 @@ def speccal(args):
         idxnames = []
         for i in range(len(args.nvss)):
             print(args.nvss[i])
+            print(SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords))
+            print(vis_nvsscoords)
             idx = np.argmin(SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords).value)
-            if SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords).to(u.arcsecond).value[idx] < 1:
+            if SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords).to(u.arcsecond).value[idx] < 60:
                 idxs.append(np.argmin(SkyCoord(args.nvss[i],unit=(u.hourangle,u.deg),frame='icrs').separation(vis_nvsscoords).value))
                 idxnames.append(args.nvss[i])
             else:
@@ -978,10 +1027,15 @@ def speccal(args):
 
         print("Reading data for "+ bright_nvssnames[bright_idx])
         fnum = int(bright_fnames[bright_idx])
-        gulps = np.arange(bright_offsets[bright_idx]//gulpsize,(bright_offsets[bright_idx]//gulpsize)+1,dtype=int)
+        gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
+        ngulps = len(gulps)
         print(bright_idx,fnum,gulps)
         g=0
-        full_img[:,:,:,:] = 0
+        min_gridsize = image_size
+        full_img = np.zeros((image_size,image_size,gulpsize*ngulps,16*nchan_per_node))#,gulpsize,16*nchan_per_node))
+        print("Image shape:",full_img.shape)
+        if not args.image_flux:
+            dat_copy = None
         for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
 
 
@@ -1006,8 +1060,12 @@ def speccal(args):
 
                     if dat is None:
                         dat = np.nan*np.ones(dat_i.shape,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
+                    if not args.image_flux and dat_copy is None:
+                        dat_copy = np.nan*np.ones(dat_i.shape*ngulps,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
+                    
                     dat[:,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat_i
-
+                    if not args.image_flux:
+                        dat_copy[g*gulpsize:(g+1)*gulpsize,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat_i
 
                 except Exception as exc:
                     print(exc)
@@ -1028,9 +1086,9 @@ def speccal(args):
             #FLUX CAL
         
             #save a copy for beamforming
-            if not args.image_flux:
-                print("Saving a data copy for beamforming...")
-                dat_copy = copy.deepcopy(dat)
+            #if not args.image_flux:
+            #    print("Saving a data copy for beamforming...")
+            #    dat_copy = copy.deepcopy(dat)
 
             print("Getting UVW params...")
             test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
@@ -1060,9 +1118,21 @@ def speccal(args):
             uv_diag=np.max(np.sqrt(U**2 + V**2))
             pixel_resolution = (0.20/uv_diag/pixperFWHM)
             dat[np.isnan(dat)] = 0
+            if len(gulps) >1 and g == 0:
+                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+                racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
+                print("RA cutoff:",racutoff_,"pixels")
+                min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
+                full_img = np.zeros((image_size,min_gridsize,gulpsize*ngulps,16*nchan_per_node))
+                print("Updated image size:",full_img.shape)
+                ra_grid_2D = ra_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
+                dec_grid_2D = dec_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
 
+
+            elif len(gulps)==1 and g == 0:
+                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+            
             buff = args.buff
-            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
             if (bright_nvsscoords[bright_idx].ra.value < np.min(ra_grid_2D) or
                     bright_nvsscoords[bright_idx].ra.value > np.max(ra_grid_2D) or
                     bright_nvsscoords[bright_idx].dec.value < np.min(dec_grid_2D) or
@@ -1083,151 +1153,39 @@ def speccal(args):
                 for j in range(len(corrs)):
                     for k in range(dat.shape[-1]):
                         for jj in range(nchans_per_node):
-                            tmpimg = revised_robust_image(dat[i:i+1,:,(j*nchans_per_node) + jj,k],
+                            if args.ngulps>1:
+                                full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                                   U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
+                                                   V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
+                                                    image_size,robust=-2)[:,image_size-min_gridsize - racutoff_*(ngulps - 1 - g):image_size-racutoff_*(ngulps- 1 - g)]
+                            else:
+                                full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
                                                    U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    image_size,robust=-2)
-
-                            full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
+                            #full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
 
             g += 1
 
-            if dat is None or int(dec) != int(search_dec):
-                continue
-            np.save(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
+        if dat is None or int(dec) != int(search_dec):
+            continue
+        np.save(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
 
         
-            #find the expected source position based on astrometric cal offsets and errors...somehow...then get brightest pixel
-            closepix = np.unravel_index(np.argmin(bright_nvsscoords[bright_idx].separation(SkyCoord(ra_grid_2D*u.deg,
+        #find the expected source position based on astrometric cal offsets and errors...somehow...then get brightest pixel
+        closepix = np.unravel_index(np.argmin(bright_nvsscoords[bright_idx].separation(SkyCoord(ra_grid_2D*u.deg,
                                                                                            dec_grid_2D*u.deg,frame='icrs'))),ra_grid_2D.shape)
-            bbox = (max([closepix[0]-buff,0]),
+        bbox = (max([closepix[0]-buff,0]),
                     min([closepix[0]+buff+1,image_size]),
                     max([closepix[1]-buff,0]),
-                    min([closepix[1]+buff+1,image_size]))
-            input_img = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((2,3))
-            peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
-            bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
-            bright_pixcoord = SkyCoord(ra_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
-            bright_pixel = np.unravel_index(np.argmin(bright_pixcoord.separation(SkyCoord(ra=ra_grid_2D*u.deg,dec=dec_grid_2D*u.deg,frame='icrs')).value),ra_grid_2D.shape)
+                    min([closepix[1]+buff+1,min_gridsize]))
+        input_img = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((2,3))
+        peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
+        bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
+        bright_pixcoord = SkyCoord(ra_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
+        bright_pixel = np.unravel_index(np.argmin(bright_pixcoord.separation(SkyCoord(ra=ra_grid_2D*u.deg,dec=dec_grid_2D*u.deg,frame='icrs')).value),ra_grid_2D.shape)
 
-            #plotting
-            plt.figure(figsize=(12,12))
-            fullmean = True
-            median_sub = False
-            vmin=args.vmin#None#-np.nanmax(full_img.mean((2,3)))/4#-1
-            vmax=args.vmax#None#np.nanmax(full_img.mean((2,3)))/4#1 #0.2#1
-
-            plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-            plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=(full_img.mean((2,3))).flatten(),alpha=0.5,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
-            plt.scatter(bright_nvsscoords[bright_idx].ra.to(u.deg).value,bright_nvsscoords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
-            plt.xlim(bright_nvsscoords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
-            plt.ylim(bright_nvsscoords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))
-            plt.plot([ra_grid_2D[bbox[0],bbox[2]],
-              ra_grid_2D[bbox[0],bbox[3]-1],
-              ra_grid_2D[bbox[1]-1,bbox[3]-1],
-              ra_grid_2D[bbox[1]-1,bbox[2]],
-              ra_grid_2D[bbox[0],bbox[2]]],
-             [dec_grid_2D[bbox[0],bbox[2]],
-              dec_grid_2D[bbox[0],bbox[3]-1],
-              dec_grid_2D[bbox[1]-1,bbox[3]-1],
-              dec_grid_2D[bbox[1]-1,bbox[2]],
-              dec_grid_2D[bbox[0],bbox[2]]],color='red')
-            plt.scatter(bright_pixcoord.ra.to(u.deg).value,bright_pixcoord.dec.to(u.deg).value,marker='o',s=1000,edgecolors='green',linewidth=4,facecolors="none",alpha=0.8)
-            #ell = Ellipse((bright_pixcoord.ra.value,bright_pixcoord.dec.value),popt[3]*2,popt[2]*2,angle=-(popt[4]*180/np.pi),fill=None,color='black',linewidth=1,alpha=1,linestyle='--')
-            #plt.gca().add_patch(ell)
-            plt.gca().invert_xaxis()
-            plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"speccal_refimage.png")
-            plt.close()
-            
-            #get dynamic spectrum
-            if args.image_flux:
-                if args.boxmean:
-                    bright_dynspec = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((0,1))
-                else:
-                    bright_dynspec = full_img[bright_pixel[0],bright_pixel[1],:,:]
-                bright_measfluxs.append(np.nanmean(bright_dynspec))
-                bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
-            else:
-                #bf mdoe
-                #re-do baselines and plot visibilities
-                test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
-                pt_dec = dec*np.pi/180.
-                bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-
-                ff = 1.53-np.arange(8192)*0.25/8192
-                fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
-                fobs = np.reshape(fobs,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)
-    
-    
-                #flagging andd baseline cut
-                fcts = []
-                if args.flagSWAVE:
-                    fcts.append(fct_SWAVE)
-                if args.flagBPASS:
-                    fcts.append(fct_BPASS)
-                if args.flagFRCBAND:
-                    fcts.append(fct_FRCBAND)
-                if args.flagBPASSBURST:
-                    fcts.append(fct_BPASSBURST)
-
-
-
-                plt.figure(figsize=(12,12))
-                plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='grey',markersize=3)
-                if outriggers:
-                    plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
-                    plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
-
-
-
-                HA = (get_ra(mjd + gulps[0]*tsamp_ms*gulpsize/1000/86400,dec) - bright_pixcoord.ra.value)
-                srcdec = bright_pixcoord.dec.value
-        
-                print("Phasing Visibilities to Hour Angle ",HA," deg, Declination ",srcdec," and beamforming...")
-                generate_rephasing_table(
-                    HA, srcdec, blen, pt_dec, gulpsize, tsamp, antenna_order, outrigger_delays, bname, refmjd,
-                    outname=table_dir + "/tmp_fringestopping_table_cal")
-                vis_model = fringestopping.zenith_visibility_model(fobs, fstable=table_dir + '/tmp_fringestopping_table_cal.npz')[0,:,:,:,:].repeat(2,3)
-                dat_copy /= vis_model
-                print("Reflagging...")
-                print("Vis shape:",dat_copy.shape)
-        
-                dat, bname, blen, UVW, antenna_order = flag_vis(dat_copy, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
-                print("Vis shape:",dat.shape)
-                print("Done")
-                U = UVW[0,:,0]
-                V = UVW[0,:,1]
-                W = UVW[0,:,2]
-
-                uv_diag=np.max(np.sqrt(U**2 + V**2))
-                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
-
-        
-
-                plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='red',markersize=5)
-                if not outriggers:
-                    plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
-                    plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
-                plt.scatter(UVW[0,:,0],UVW[0,:,1],marker='o',c=np.real(np.nanmean(dat,(0,2,3))),s=100,alpha=0.8,cmap='cool',zorder=100)
-                plt.xlabel("U (m)")
-                plt.ylabel("V (m)")
-                plt.colorbar(label="Real Mean Visibility")
-                plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-                plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"baselinecal.png")
-                plt.close()
-        
-                bright_dynspec = np.real(np.nanmean(dat,(1,3)))
-                bright_measfluxs.append(np.nanmean(np.real(dat)))
-                bright_measfluxerrs.append(np.nanstd(np.real(dat))/np.sqrt(len(dat.flatten())))
-        
-        
-        
-        if bright_measfluxs[-1]<0:
-            bright_measfluxs[-1] = -1
-            bright_measfluxerrs[-1] = -1
-            continue            
-        """
-            
+        #plotting
         plt.figure(figsize=(12,12))
         fullmean = True
         median_sub = False
@@ -1251,10 +1209,93 @@ def speccal(args):
               dec_grid_2D[bbox[0],bbox[2]]],color='red')
         plt.scatter(bright_pixcoord.ra.to(u.deg).value,bright_pixcoord.dec.to(u.deg).value,marker='o',s=1000,edgecolors='green',linewidth=4,facecolors="none",alpha=0.8)
         plt.gca().invert_xaxis()
-        plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
+        plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"speccal_refimage.png")
         plt.close()
-        """
+            
+        #get dynamic spectrum
+        if args.image_flux:
+            if args.boxmean:
+                bright_dynspec = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((0,1))
+            else:
+                bright_dynspec = full_img[bright_pixel[0],bright_pixel[1],:,:]
+            bright_measfluxs.append(np.nanmean(bright_dynspec))
+            bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
+        else:
+            #bf mdoe
+            #re-do baselines and plot visibilities
+            test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+            pt_dec = dec*np.pi/180.
+            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
 
+            ff = 1.53-np.arange(8192)*0.25/8192
+            fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+            fobs = np.reshape(fobs,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)
+    
+    
+            #flagging andd baseline cut
+            fcts = []
+            if args.flagSWAVE:
+                fcts.append(fct_SWAVE)
+            if args.flagBPASS:
+                fcts.append(fct_BPASS)
+            if args.flagFRCBAND:
+                fcts.append(fct_FRCBAND)
+            if args.flagBPASSBURST:
+                fcts.append(fct_BPASSBURST)
+
+
+
+            plt.figure(figsize=(12,12))
+            plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='grey',markersize=3)
+            if outriggers:
+                plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
+                plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
+
+
+            #have to rephase each gulp separately
+            for g in range(ngulps):
+                HA = (get_ra(mjd + gulps[g]*tsamp_ms*gulpsize/1000/86400,dec) - bright_pixcoord.ra.value)
+                srcdec = bright_pixcoord.dec.value
+        
+                print("GULP",g,"Phasing Visibilities to Hour Angle ",HA," deg, Declination ",srcdec," and beamforming...")
+                generate_rephasing_table(
+                    HA, srcdec, blen, pt_dec, gulpsize, tsamp, antenna_order, outrigger_delays, bname, refmjd,
+                    outname=table_dir + "/tmp_fringestopping_table_cal")
+                vis_model = fringestopping.zenith_visibility_model(fobs, fstable=table_dir + '/tmp_fringestopping_table_cal.npz')[0,:,:,:,:].repeat(2,3)
+                dat_copy[g*gulpsize:(g+1)*gulpsize,:,:,:] /= vis_model
+            print("Reflagging...")
+            print("Vis shape:",dat_copy.shape)
+        
+            dat, bname, blen, UVW, antenna_order = flag_vis(dat_copy, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+            print("Vis shape:",dat.shape)
+            print("Done")
+            U = UVW[0,:,0]
+            V = UVW[0,:,1]
+            W = UVW[0,:,2]
+
+            uv_diag=np.max(np.sqrt(U**2 + V**2))
+            #ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+
+        
+
+            plt.plot(UVW[0,:,0],UVW[0,:,1],'o',color='red',markersize=5)
+            if not outriggers:
+                plt.xlim(-1.5*np.nanmax(np.abs(UVW[0,:,0])),1.5*np.nanmax(np.abs(UVW[0,:,0])))
+                plt.ylim(-1.5*np.nanmax(np.abs(UVW[0,:,1])),1.5*np.nanmax(np.abs(UVW[0,:,1])))
+            plt.scatter(UVW[0,:,0],UVW[0,:,1],marker='o',c=np.real(np.nanmean(dat,(0,2,3))),s=100,alpha=0.8,cmap='cool',zorder=100)
+            plt.xlabel("U (m)")
+            plt.ylabel("V (m)")
+            plt.colorbar(label="Real Mean Visibility")
+            plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
+            plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"baselinecal.png")
+            plt.close()
+        
+            bright_dynspec = np.real(np.nanmean(dat,(1,3)))
+            bright_measfluxs.append(np.nanmean(np.real(dat)))
+            bright_measfluxerrs.append(np.nanstd(np.real(dat))/np.sqrt(len(dat.flatten())))
+        
+        
+        
         if bright_measfluxs[-1]<0:
             bright_measfluxs[-1] = -1
             bright_measfluxerrs[-1] = -1
@@ -1269,8 +1310,8 @@ def speccal(args):
         print(bright_dynspec)
         plt.figure(figsize=(16,12))
         plt.subplot(2,2,1,facecolor='black')
-        plt.step(np.arange(gulpsize)*tsamp_ms/1000,np.nanmean(bright_dynspec,1),linewidth=4)
-        plt.xlim(0,tsamp_ms*gulpsize/1000)
+        plt.step(np.arange(gulpsize*ngulps)*tsamp_ms/1000,np.nanmean(bright_dynspec,1),linewidth=4)
+        plt.xlim(0,tsamp_ms*gulpsize*ngulps/1000)
 
         plt.subplot(2,2,4,facecolor='black')
         plt.step(np.nansum(bright_dynspec,0),fobs,linewidth=1)
@@ -1283,8 +1324,8 @@ def speccal(args):
         plt.colorbar(label='Time (s)')
 
         plt.subplot(2,2,3)
-        plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize/1000,fobs[-1],fobs[0]))
-        plt.xlim(0,tsamp_ms*gulpsize/1000)
+        plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize*ngulps/1000,fobs[-1],fobs[0]))
+        plt.xlim(0,tsamp_ms*gulpsize*ngulps/1000)
         plt.ylim(fobs[-1],fobs[0])
         plt.xlabel("Time (s)")
         plt.ylabel("Frequency (GHz)")
@@ -1341,13 +1382,14 @@ if __name__=="__main__":
     parser.add_argument('--image_flux',action='store_true',help='Derive flux from image instead of beamformed flux')
     parser.add_argument('--nvss',nargs='+',type=str,help='J-name of specific NVSS source to calibrate on; e.g. \'J182210+160015\'',default=[])
     parser.add_argument('--rfc',nargs='+',type=str,help='J-name of specific RFC source to calibrate on; e.g. \'J182210+160015\'',default=[])
-    parser.add_argument('--vmin',type=float,help='VMIN for astrocal plot',default=0)
-    parser.add_argument('--vmax',type=float,help='VMAX for astrocal plot',default=5e-5)
+    parser.add_argument('--vmin',type=float,help='VMIN for astrocal plot',default=None)
+    parser.add_argument('--vmax',type=float,help='VMAX for astrocal plot',default=None)
     parser.add_argument('--update_only',action='store_true',help='Updates based on the existing tables')
     parser.add_argument('--target',type=str,help='J2000 coordinates of target for which astrometric and flux cal are needed',default='')
     parser.add_argument('--targetMJD',type=float,help='MJD at which target was observed',default=0.0)
     parser.add_argument('--target_timerange',type=float,help='Time range in hours within which sources should be included in astrometric and flux cal,default=5',default=5)
     parser.add_argument('--target_decrange',type=float,help='Dec range in degrees within which sources should be included in astrometric and flux cal,default=0.5',default=0.5)
     parser.add_argument('--boxmean',action='store_true',help='When --image_flux is set, takes the mean flux within --buff pixels of the NVSS coordinate instead of the peak pixel flux')
+    parser.add_argument('--ngulps',type=int,help='Number of gulps of 25 samples (3.25 s) to integrate, default=1',default=1)
     args = parser.parse_args()
     main(args)

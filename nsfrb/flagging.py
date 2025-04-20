@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,tsamp
 
 
-def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0):
+def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf):
     """
     Removes visibilities containing flagged antennas and below minimum 
     baseline length
@@ -56,19 +56,20 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagg
     unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)),dtype=int)
     print("Unflagged visibilities:",np.array(list(bname))[unflagged_vis])
     antenna_order = list(set(antenna_order)-set(flagged_antennas))
-    bname = bname[unflagged_vis]
+    bname = bname[np.array(bname.index.values.tolist())[unflagged_vis]]
     blen = blen[unflagged_vis]
     UVW = UVW[:,unflagged_vis,:]
     dat = dat[:,unflagged_vis,:,:]
 
     #print(dat)
     #remove short baselines
-    if bmin > 0:
-        blen_mask = np.sqrt(np.sum(blen**2,axis=1))>=bmin
-        bname = bname[blen_mask]
-        blen = blen[blen_mask]
-        UVW = UVW[:,blen_mask,:]
-        dat = dat[:,blen_mask,:,:]
+    #if bmin > 0:
+        
+    blen_mask = np.logical_and(np.sqrt(np.sum(blen**2,axis=1))>=bmin,np.sqrt(np.sum(blen**2,axis=1))<bmax)
+    bname = bname[np.array(bname.index.values.tolist())[blen_mask]]
+    blen = blen[blen_mask]
+    UVW = UVW[:,blen_mask,:]
+    dat = dat[:,blen_mask,:,:]
 
 
     #flag corrs

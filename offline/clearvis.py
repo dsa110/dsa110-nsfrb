@@ -65,7 +65,6 @@ def main(args):
 
     while True:
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.waittime)
-        cutoff2 = Time.now().datetime - datetime.timedelta(days=args.waittime)
         print(
             f"Removing operation files last modified prior to "
             f"{cutoff.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
@@ -76,6 +75,7 @@ def main(args):
             #print("Clearing NVSS and RFC data...")
             caldirs = list(glob.glob(str(operations_dir) + "/NVSS*")) + list(glob.glob(str(operations_dir) + "/RFC*"))
             subdirs_to_clear += [(os.path.basename(c),"*.out") for c in caldirs]
+            clearcal_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.clearcal_waittime)
             
             """
             for c in caldirs:
@@ -120,18 +120,32 @@ def main(args):
                 modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
                 # modtime is timezone naive, so we set it to utc
                 # lxc managed containers are all using utc
-                modtime = modtime.replace(tzinfo=cutoff.tzinfo)
-                if modtime < cutoff:
-                    print(modtime,cutoff)
-                    print(f'Removing {file}')
+                if "NVSS" in str(subdir) or "RFC" in str(subdir):
+                    modtime = modtime.replace(tzinfo=clearcal_cutoff.tzinfo)
+                    if modtime < clearcal_cutoff:
+                        print(modtime,clearcal_cutoff)
+                        print(f'Removing {file}')
+
+                        try:
+                            file.unlink()
+                        except Exception as exc:
+                            print("File unlink failed:",exc)
+                            shutil.rmtree(file)
+                else:
+                    modtime = modtime.replace(tzinfo=cutoff.tzinfo)
+                    if modtime < cutoff:
+                        print(modtime,cutoff)
+                        print(f'Removing {file}')
                     
-                    try:
-                        file.unlink()
-                    except Exception as exc:
-                        print("File unlink failed:",exc)
-                        shutil.rmtree(file)
-                    if "lxd110" in str(subdir) and os.path.basename(str(file)) in delidx_labels.keys():
-                        delidx.append(delidx_labels[os.path.basename(str(file))])
+                        try:
+                            file.unlink()
+                        except Exception as exc:
+                            print("File unlink failed:",exc)
+                            shutil.rmtree(file)
+                
+                
+                if "lxd110" in str(subdir) and os.path.basename(str(file)) in delidx_labels.keys():
+                    delidx.append(delidx_labels[os.path.basename(str(file))])
                     
         #remove from csv
         if len(delidx)>1:
@@ -151,6 +165,7 @@ if __name__=="__main__":
     parser.add_argument('--cadence',type=float,help='Time between checking for new vis to clear in hours, default 2',default=2.0)
     parser.add_argument('--populate',action='store_true',default=False,help="Don't clear vis, just re-populate the csv")
     parser.add_argument('--clearcal',action='store_true',default=False,help='Clear calibration data dirs (NVSS*, RFC*)')
+    parser.add_argument('--clearcal_waittime',type=float,help='Time between clearing calibrator visibilities in days, default 1',default=1.0)
     args = parser.parse_args()
 
     main(args)

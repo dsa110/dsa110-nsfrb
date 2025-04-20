@@ -24,13 +24,22 @@ from nsfrb.flagging import flag_vis
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
 
+def get_RA_cutoff(dec,T=T,pixsize=pixsize):
+    """
+    dec: current declination
+    T: integration time in milliseconds
+    """
+    cutoff_as = (T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
+    cutoff_pix = np.abs((cutoff_as/3600)//pixsize)
+    print("New RA cutoff:",cutoff_pix)
+    return int(np.ceil(cutoff_pix))
 
 def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: np.ndarray = None, robust: float = 0.0,pixel_resolution=None) -> np.ndarray:
     """
@@ -154,7 +163,7 @@ def uniform_grid(u, v, image_size, pixel_resolution, pixperFWHM, w=None, wstack=
     else:
         return (i_indices,j_indices,i_conj_indices,j_conj_indices)
 
-def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,pixperFWHM=pixperFWHM, briggs_weights=None,i_indices=None,j_indices=None,k_indices=None,i_conj_indices=None,j_conj_indices=None,k_conj_indices=None) -> np.ndarray:
+def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,pixperFWHM=pixperFWHM, briggs_weights=None,i_indices=None,j_indices=None,k_indices=None,i_conj_indices=None,j_conj_indices=None,k_conj_indices=None,clipuv=True,keeptime=False) -> np.ndarray:
     """
     Process visibility data and create a dirty image using FFT and Briggs weighting.
 
@@ -183,9 +192,11 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
     #briggs weighting
     if briggs_weights is None:
         briggs_weights = briggs_weighting(u, v, image_size, robust=robust,pixel_resolution=pixel_resolution)
-    v_avg = np.mean(np.array(chunk_V * briggs_weights), axis=0)
-    v_avg = v_avg[np.sqrt(u**2 + v**2)<uv_max]
-    
+    #print("INPUT VIS SHAPE",chunk_V.shape,briggs_weights.shape)
+    if keeptime: v_avg = chunk_V * briggs_weights
+    else: v_avg = np.mean(np.array(chunk_V * briggs_weights), axis=0)
+    if clipuv: v_avg = v_avg[np.sqrt(u**2 + v**2)<uv_max]
+    #print("VIS SHAPE",v_avg.shape)
     if i_indices is None and j_indices is None:
         #removed clip
         i_indices = ((u + uv_max) / grid_res).astype(int)
@@ -209,34 +220,70 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
             k_conj_indices = Nlayers_w - k_indices - 1
 
     #$print(v_avg.shape,i_indices.shape,j_indices.shape,i_conj_indices.shape,j_conj_indices.shape)
-    if wstack and w is not None:
-        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
-        np.add.at(visibility_grid, (np.concatenate([i_indices,i_conj_indices]), 
+    if keeptime:
+        if wstack and w is not None:
+            visibility_grid = np.zeros((v_avg.shape[0],image_size, image_size, Nlayers_w), dtype=complex)
+            for i in range(v_avg.shape[0]):
+                visibility_grid_i = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
+                np.add.at(visibility_grid_i, (np.concatenate([i_indices,i_conj_indices]),
+                                    np.concatenate([j_indices,j_conj_indices]),
+                                    np.concatenate([k_indices,k_conj_indices])),
+                                    np.concatenate([v_avg[i,:],np.conj(v_avg[i,:])]))
+                visibility_grid[i,:,:,:] = visibility_grid_i
+        else:
+            visibility_grid = np.zeros((v_avg.shape[0],image_size, image_size), dtype=complex)
+            for i in range(v_avg.shape[0]):
+                visibility_grid_i = np.zeros((image_size, image_size), dtype=complex)
+                np.add.at(visibility_grid_i, (np.concatenate([i_indices,i_conj_indices]),
+                                    np.concatenate([j_indices,j_conj_indices])),
+                                    np.concatenate([v_avg[i,:],np.conj(v_avg[i,:])]))
+                visibility_grid[i,:,:] = visibility_grid_i
+
+    else:
+        if wstack and w is not None:
+            visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
+            np.add.at(visibility_grid, (np.concatenate([i_indices,i_conj_indices]), 
                                     np.concatenate([j_indices,j_conj_indices]), 
                                     np.concatenate([k_indices,k_conj_indices])), 
                                     np.concatenate([v_avg,np.conj(v_avg)]))
-        #np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
-    else:
-        visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-        np.add.at(visibility_grid, (np.concatenate([i_indices,i_conj_indices]),
+            #np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
+        else:
+            visibility_grid = np.zeros((image_size, image_size), dtype=complex)
+            np.add.at(visibility_grid, (np.concatenate([i_indices,i_conj_indices]),
                                     np.concatenate([j_indices,j_conj_indices])),
                                     np.concatenate([v_avg,np.conj(v_avg)]))
-        #np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
+            #np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
 
     if inject_img is not None:
         #print("IN THE WRONG PLACE")
-        if wstack and w is not None:
-            if inject_flat:
-                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
-                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
-            else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+        if keeptime:            
+            assert(v_avg.shape[0] == inject_img.shape[2])
+            for i in range(v_avg.shape[0]):
+                if wstack and w is not None:
+                    if inject_flat:
+                        visibility_grid[i,i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img[:,:,i],u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+                        visibility_grid[i,i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img[:,:,i],u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+                    else:
+                        visibility_grid[i,:,:] += inverse_revised_uniform_image(inject_img[:,:,i],u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+                else:
+                    if inject_flat:
+                        visibility_grid[i,i_indices,j_indices] += inverse_revised_uniform_image(inject_img[:,:,i],u,v,pixperFWHM=pixperFWHM)[i_indices,j_indices]
+                        visibility_grid[i,i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img[:,:,i],u,v,pixperFWHM=pixperFWHM)[i_conj_indices,j_conj_indices]
+                    else:
+                        visibility_grid[i,:,:] += inverse_revised_uniform_image(inject_img[:,:,i],u,v,pixperFWHM=pixperFWHM)
         else:
-            if inject_flat:
-                visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)[i_indices,j_indices]
-                visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)[i_conj_indices,j_conj_indices]
+            if wstack and w is not None:
+                if inject_flat:
+                    visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+                    visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+                else:
+                    visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
             else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)
+                if inject_flat:
+                    visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)[i_indices,j_indices]
+                    visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)[i_conj_indices,j_conj_indices]
+                else:
+                    visibility_grid += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)
 
     #updated sign convention
     if wstack and w is not None:
@@ -248,9 +295,14 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
         w_grid_3D = w_bins[np.newaxis,np.newaxis,:]
         dirty_image = np.nansum(dirty_image*np.exp(2*np.pi*1j*w_grid_3D*(np.sqrt(1-l_grid_3D**2-m_grid_3D**2) - 1))*np.sqrt(1 - l_grid_3D**2 - m_grid_3D**2)/(w_max-w_min),2)
     else:
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-
-    return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
+        if keeptime:
+            dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(1,2)),axes=(1,2)),axes=(1,2))
+        else:
+            dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
+    if keeptime:
+        return np.real(dirty_image).transpose((2,1,0)) if not return_complex else dirty_image.transpose((2,1,0)) #DEC,RA,TIME
+    else:
+        return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
 
 
 

@@ -25,7 +25,7 @@ from scipy.signal import convolve2d
 from nsfrb import simulating as sim
 from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.outputlogging import printlog,numpy_to_fits
-from nsfrb.imaging import uv_to_pix
+from nsfrb.imaging import uv_to_pix,get_RA_cutoff
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 from astropy.time import Time
@@ -318,15 +318,6 @@ default_PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,gridsize,DEC_axis[int
 """
 pre-computed cutoff pixels
 """
-def get_RA_cutoff(dec,T=T,pixsize=pixsize):
-    """
-    dec: current declination
-    T: integration time in milliseconds
-    """
-    cutoff_as = (T/1000)*15/np.cos(dec*np.pi/180) #arcseconds
-    cutoff_pix = np.abs((cutoff_as/3600)//pixsize)
-    print("New RA cutoff:",cutoff_pix)
-    return int(np.ceil(cutoff_pix))
 default_cutoff = get_RA_cutoff(0)
 
 
