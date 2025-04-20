@@ -41,6 +41,33 @@ def get_RA_cutoff(dec,T=T,pixsize=pixsize):
     print("New RA cutoff:",cutoff_pix)
     return int(np.ceil(cutoff_pix))
 
+
+def deredden(img,chanbw,R2002=False,R2002nbins=16,returnFFT=False,keepDC=True,scalefactor=4):
+    """
+    Function to remove channelization-based red noise either by masking short timescale spectral
+    Fourier modes or using Ransom+2002 method of running median normalization(R2002=True)
+    """
+    if R2002:
+        binsize = int(img.shape[-1]//R2002nbins)
+        img_med = (np.nanmedian(img.reshape(tuple(list(img.shape[:-1])+[R2002nbins,binsize])),axis=-1)/np.log(2)).repeat(binsize,axis=-1)
+        print(img_med.shape)
+        x_filt = (img/img_med)*np.nanmax(img)/np.nanmax(img_med)
+        return x_filt
+    else:
+        #dereddens assuming last axis is freq axis
+        hpfcutoff = np.argmin(np.abs(np.fft.fftfreq(img.shape[-1],chanbw)-(1/(scalefactor*chanbw*2*np.pi)))) #place cutoff at fourier frequency corresponding to channel bandwidth
+        #print(hpfcutoff)
+    
+        x_fft = np.fft.fft(img,axis=-1)
+        x_fft_filt = copy.deepcopy(x_fft)
+        if keepDC: x_fft_filt[...,1:hpfcutoff] = 0
+        else: x_fft_filt[...,:hpfcutoff] = 0
+        x_fft_filt[...,-(hpfcutoff-1):] = 0
+        x_filt = np.real(np.fft.ifftshift(np.fft.ifft(x_fft_filt,axis=-1),axes=-1))
+        if returnFFT: return x_filt,x_fft,x_fft_filt
+        else: return x_filt
+    return
+
 def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: np.ndarray = None, robust: float = 0.0,pixel_resolution=None) -> np.ndarray:
     """
     Apply Briggs weighting to visibility data.

@@ -22,8 +22,8 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM
-from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw
+from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid,deredden
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
@@ -606,6 +606,14 @@ def main(args):
                                             w=W_wav,
                                             Nlayers_w=args.Nlayers,
                                             pixperFWHM=args.pixperFWHM)
+            
+                                        
+            if args.rednoise or args.rednoiseR2002:
+                print("Removing rednoise...",end="")
+                print(dirty_img)
+                dirty_img = deredden(dirty_img,chanbw=chanbw*1e6,R2002=args.rednoiseR2002,R2002nbins=8,returnFFT=False,keepDC=True,scalefactor=1)
+                print(dirty_img)
+                print("Done")                            
             print("Imaging complete:",time.time()-timage,"s")            
             print(dirty_img)
         
@@ -746,6 +754,8 @@ if __name__=="__main__":
     parser.add_argument('--stagger_multisend',type=float,help='Specifies the time in seconds between sending each subband, default 0 sends all at once',default=0)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
+    parser.add_argument('--rednoise',action='store_true',help='Remove rednoise by masking short timescale Fourier modes')
+    parser.add_argument('--rednoiseR2002',action='store_true',help='Remove rednoise by normalizing by running median (see Ransom+2002 3.2)')
     args = parser.parse_args()
     main(args)
 

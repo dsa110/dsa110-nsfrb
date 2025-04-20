@@ -9,8 +9,7 @@ from dsacalib import constants as ct
 from dsacalib.fringestopping import calc_uvw
 import numba
 
-from nsfrb.config import *
-from nsfrb.imaging import get_ra,get_RA_cutoff
+from nsfrb.imaging import get_ra,get_RA_cutoff,deredden
 from matplotlib.patches import Ellipse
 from nsfrb.config import *
 import numpy as np
@@ -18,7 +17,7 @@ import csv
 from matplotlib import pyplot as plt
 import os
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX
+from nsfrb.config import IMAGE_SIZE,UVMAX,chanbw
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord
@@ -146,6 +145,11 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
                 #if a target is given, check that sources are within range
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["nvss_dec"])<target_decrange and np.abs(targetMJD - pipeline.read_raw_vis(tab[arraykey][k][kk]["dir"]+"nsfrb_sb00_"+str(kk)+".out",get_header=True)[1])*24<target_timerange:
                     print("Including ",k)
+                    allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
+                    allfluxerrs.append(tab[arraykey][k][kk]['meas_flux_error'])
+                    allnvssfluxes.append(tab[arraykey][k][kk]['flux_mJy'])
+                    #allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
+                elif len(target)==0:
                     allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
                     allfluxerrs.append(tab[arraykey][k][kk]['meas_flux_error'])
                     allnvssfluxes.append(tab[arraykey][k][kk]['flux_mJy'])
@@ -297,6 +301,13 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         for kk in tab[arraykey][k].keys():
             if str(k) not in ex_table and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and np.abs(targetMJD - pipeline.read_raw_vis(tab[arraykey][k][kk]["dir"]+"nsfrb_sb00_"+str(kk)+".out",get_header=True)[1])*24<target_timerange:
+                    allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
+                    allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
+                    allRAerrs.append(tab[arraykey][k][kk]['RA_error_deg'])
+                    allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
+                    allRFCRAerrs.append(tab[arraykey][k][kk]['RFC_RA_error_deg'])
+                    allRFCDECerrs.append(tab[arraykey][k][kk]['RFC_DEC_error_deg'])
+                elif len(target)==0:
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
                     allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
                     allRAerrs.append(tab[arraykey][k][kk]['RA_error_deg'])
@@ -743,6 +754,12 @@ def astrocal(args):
                         #full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
             
             g += 1
+        """
+        if args.rednoise or args.rednoiseR2002:
+            print("Removing rednoise...",end="")
+            full_img = deredden(full_img,chanbw=chanbw*1e6/nchans_per_node,R2002=args.rednoiseR2002,R2002nbins=16,returnFFT=False,keepDC=True)
+            print("Done")
+        """
         full_img /= (gulpsize*ngulps)
         if dat is None or int(dec) != int(search_dec):
             continue
@@ -847,7 +864,7 @@ def astrocal(args):
         vmax=args.vmax#None#np.nanmax(full_img.mean((2,3)))/4#1 #0.2#1
 
         plt.title("SOURCE: " + bright_names[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=full_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=full_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
         plt.errorbar(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,xerr=bright_RAerrs_mas[bright_idx]/3600,yerr=bright_DECerrs_mas[bright_idx]/3600,color='red',elinewidth=3)
         plt.xlim(bright_coords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_coords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
@@ -1009,7 +1026,7 @@ def speccal(args):
     outriggers = args.outriggers
     ref_wav=0.20
     bmin=args.bmin
-    full_img = np.zeros((image_size,image_size,gulpsize,16*nchan_per_node))
+    full_img = np.zeros((image_size,image_size,int(gulpsize/args.timebin),16*nchan_per_node))
     savestuff = True
     for bright_idx in range(len(bright_fnames)):
         if bright_fnames[bright_idx] == -1:
@@ -1032,7 +1049,7 @@ def speccal(args):
         print(bright_idx,fnum,gulps)
         g=0
         min_gridsize = image_size
-        full_img = np.zeros((image_size,image_size,gulpsize*ngulps,16*nchan_per_node))#,gulpsize,16*nchan_per_node))
+        full_img = np.zeros((image_size,image_size,int(gulpsize*ngulps/args.timebin),16*nchan_per_node))#,gulpsize,16*nchan_per_node))
         print("Image shape:",full_img.shape)
         if not args.image_flux:
             dat_copy = None
@@ -1123,7 +1140,7 @@ def speccal(args):
                 racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
                 print("RA cutoff:",racutoff_,"pixels")
                 min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
-                full_img = np.zeros((image_size,min_gridsize,gulpsize*ngulps,16*nchan_per_node))
+                full_img = np.zeros((image_size,min_gridsize,int(gulpsize*ngulps/args.timebin),16*nchan_per_node))
                 print("Updated image size:",full_img.shape)
                 ra_grid_2D = ra_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
                 dec_grid_2D = dec_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
@@ -1149,17 +1166,17 @@ def speccal(args):
                 print("Excluding " + bright_nvssnames[bright_idx])
                 continue
 
-            for i in range(dat.shape[0]):
+            for i in range(int(dat.shape[0]/args.timebin)):
                 for j in range(len(corrs)):
                     for k in range(dat.shape[-1]):
                         for jj in range(nchans_per_node):
                             if args.ngulps>1:
-                                full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                     image_size,robust=-2)[:,image_size-min_gridsize - racutoff_*(ngulps - 1 - g):image_size-racutoff_*(ngulps- 1 - g)]
                             else:
-                                full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    image_size,robust=-2)
@@ -1179,7 +1196,7 @@ def speccal(args):
                     min([closepix[0]+buff+1,image_size]),
                     max([closepix[1]-buff,0]),
                     min([closepix[1]+buff+1,min_gridsize]))
-        input_img = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((2,3))
+        input_img = np.nanmean(full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:],(2,3))
         peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
         bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
         bright_pixcoord = SkyCoord(ra_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
@@ -1193,7 +1210,7 @@ def speccal(args):
         vmax=args.vmax#None#np.nanmax(full_img.mean((2,3)))/4#1 #0.2#1
 
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
-        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=(full_img.mean((2,3))).flatten(),alpha=0.5,cmap='cool',marker='s',s=10,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img,(2,3)).flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_nvsscoords[bright_idx].ra.to(u.deg).value,bright_nvsscoords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
         plt.xlim(bright_nvsscoords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
         plt.ylim(bright_nvsscoords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))
@@ -1218,6 +1235,12 @@ def speccal(args):
                 bright_dynspec = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((0,1))
             else:
                 bright_dynspec = full_img[bright_pixel[0],bright_pixel[1],:,:]
+            if args.rednoise or args.rednoiseR2002:
+                print("Removing rednoise...",end="")
+                print(bright_dynspec)
+                bright_dynspec = deredden(bright_dynspec,chanbw=chanbw*1e6/nchans_per_node,R2002=args.rednoiseR2002,R2002nbins=16,returnFFT=False,keepDC=True,scalefactor=4)
+                print(bright_dynspec)
+                print("Done")
             bright_measfluxs.append(np.nanmean(bright_dynspec))
             bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
         else:
@@ -1291,9 +1314,13 @@ def speccal(args):
             plt.close()
         
             bright_dynspec = np.real(np.nanmean(dat,(1,3)))
-            bright_measfluxs.append(np.nanmean(np.real(dat)))
-            bright_measfluxerrs.append(np.nanstd(np.real(dat))/np.sqrt(len(dat.flatten())))
-        
+            if args.rednoise or args.rednoiseR2002:
+                print("Removing rednoise...",end="")
+                bright_dynspec = deredden(bright_dynspec,chanbw=chanbw*1e6/nchans_per_node,R2002=args.rednoiseR2002,R2002nbins=16,returnFFT=False,keepDC=True)
+                print("Done")
+            bright_measfluxs.append(np.nanmean(bright_dynspec))
+            bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
+
         
         
         if bright_measfluxs[-1]<0:
@@ -1310,14 +1337,14 @@ def speccal(args):
         print(bright_dynspec)
         plt.figure(figsize=(16,12))
         plt.subplot(2,2,1,facecolor='black')
-        plt.step(np.arange(gulpsize*ngulps)*tsamp_ms/1000,np.nanmean(bright_dynspec,1),linewidth=4)
+        plt.step(np.arange(int(gulpsize*ngulps/args.timebin))*tsamp_ms*args.timebin/1000,np.nanmean(bright_dynspec,1),linewidth=4)
         plt.xlim(0,tsamp_ms*gulpsize*ngulps/1000)
 
         plt.subplot(2,2,4,facecolor='black')
         plt.step(np.nansum(bright_dynspec,0),fobs,linewidth=1)
         cm = plt.get_cmap('Blues')
-        for i in range(gulpsize):
-            plt.step(np.nansum(bright_dynspec[:i+1,:],0),fobs,color=cm(i/gulpsize),alpha=0.5,linewidth=1)
+        for i in range(gulpsize*ngulps):
+            plt.step(np.nansum(bright_dynspec[:i+1,:],0),fobs,color=cm(i/(gulpsize*ngulps)),alpha=0.5,linewidth=1)
         plt.ylim(fobs[-1],fobs[0])
         plt.scatter([],[],c=[],vmin=0,vmax=tsamp_ms*gulpsize/1000,cmap='Blues')
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
@@ -1391,5 +1418,8 @@ if __name__=="__main__":
     parser.add_argument('--target_decrange',type=float,help='Dec range in degrees within which sources should be included in astrometric and flux cal,default=0.5',default=0.5)
     parser.add_argument('--boxmean',action='store_true',help='When --image_flux is set, takes the mean flux within --buff pixels of the NVSS coordinate instead of the peak pixel flux')
     parser.add_argument('--ngulps',type=int,help='Number of gulps of 25 samples (3.25 s) to integrate, default=1',default=1)
+    parser.add_argument('--rednoise',action='store_true',help='Remove rednoise by masking short timescale Fourier modes')
+    parser.add_argument('--rednoiseR2002',action='store_true',help='Remove rednoise by normalizing by running median (see Ransom+2002 3.2)')
+    parser.add_argument('--timebin',type=int,help='Number of time samples to bin by, default=1',default=1)
     args = parser.parse_args()
     main(args)
