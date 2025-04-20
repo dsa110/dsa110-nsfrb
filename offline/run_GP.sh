@@ -59,7 +59,7 @@ do
 			fi
 		done
 		if (( $prerun==0 )); then
-			python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8 --filedir $filedir$injectflag --num_inject $inject --width_inject 2 --inject_noiseless --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --briggs --robust -2 --bmin 20 --maxProcesses 32 --port 8080 --multiimage --search --rednoise --stagger_multisend 0.5 --multisend --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 #--multisend --stagger_multisend 0
+			python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8 --filedir $filedir$injectflag --num_inject $inject --width_inject 2 --inject_noiseless --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --briggs --robust -2 --bmin 20 --maxProcesses 32 --port 8080 --multiimage --search --stagger_multisend 0.5 --multisend --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 #--multisend --stagger_multisend 0
 
 			donefiles+=($label)
 			count=$((count + 1))

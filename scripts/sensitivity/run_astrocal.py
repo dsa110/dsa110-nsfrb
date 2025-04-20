@@ -1137,7 +1137,7 @@ def speccal(args):
             dat[np.isnan(dat)] = 0
             if len(gulps) >1 and g == 0:
                 ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
-                racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
+                racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0])) 
                 print("RA cutoff:",racutoff_,"pixels")
                 min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
                 full_img = np.zeros((image_size,min_gridsize,int(gulpsize*ngulps/args.timebin),16*nchan_per_node))

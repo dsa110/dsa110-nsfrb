@@ -758,7 +758,10 @@ def main(args):
     multiport_task_list = []
     multiport_num_list = []
     while True: # want to keep accepting connections
-        
+        printlog("FULLIMG_DICTS---------------------------",output_file=processfile)
+        printlog(fullimg_dict,output_file=processfile)
+        printlog(slow_fullimg_dict,output_file=processfile)
+        printlog("----------------------------------------",output_file=processfile)
         if len(args.multiport)==0: 
             ret = multiport_task(servSockD,-1,port,maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
@@ -827,6 +830,13 @@ def main(args):
             #    multiport_task_list.pop(jj)
             #    multiport_num_list.pop(jj)
 
+
+        #check if search tasks finished
+        donetasks = []
+        for i in range(len(task_list)):
+            if task_list[i].done(): donetasks.append(i)
+        for i in range(len(task_list)):
+            task_list.pop(i)
 
     executor.shutdown()
     clientSocket.close()

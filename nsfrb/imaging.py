@@ -36,7 +36,7 @@ def get_RA_cutoff(dec,T=T,pixsize=pixsize):
     dec: current declination
     T: integration time in milliseconds
     """
-    cutoff_as = (T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
+    cutoff_as = (T/1000)*15/np.cos(dec*np.pi/180) #arcseconds
     cutoff_pix = np.abs((cutoff_as/3600)//pixsize)
     print("New RA cutoff:",cutoff_pix)
     return int(np.ceil(cutoff_pix))
