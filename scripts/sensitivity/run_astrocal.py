@@ -1026,7 +1026,7 @@ def speccal(args):
     outriggers = args.outriggers
     ref_wav=0.20
     bmin=args.bmin
-    full_img = np.zeros((image_size,image_size,int(gulpsize/args.timebin),16*nchan_per_node))
+    full_img = np.zeros((image_size,image_size,int(gulpsize/args.timebin),16*nchan_per_node),dtype=(complex if args.rednoiseR2002 else float))
     savestuff = True
     for bright_idx in range(len(bright_fnames)):
         if bright_fnames[bright_idx] == -1:
@@ -1049,7 +1049,7 @@ def speccal(args):
         print(bright_idx,fnum,gulps)
         g=0
         min_gridsize = image_size
-        full_img = np.zeros((image_size,image_size,int(gulpsize*ngulps/args.timebin),16*nchan_per_node))#,gulpsize,16*nchan_per_node))
+        full_img = np.zeros((image_size,image_size,int(gulpsize*ngulps/args.timebin),16*nchan_per_node),dtype=(complex if args.rednoiseR2002 else float))#,gulpsize,16*nchan_per_node))
         print("Image shape:",full_img.shape)
         if not args.image_flux:
             dat_copy = None
@@ -1140,7 +1140,7 @@ def speccal(args):
                 racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0])) 
                 print("RA cutoff:",racutoff_,"pixels")
                 min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
-                full_img = np.zeros((image_size,min_gridsize,int(gulpsize*ngulps/args.timebin),16*nchan_per_node))
+                full_img = np.zeros((image_size,min_gridsize,int(gulpsize*ngulps/args.timebin),16*nchan_per_node),dtype=(complex if args.rednoiseR2002 else float))
                 print("Updated image size:",full_img.shape)
                 ra_grid_2D = ra_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
                 dec_grid_2D = dec_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
@@ -1174,18 +1174,22 @@ def speccal(args):
                                 full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
-                                                    image_size,robust=-2)[:,image_size-min_gridsize - racutoff_*(ngulps - 1 - g):image_size-racutoff_*(ngulps- 1 - g)]
+                                                    image_size,robust=-2,return_complex=args.rednoiseR2002)[:,image_size-min_gridsize - racutoff_*(ngulps - 1 - g):image_size-racutoff_*(ngulps- 1 - g)]
                             else:
                                 full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
                                                    V/(2.998e8/fobs[(j*nchans_per_node) + jj]/1e9),
-                                                   image_size,robust=-2)
+                                                   image_size,robust=-2,return_complex=args.rednoiseR2002)
                             #full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
 
             g += 1
 
         if dat is None or int(dec) != int(search_dec):
             continue
+        if args.rednoiseR2002:
+            print("R2002 De-reddening...")
+            full_img = np.real(deredden(full_img,chanbw=chanbw*1e6/nchans_per_node,R2002=True,R2002nbins=16))
+            print("Done")
         np.save(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
 
         
@@ -1235,10 +1239,10 @@ def speccal(args):
                 bright_dynspec = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((0,1))
             else:
                 bright_dynspec = full_img[bright_pixel[0],bright_pixel[1],:,:]
-            if args.rednoise or args.rednoiseR2002:
+            if args.rednoise:
                 print("Removing rednoise...",end="")
                 print(bright_dynspec)
-                bright_dynspec = deredden(bright_dynspec,chanbw=chanbw*1e6/nchans_per_node,R2002=args.rednoiseR2002,R2002nbins=16,returnFFT=False,keepDC=True,scalefactor=4)
+                bright_dynspec = deredden(bright_dynspec,chanbw=chanbw*1e6/nchans_per_node,R2002=False,returnFFT=False,keepDC=True,scalefactor=4)
                 print(bright_dynspec)
                 print("Done")
             bright_measfluxs.append(np.nanmean(bright_dynspec))

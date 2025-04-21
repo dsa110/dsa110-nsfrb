@@ -49,9 +49,9 @@ def deredden(img,chanbw,R2002=False,R2002nbins=16,returnFFT=False,keepDC=True,sc
     """
     if R2002:
         binsize = int(img.shape[-1]//R2002nbins)
-        img_med = (np.nanmedian(img.reshape(tuple(list(img.shape[:-1])+[R2002nbins,binsize])),axis=-1)/np.log(2)).repeat(binsize,axis=-1)
+        img_med = np.sqrt((np.nanmedian((np.abs(img)**2).reshape(tuple(list(img.shape[:-1])+[R2002nbins,binsize])),axis=-1)/np.log(2)/2).repeat(binsize,axis=-1))
         print(img_med.shape)
-        x_filt = (img/img_med)*np.nanmax(img)/np.nanmax(img_med)
+        x_filt = (img/img_med)#*np.nanmax(img)/np.nanmax(img_med)
         return x_filt
     else:
         #dereddens assuming last axis is freq axis
