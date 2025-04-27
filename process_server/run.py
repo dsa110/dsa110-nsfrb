@@ -583,9 +583,17 @@ def main(args):
 
         config.nchans = args.nchans
         sl.nchans = args.nchans
-        config.chanbw = (config.fmax-config.fmin)/config.nchans #MHz
-        sl.chanbw = (config.fmax-config.fmin)/config.nchans 
-        sl.freq_axis = np.linspace(config.fmin,config.fmax,config.nchans)
+        config.freq_axis_fullres = 1000*((1.53-np.arange(8192)*0.25/8192)[1024:1024+int(config.nchans*config.NUM_CHANNELS/2)]) #MHz
+        config.freq_axis = np.reshape(config.freq_axis_fullres,(config.nchans,int(config.NUM_CHANNELS/2))).mean(axis=1) #MHz
+        sl.freq_axis = config.freq_axis
+        config.chanbw = np.abs(config.freq_axis[0]-config.freq_axis[1]) #MHz
+        config.fmax = np.max(config.freq_axis) #MHz
+        config.fmin = np.min(config.freq_axis) #MHz
+        config.fc =  (config.fmin+config.fmax)/2 #MHz
+        config.lambdamin = (config.c/(config.fmax*1e6)) #m
+        config.lambdamax = (config.c/(config.fmin*1e6)) #m
+        config.lambdac = (config.c/(config.fc*1e6)) #m
+        config.lambdaref = (config.c/(config.freq_axis_fullres[0]*1e6))
 
         config.gridsize = args.gridsize
         sl.gridsize = args.gridsize
@@ -835,7 +843,7 @@ def main(args):
         donetasks = []
         for i in range(len(task_list)):
             if task_list[i].done(): donetasks.append(i)
-        for i in range(len(task_list)):
+        for i in np.sort(donetasks)[::-1]:
             task_list.pop(i)
 
     executor.shutdown()

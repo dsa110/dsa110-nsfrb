@@ -1,4 +1,6 @@
 # config.py
+import numpy as np
+from dsacalib import constants as ct
 
 # Constants
 NUM_CHANNELS = 768
@@ -7,7 +9,7 @@ IMAGE_SIZE = 301#301#300  # pixels
 pixperFWHM = 3
 
 # Speed of light
-c = 299792458  # m/s
+c = ct.C_GHZ_M*1E9  # m/s
 
 # Channel information
 CH0 = 1311.387  # MHz
@@ -23,14 +25,26 @@ T = tsamp*nsamps #3250 #ms
 #nsamps = int(T/tsamp)
 
 # Image channel information
+"""
 nchans = int(NUM_CHANNELS/AVERAGING_FACTOR)
 chanbw = CH_WIDTH*AVERAGING_FACTOR
 fmax  = CH0 + CH_WIDTH * (nchans-1) * AVERAGING_FACTOR #1530 #MHz
 fmin = CH0 #1280  #MHz
 fc = (fmin+fmax)/2#1400 #MHz
+"""
+nchans = int(NUM_CHANNELS//AVERAGING_FACTOR)
+freq_axis_fullres = 1000*((1.53-np.arange(8192)*0.25/8192)[1024:1024+int(nchans*NUM_CHANNELS/2)]) #MHz
+freq_axis = np.reshape(freq_axis_fullres,(nchans,int(NUM_CHANNELS/2))).mean(axis=1) #MHz
+chanbw = np.abs(freq_axis[0]-freq_axis[1]) #MHz
+fmax = np.max(freq_axis) #MHz
+fmin = np.min(freq_axis) #MHz
+fc =  (fmin+fmax)/2 #MHz
+
+
 lambdamin = (c/(fmax*1e6)) #m
 lambdamax = (c/(fmin*1e6)) #m
 lambdac = (c/(fc*1e6)) #m
+lambdaref = (c/(freq_axis_fullres[0]*1e6))
 #nchans = 16 #16 coarse channels
 #chanbw = (fmax-fmin)/nchans #MHz
 telescope_diameter = 4.65 #m
@@ -80,7 +94,7 @@ noise_dir = cwd + "-noise/"
 imgpath = cwd + "-images"
 plan_dir = cwd + "-plans/"
 table_dir = cwd + "-tables/"
-
+psr_dir = cwd + "-pulsar/"
 #data files
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
 

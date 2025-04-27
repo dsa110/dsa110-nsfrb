@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,tsamp
 
 
-def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf):
+def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf,flagged_chans=np.array([]),flagged_baseline_idxs=np.array([])):
     """
     Removes visibilities containing flagged antennas and below minimum 
     baseline length
@@ -51,6 +51,10 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
         for j in np.array(antenna_order)[antenna_order.index(i):]:
             flagged_vis.append(list(bname).index(str(i) + "-" + str(j)))
         """
+    for i in flagged_baseline_idxs:
+        if list(bname.index.values).index(i) not in flagged_vis:
+            flagged_vis.append(list(bname.index.values).index(i))
+
     flagged_vis = np.array(flagged_vis,dtype=int)
     print("Flagged visibilities:",np.array(list(bname))[flagged_vis])
     unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)),dtype=int)
@@ -65,7 +69,7 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
     #remove short baselines
     #if bmin > 0:
         
-    blen_mask = np.logical_and(np.sqrt(np.sum(blen**2,axis=1))>=bmin,np.sqrt(np.sum(blen**2,axis=1))<bmax)
+    blen_mask = np.logical_and(np.sqrt(UVW[0,:,0]**2 + UVW[0,:,1]**2)>=bmin,np.sqrt(UVW[0,:,0]**2 + UVW[0,:,1]**2)<bmax)
     bname = bname[np.array(bname.index.values.tolist())[blen_mask]]
     blen = blen[blen_mask]
     UVW = UVW[:,blen_mask,:]
@@ -82,6 +86,12 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
             nchans_per_node = int(dat.shape[2]//int(NUM_CHANNELS//AVERAGING_FACTOR))
             for c in flagged_corrs:
                 dat[:,:,c*nchans_per_node:(c+1)*nchans_per_node,:] = np.nan
+    if len(flagged_chans) > 0:
+        if realtime:
+            nchans_per_node = dat.shape[2]
+            dat[:,:,flagged_chans[np.logical_and(flagged_chans>=nchans_per_node*sb,flagged_chans<nchans_per_node*(sb+1))]-int(sb*nchans_per_node),:] = np.nan
+        else:
+            dat[:,:,flagged_chans,:] = np.nan
     if len(flag_channel_templates) > 0:
         for fct in flag_channel_templates:
             flag_channels = fct(dat)

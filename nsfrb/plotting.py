@@ -7,7 +7,7 @@ from dsamfs import utils as pu
 from astropy.time import Time
 from astropy import units as u
 from nsfrb.planning import nvss_cat,atnf_cat,find_fast_vis_label
-from nsfrb.config import tsamp_slow,tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS
+from nsfrb.config import tsamp_slow,tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS,fmin,fmax
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 fsize=45
@@ -308,7 +308,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     printlog(names[np.argmax(snrs)],output_file)
     showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
     ax.set_title(showname)
-    ax.imshow(img[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000,CH0,CH0 + CH_WIDTH * img.shape[3] * AVERAGING_FACTOR],cmap='plasma',aspect='auto',vmin=0,vmax=0.9*np.nanmax(img[int(showy),int(showx),:,:].transpose()))
+    ax.imshow(img[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000,fmin,fmax],cmap='plasma',aspect='auto',vmin=0,vmax=0.9*np.nanmax(img[int(showy),int(showx),:,:].transpose()))
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (MHz)")
     printlog("dynamic spectrum done",output_file=cutterfile)

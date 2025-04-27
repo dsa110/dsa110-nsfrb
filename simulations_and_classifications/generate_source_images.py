@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm  
 from nsfrb.simulating import compute_uvw, add_complex_gaussian_noise, get_all_coordinates, get_core_coordinates, apply_spectral_index, apply_phase_shift
-from nsfrb.imaging import revised_robust_image,revised_uniform_image,uniform_image,subrevised_robust_image
-from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, flagged_antennas,bmin,robust
+from nsfrb.imaging import revised_robust_image
+from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, flagged_antennas,bmin,robust,lambdaref
 from nsfrb.flagging import flag_vis
 from dsamfs import utils as pu
 
 
-def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust,xidxs=None,yidxs=None):
+def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -129,10 +129,10 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             V[i] = apply_spectral_index(V[i], frequency_MHz, reference_frequency_MHz, spectral_index)
 
         if tonumpy and N_NOISE > 1:
-            if xidxs is not None and yidxs is not None:
-                dirty_img_all_noise = np.zeros((len(xidxs),len(yidxs),int(NUM_CHANNELS//AVERAGING_FACTOR)))
-            else:
-                dirty_img_all_noise = np.zeros((zoom_pix + (1 if zoom_pix%2==0 else 0),zoom_pix + (1 if zoom_pix%2==0 else 0),N_NOISE,int(NUM_CHANNELS//AVERAGING_FACTOR)))
+            #if xidxs is not None and yidxs is not None:
+            #    dirty_img_all_noise = np.zeros((len(xidxs),len(yidxs),int(NUM_CHANNELS//AVERAGING_FACTOR)))
+            #else:
+            dirty_img_all_noise = np.zeros((zoom_pix + (1 if zoom_pix%2==0 else 0),zoom_pix + (1 if zoom_pix%2==0 else 0),N_NOISE,int(NUM_CHANNELS//AVERAGING_FACTOR)))
             #dirty_img_all_noise = np.zeros((zoom_pix*2 + 1,zoom_pix*2 + 1,N_NOISE,int(NUM_CHANNELS//AVERAGING_FACTOR)))
         for k_n in range(N_NOISE):
             noise = np.random.uniform(noise_std_low, noise_std_high)
@@ -142,6 +142,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
                 V_noisy = [add_complex_gaussian_noise(v, std_dev=noise) for v in V]
 
             dirty_images = []
+            pixel_resolution = (lambdaref/np.max(np.sqrt(u_core**2 + v_core**2))/3)
             for i in range(0, NUM_CHANNELS, AVERAGING_FACTOR):
                 chunk_V = V_noisy[i:i+AVERAGING_FACTOR]
                 avg_freq = CH0 + CH_WIDTH * i + AVERAGING_FACTOR/2 * CH_WIDTH
@@ -159,11 +160,15 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             
                 #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
                 #dirty_img = revised_uniform_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0))
+                dirty_img = revised_robust_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0),robust=robust,pixel_resolution=pixel_resolution)
+                """
                 if xidxs is not None and yidxs is not None:
+                    dirty_img = revised_robust_image(chunk_V
+                    
                     dirty_img = subrevised_robust_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0),robust=robust,xidxs=xidxs,yidxs=yidxs)
                 else:
                     dirty_img = revised_robust_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0),robust=robust)
-                """if inflate:
+                if inflate:
                     dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, zoom_pix*2 + 1)
                 else:
                     dirty_img = revised_uniform_image(chunk_V, chunk_u_core, chunk_v_core, IMAGE_SIZE)
@@ -179,10 +184,10 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
 
             # Saving the images and collecting metadata
             if tonumpy:
-                if xidxs is not None and yidxs is not None:
-                    dirty_img_all = np.zeros((len(xidxs),len(yidxs),int(NUM_CHANNELS//AVERAGING_FACTOR)))
-                else:
-                    dirty_img_all = np.zeros((zoom_pix + (1 if zoom_pix%2==0 else 0),
+                #if xidxs is not None and yidxs is not None:
+                #    dirty_img_all = np.zeros((len(xidxs),len(yidxs),int(NUM_CHANNELS//AVERAGING_FACTOR)))
+                #else:
+                dirty_img_all = np.zeros((zoom_pix + (1 if zoom_pix%2==0 else 0),
                         zoom_pix + (1 if zoom_pix%2==0 else 0),
                         int(NUM_CHANNELS//AVERAGING_FACTOR)))
                 

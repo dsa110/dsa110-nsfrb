@@ -73,7 +73,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     
     #for proper normalization need to scale snr
     #snr = snr*100*1000*0.75*75/15#40.625#*100/3
-    snr = snr*100*(1000/20)*16*((10/28)**2)#*1000/2 
+    snr = snr*(1e2)*100*(1000/20)*16*((10/28)**2)#*1000/2 
     
    
     #estimate noise to inject from raw data
@@ -146,10 +146,6 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         if not noiseonly: nn -= width
         PSFimg = np.concatenate([np.zeros((gridsize,gridsize,(int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,nn-(int(loc*nsamps)+maxshift),nchans))],axis=2)[:,:,::-1,:]*vi_scale
         print(nn,PSFimg.shape,vi_scale,file=fout)
-        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,int(loc*nsamps)+maxshift,nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps - int(loc*nsamps),nchans))],axis=2)[:,:,::-1,:]
-        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans)),PSFimg,np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans))],axis=2)
-        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (int(loc*nsamps)+maxshift),nchans)),PSFimg,np.zeros((gridsize,gridsize,maxshift+int(loc*nsamps),nchans))],axis=2)
-        #PSFimg = np.concatenate([np.zeros((gridsize,gridsize,nsamps-width+maxshift - (maxshift-int(loc*nsamps)),nchans)),PSFimg,np.zeros((gridsize,gridsize,(-int(loc*nsamps)+maxshift),nchans))],axis=2)
 
     print("PSF MEAN:" + str(np.nanmean(PSFimg)),file=fout)
     print("PSF MEDIAN:" + str(np.nanmedian(PSFimg)),file=fout)
@@ -161,50 +157,9 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     print("PSF shape:" + str(PSFimg.shape),file=fout)
     sourceimg=copy.deepcopy(PSFimg)
 
-    """
-    #shift based on offsets
-    if offsetRA > 0:
-        sourceimg = np.pad(sourceimg,((0,0),(offsetRA,0),(0,0),(0,0)))[:,:gridsize*2,:,:]
-    elif offsetRA < 0:
-        sourceimg = np.pad(sourceimg,((0,0),(0,-offsetRA),(0,0),(0,0)))[:,-gridsize*2:,:,:]
-    if offsetDEC > 0:
-        sourceimg = np.pad(sourceimg,((offsetDEC,0),(0,0),(0,0),(0,0)))[:gridsize*2,:,:,:]
-    elif offsetDEC < 0:
-        sourceimg = np.pad(sourceimg,((0,-offsetDEC),(0,0),(0,0),(0,0)))[-gridsize*2:,:,:,:]
-    sourceimg = sourceimg[gridsize//2:gridsize + (gridsize//2),gridsize//2:gridsize + (gridsize//2),:,:]
-    PSFimg = PSFimg[gridsize//2:gridsize + (gridsize//2),gridsize//2:gridsize + (gridsize//2),:,:]
-    if not noiseless:
-        noiseimg = noiseimg[gridsize//2:gridsize + (gridsize//2),gridsize//2:gridsize + (gridsize//2),:,:]
-    """
-
-    #sourceimg[:,:,:maxshift+int(loc*nsamps),:] = noiseimg[:,:,:maxshift+int(loc*nsamps),:]
-    #sourceimg[:,:,maxshift+int(loc*nsamps) + width:,:] = noiseimg[:,:,maxshift+int(loc*nsamps) + width:,:]
 
     print("IMG shape:"+str(sourceimg.shape),file=fout)
     
-    """
-    #normalize based on snr
-    noisemean = 1
-    if len(glob.glob(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")) > 0:
-        noise_per_chan = np.load(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")
-        #noise_per_chan = np.ones(nchans)*noise_per_chan[0]
-        noisemean = np.nanmean(noise_per_chan)#maxchan = np.argmax(noise_per_chan)
-    else:
-        noise_per_chan = np.ones(nchans)
-    
-    for i in range(nchans):
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]/(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]))#/np.sum(PSFimg[:,:,:,i]))
-
-
-        print(np.sum((PSFimg*sourceimg)[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]),np.sum(PSFimg[:,:,:,i]),file=fout)
-
-
-        #img[16,16,500:500+wid,:] = snr/wid
-        sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i] = sourceimg[:,:,int(loc*nsamps) : int(loc*nsamps) + width,i]#*snr*noisemean#noise_per_chan[maxchan]# S/N is referenced to channel w/ highest noise
-
-        sourceimg[:,:,:int(loc*nsamps),:] = 0
-        sourceimg[:,:,int(loc*nsamps) + width:,:] = 0
-    """
 
     #if DM is given, disperse before adding noise
     if DM != 0:
@@ -226,67 +181,9 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     else:
         sourceimg_dm = sourceimg
 
-    """
-        if DM in DM_trials:
-            #dedispersion
-            
-            #nsamps = sourceimg.shape[-2]
-            DM_idx = list(DM_trials).index(DM)
-            print("PRE-DM SHAPE:",sourceimg.shape,file=fout)
-            sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,::-1,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
-            print("POST-DM SHAPE:",sourceimg_dm.shape,file=fout)
-            #zero out anywhere that was wrapped
-            #sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
-
-            #now average the low and high shifts 
-            sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps,nchans] + [2])).sum(4))[:,:,::-1,:]
-            
-            
-            
-            
-        else:
-
-            sourceimg_dm = np.zeros(sourceimg.shape)
-            freq_axis = np.linspace(fmin,fmax,nchans)
-            for i in range(gridsize):
-                for j in range(gridsize):
-                    tdelays = DM*4.15*(((np.min(freq_axis)*1e-3)**(-2)) - ((freq_axis*1e-3)**(-2)))#(8.3*(chanbw)*burst_DMs[i]/((freq_axis*1e-3)**3))*(1e-3) #ms
-                    tdelays_idx_hi = np.array(np.ceil(tdelays/tsamp),dtype=int)
-                    tdelays_idx_low = np.array(np.floor(tdelays/tsamp),dtype=int)
-                    tdelays_frac = tdelays/tsamp - tdelays_idx_low
-
-                    for k in range(nchans):
-                        #print(tdelays_idx_hi,tdelays_idx_low,tdelays_frac)
-                        arrlow =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_low[k])),mode="constant",constant_values=0)[tdelays_idx_low[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
-                        arrhi =  np.pad(sourceimg[i,j,:,k],((0,tdelays_idx_hi[k])),mode="constant",constant_values=0)[tdelays_idx_hi[k]:]/nchans#np.roll(image_tesseract_intrinsic[:,:,:,k],tdelays_idx[k],axis=2)
-
-                        sourceimg_dm[i,j,:,k] = arrlow*(1-tdelays_frac[k]) + arrhi*(tdelays_frac[k])
-    
- 
-
-    else:
-        sourceimg_dm = sourceimg
-    """
     np.save(inject_dir + "testimg",sourceimg_dm)
     sourceimg_dm = sourceimg_dm[:,:,:nsamps,:]
     print("FINAL IMG SHAPE:" + str(sourceimg_dm.shape),file=fout)
-
-
-    #add noise
-    """
-    if not noiseless:
-        if len(glob.glob(noise_dir + "raw_noise_" + str(gridsize) + "x" + str(gridsize) + ".npy")) > 0:
-            for i in range(nchans):
-                sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=noise_per_chan[i],size=(gridsize,gridsize,nsamps))
-        else:
-            for i in range(nchans):
-                sourceimg_dm[:,:,:,i] += norm.rvs(loc=0,scale=np.sqrt(1/np.nansum(PSFimg[:,:,0,i])/width/nchans),size=(gridsize,gridsize,nsamps))
-    #    noises.append(1/np.nansum(PSFimg[:,:,0,i])/width/nchans)
-    """
-    #if this is in offline mode, we won't have a previous noise frame to scale the noise to. So instead, overwrite it with pure noise matching whats in the injection
-    #if offline and not noiseless:
-    #noise_frame = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize//2,True,nsamps,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True)*visnoise/injectnoise
-        
 
 
     if output_file != "":

@@ -1,4 +1,5 @@
 import argparse
+from dsacalib import constants as ct
 from inject import injecting
 from nsfrb.outputlogging import printlog
 import glob
@@ -23,8 +24,8 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize
-from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,lambdaref,freq_axis_fullres
+from nsfrb.imaging import inverse_revised_uniform_image, uv_to_pix, revised_robust_image,get_ra
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
@@ -154,9 +155,9 @@ def main(args):
 
         #parameters from etcd
         test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
-        ff = 1.53-np.arange(8192)*0.25/8192
-        fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
-        fobs = np.reshape(fobs,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1)
+        #ff = 1.53-np.arange(8192)*0.25/8192
+        #fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+        fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1))
 
         #use MJD to get pointing
         time_start_isot = Time(mjd,format='mjd').isot
@@ -178,11 +179,11 @@ def main(args):
             fcts.append(fct_BPASSBURST)
         dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin, flagged_corrs, flag_channel_templates = fcts, realtime=True, sb=args.sb)
             
-        U = UVW[0,:,0]
-        V = UVW[0,:,1]
+        U = UVW[0,:,1]
+        V = UVW[0,:,0]
         W = UVW[0,:,2]
         uv_diag=np.max(np.sqrt(U**2 + V**2))
-        pixel_resolution = (0.20 / uv_diag) / 3
+        pixel_resolution = (lambdaref / uv_diag) / 3
         if verbose: printlog(str(antenna_order)+ str(len(antenna_order)),output_file=logfile)#x_m.shape,y_m.shape,z_m.shape)
         if verbose: printlog(str((UVW.shape,U.shape,V.shape,W.shape)),output_file=logfile)
         if verbose: printlog(UVW,output_file=logfile)
@@ -240,23 +241,17 @@ def main(args):
 
         #imaging
         printlog("Start imaging",output_file=logfile)
-        if args.wstack: printlog("W-stacking with " + str(args.Nlayers) + " layers",output_file=logfile)
+        if args.wstack or args.wstack_parallel: printlog("W-stacking with " + str(args.Nlayers) + " layers",output_file=logfile)
         dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,dat.shape[0],1))
         for i in range(dat.shape[0]):
             for k in range(dat.shape[-1]):
                     
                 for jj in range(args.nchans_per_node):
-                    if args.briggs:
-                        if k == 0 and jj == 0:
-                            dirty_img[:,:,i,0] = revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                    if k == 0 and jj == 0:
+                            dirty_img[:,:,i,0] = revised_robust_image(dat[i:i+1, :, jj, k],U/(ct.C_GHZ_M/fobs[(args.nchans_per_node*args.sb)+jj]),V/(ct.C_GHZ_M/fobs[(args.nchans_per_node*args.sb)+jj]),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,uniform=(not args.briggs),inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=(args.wstack or args.wstack_parallel),w=None if not args.wstack else W/(ct.C_GHZ_M/fobs[(args.nchans_per_node*args.sb)+jj]),Nlayers_w=args.Nlayers,wstack_parallel=args.wstack_parallel)
 
                         else:
-                            dirty_img[:,:,i,0] += revised_robust_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
-                    else:
-                        if k == 0 and jj == 0:
-                            dirty_img[:,:,i,0] = revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
-                        else:
-                            dirty_img[:,:,i,0] += revised_uniform_image(dat[i:i+1, :, jj, k],U/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),V/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=args.wstack,w=None if not args.wstack else W/(2.998e8/fobs[(args.nchans_per_node*args.sb)+jj]/1e9),Nlayers_w=args.Nlayers)
+                            dirty_img[:,:,i,0] += revised_robust_image(dat[i:i+1, :, jj, k],U/(ct.C_GHZ_M/fobs[(args.nchans_per_node*args.sb)+jj]),V/(ct.C_GHZ_M/fobs[(args.nchans_per_node*args.sb)+jj]),args.gridsize,inject_img=None if np.all(inject_img[:,:,i]==0) else inject_img[:,:,i]/dat.shape[-1]/args.nchans_per_node,robust=args.robust,uniform=(not args.briggs),inject_flat=inject_flat,pixel_resolution=pixel_resolution,wstack=(args.wstack or args.wstack_parallel),w=None if not args.wstack else W/(ct.C_GHZ_M/fobs[(args.nchans_per_node*args.sb)+jj]),Nlayers_w=args.Nlayers,wstack_parallel=args.wstack_parallel)
 
 
         printlog("Imaging complete",output_file=logfile)
@@ -295,6 +290,7 @@ if __name__=="__main__":
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     parser.add_argument('--wstack',action='store_true',help='If set use w-stacking algorithm with --Nlayers layers')
+    parser.add_argument('--wstack_parallel',action='store_true',help='If set uses parallel processing for w-stacking')
     parser.add_argument('--Nlayers',type=int,help='Number of layers for w-stacking',default=18)
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
     parser.add_argument('--flagSWAVE',action='store_true',help='Flag channels when SWAVE template RFI is detected, which manifests as a 2 Hz sin wave over ~5 minutes of data')

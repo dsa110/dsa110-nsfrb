@@ -78,6 +78,7 @@ do
 		cat ${cwd}-logfiles/journalctl.txt
 		echo ">>>>>>>>>>>>>>>"
 
+
 	else
 		echo ""
                 echo ">>>>>>>>>>>>>>> $3.txt"
