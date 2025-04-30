@@ -224,21 +224,22 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         if 'predicts' in canddict.keys():
             ra_grid_2D_cut = ra_grid_2D[:,-searched_image.shape[1]:]
             dec_grid_2D_cut = dec_grid_2D[:,-searched_image.shape[1]:]
-            ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
+            c=ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
                     dec_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
                     c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')
-            ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
+            c=ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
                     dec_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
                     c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=300*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')
         else:
-            ax.scatter(ra_grid_2D_cut[decs,ras].flatten(),
+            c=ax.scatter(ra_grid_2D_cut[decs,ras].flatten(),
                     dec_grid_2D_cut[decs,ras].flatten(),c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)
     else:
         if 'predicts' in canddict.keys():
-            ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')
-            ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')
+            c=ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')
+            c=ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==1]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')
         else:
-            ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+            c=ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,s=100*snrs/s100,vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+    plt.colorbar(mappable=c,ax=ax,label='S/N')
     #nvss sources
     nvsspos,tmp,tmp = nvss_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
     ax.plot(nvsspos.ra.value,nvsspos.dec.value,'o',markerfacecolor='none',markeredgecolor='blue',markersize=20,markeredgewidth=4,label='NVSS Source')
@@ -256,6 +257,14 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     printlog("psr plot done",output_file=cutterfile)
 
     ax = fig.add_subplot(gs[0,1])#ax=plt.subplot(3,2,2)
+    if searched_image is not None:
+        #plot the DM transform thing for peak candidate
+        showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
+        ax.set_title(showname)
+        ax.imshow(searched_image[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[min(widthtrials),max(widthtrials),min(DM_trials),max(DM_trials)],cmap='plasma',aspect='auto',vmin=0,vmax=np.nanmax(searched_image[int(showy),int(showx),:,:]))
+        ax.axhline(DM_trials[dms][np.argmax(snrs)],color='red',linestyle='--',linewidth=3,zorder=100)
+        ax.axvline(widthtrials[wids][np.argmax(snrs)],color='red',linestyle='--',linewidth=3,zorder=100)
+    """ 
     if 'predicts' in canddict.keys():
         c=ax.scatter(widthtrials[wids][canddict['predicts']==0],
                 DM_trials[dms][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,s=100*snrs[canddict['predicts']==0]/s100,vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')#,alpha=(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
@@ -269,8 +278,9 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         ax.axvline(i,color='grey',linestyle='--')
     for i in DM_trials:
         ax.axhline(i,color='grey',linestyle='--')
-    ax.set_xlim(0,np.max(widthtrials) + 1)
-    ax.set_ylim(0,np.max(DM_trials) + 1)
+    """
+    ax.set_xlim(np.min(widthtrials),np.max(widthtrials) )
+    ax.set_ylim(np.min(DM_trials),np.max(DM_trials) )
     ax.set_xlabel("Width (Samples)")
     ax.set_ylabel(r"DM (pc/cc)")
 
@@ -308,7 +318,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     printlog(names[np.argmax(snrs)],output_file)
     showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
     ax.set_title(showname)
-    ax.imshow(img[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000,fmin,fmax],cmap='plasma',aspect='auto',vmin=0,vmax=0.9*np.nanmax(img[int(showy),int(showx),:,:].transpose()))
+    ax.imshow(img[int(showy),int(showx),:,:].transpose(),origin="upper",extent=[0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000,fmin,fmax],cmap='plasma',aspect='auto',vmin=0,vmax=np.nanmax(img[int(showy),int(showx),:,:].transpose()))
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (MHz)")
     printlog("dynamic spectrum done",output_file=cutterfile)

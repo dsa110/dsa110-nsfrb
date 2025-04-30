@@ -50,6 +50,7 @@ def main(args):
         print("Populated csv, returning")
         return 0
     """
+    subdirs_to_clear = copy.deepcopy(subdirs_to_clear_init)
     if args.populate:
         with open(vis_file,"w") as csvfile:
             for subdir, pattern in subdirs_to_clear:
@@ -70,11 +71,11 @@ def main(args):
             f"{cutoff.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
 
         #clear nvss and RFC calibrator stuff
-        subdirs_to_clear = copy.deepcopy(subdirs_to_clear_init)
         if args.clearcal:
             #print("Clearing NVSS and RFC data...")
             caldirs = list(glob.glob(str(operations_dir) + "/NVSS*")) + list(glob.glob(str(operations_dir) + "/RFC*"))
             subdirs_to_clear += [(os.path.basename(c),"*.out") for c in caldirs]
+            subdirs_to_clear += [(os.path.basename(c),"*.npy") for c in caldirs]
             clearcal_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.clearcal_waittime)
             
             """

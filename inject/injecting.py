@@ -56,7 +56,7 @@ frame_dir = cwd + "-frames/"
 noise_dir = cwd + "-noise/"
 inject_dir = cwd + "-injections/"
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,inject_log_file,chanbw,fc,fmin,fmax,bmin
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,inject_log_file,chanbw,fc,fmin,fmax,bmin,freq_axis
 
 PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
@@ -73,7 +73,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     
     #for proper normalization need to scale snr
     #snr = snr*100*1000*0.75*75/15#40.625#*100/3
-    snr = snr*(1e2)*100*(1000/20)*16*((10/28)**2)#*1000/2 
+    snr = snr*100*(1000/20)*16*((10/28)**2)#*1000/2 
     
    
     #estimate noise to inject from raw data
@@ -165,7 +165,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     if DM != 0:
         print("COMPUTING SHIFTS FOR DM=",DM,"pc/cc",file=fout)
         DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))#[0:1]
-        freq_axis = np.linspace(fmin,fmax,nchans)
+        #freq_axis = np.linspace(fmin,fmax,nchans)
         corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps,outputwraps=True,maxshift=maxshift)
 
         #nsamps = sourceimg.shape[-2]
@@ -193,7 +193,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
 
 default_DMtrials = np.load(cand_dir + "DMtrials.npy")
 default_widthtrials = np.load(cand_dir + "widthtrials.npy")
-freq_axis = np.linspace(fmin,fmax,nchans)
+#freq_axis = np.linspace(fmin,fmax,nchans)
 tDM_max = (4.15)*np.max(default_DMtrials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
 maxshift = int(np.ceil(tDM_max/tsamp))
 

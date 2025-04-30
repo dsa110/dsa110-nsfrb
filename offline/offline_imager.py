@@ -125,6 +125,7 @@ def main(args):
 
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples,args.num_chans))
 
+    print("PROCESSING GULPS ",args.gulp_offset - (1 if args.gulp_offset>0 and args.search else 0),args.gulp_offset + num_gulps)
     for gulp in range(args.gulp_offset - (1 if args.gulp_offset>0 and args.search else 0),args.gulp_offset + num_gulps):
         
         #if searching, also need to find the previous integration set so we can initialize previous frame

@@ -247,7 +247,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     
     return
 
-def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,outriggers,astrocal_table=table_dir + "/NSFRB_astrocal.json",init=False,resid_th=np.inf,exclude_table=table_dir + "/NSFRB_excludecal.json",target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5):
+def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,bright_gulpoffsets,bright_gulpoffset_times,outriggers,astrocal_table=table_dir + "/NSFRB_astrocal.json",init=False,resid_th=np.inf,exclude_table=table_dir + "/NSFRB_excludecal.json",target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5):
     """
     This function updates the astrometric calibration table with the most 
     recent NVSS observations.
@@ -287,7 +287,8 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["rfc_ra"] = bright_nvsscoords[i].ra.value
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["rfc_dec"] = bright_nvsscoords[i].dec.value
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["dir"] = vis_dir + bright_nvssnames[i].replace(" ","") + "/"
-
+        tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["pixoffsets"] = (list(bright_gulpoffsets[i].astype(float)),list(bright_gulpoffset_times[i]))
+        print(tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["pixoffsets"])
     #update total RMS errors
     allposerrs = []
     allRAerrs = []
@@ -295,6 +296,9 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
     allresids = []
     allRFCRAerrs = []
     allRFCDECerrs = []
+    allgulpoffsets = []
+    allgulpoffset_times = []
+    allgulpresids = []
     if len(target)>0:
         target_coord = SkyCoord(target,unit=(u.hourangle,u.deg),frame='icrs')
         target_obstime = Time(targetMJD,format='mjd')
@@ -308,6 +312,9 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
                     allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
                     allRFCRAerrs.append(tab[arraykey][k][kk]['RFC_RA_error_deg'])
                     allRFCDECerrs.append(tab[arraykey][k][kk]['RFC_DEC_error_deg'])
+                    allgulpoffsets = np.concatenate([allgulpoffsets,tab[arraykey][k][kk]["pixoffsets"][0]])
+                    allgulpoffset_times = np.concatenate([allgulpoffset_times,tab[arraykey][k][kk]["pixoffsets"][1]])
+                    allgulpresids = np.concatenate([allgulpresids,[tab[arraykey][k][kk]['RMS_fit_residual']]*len(tab[arraykey][k][kk]["pixoffsets"][0])])
                 elif len(target)==0:
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
                     allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
@@ -315,6 +322,9 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
                     allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
                     allRFCRAerrs.append(tab[arraykey][k][kk]['RFC_RA_error_deg'])
                     allRFCDECerrs.append(tab[arraykey][k][kk]['RFC_DEC_error_deg'])
+                    allgulpoffsets = np.concatenate([allgulpoffsets,tab[arraykey][k][kk]["pixoffsets"][0]])
+                    allgulpoffset_times = np.concatenate([allgulpoffset_times,tab[arraykey][k][kk]["pixoffsets"][1]])
+                    allgulpresids = np.concatenate([allgulpresids,[tab[arraykey][k][kk]['RMS_fit_residual']]*len(tab[arraykey][k][kk]["pixoffsets"][0])])
     allposerrs = np.array(allposerrs)
     allRAerrs = np.array(allRAerrs)
     allDECerrs = np.array(allDECerrs)
@@ -344,6 +354,14 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         print(target + " DEC Offset:",target_table[str('outriggers' if outriggers else 'core') + "_DEC_offset_deg"])
         print(target + " RA Error:",target_table[str('outriggers' if outriggers else 'core') + "_RA_error_deg"])
         print(target + " DEC Error:",target_table[str('outriggers' if outriggers else 'core') + "_DEC_error_deg"])
+
+        #RA pixel drift fit
+        if len(allgulpoffsets)>=2:
+            popt_gulp = np.polyfit(allgulpoffset_times,allgulpoffsets,1,w=1/allgulpresids)
+            print("Gulp offset curve:",popt_gulp)
+            target_table[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_slope"] = popt_gulp[0]
+            target_table[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_int"] = popt_gulp[1]
+
     else:
         tab[str('outriggers' if outriggers else 'core') + "_position_error_deg"] = np.sqrt(np.average(np.array(allposerrs)**2,weights=1/allresids))
         tab[str('outriggers' if outriggers else 'core') + "_RA_offset_deg"] = (np.average(allRAerrs,weights=1/allresids) if len(allRAerrs)>1 else 0)
@@ -355,6 +373,14 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         print("Updated DEC Offset:",tab[str('outriggers' if outriggers else 'core') + "_DEC_offset_deg"])
         print("Updated RA Error:",tab[str('outriggers' if outriggers else 'core') + "_RA_error_deg"])
         print("Updated DEC Error:",tab[str('outriggers' if outriggers else 'core') + "_DEC_error_deg"])
+
+
+        #RA pixel drift fit
+        if len(allgulpoffsets)>=2:
+            popt_gulp = np.polyfit(allgulpoffset_times,allgulpoffsets,1,w=1/allgulpresids)
+            print("Gulp offset curve:",popt_gulp)
+            tab[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_slope"] = popt_gulp[0]
+            tab[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_int"] = popt_gulp[1]
     
     
     f = open(astrocal_table,"w")
@@ -388,7 +414,18 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") +"RFCtotal_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
     plt.close()
 
-
+    if len(allgulpoffsets)>=2:
+        plt.figure(figsize=(12,12))
+        plt.scatter(allgulpoffset_times,allgulpoffsets,c=allgulpresids,marker='o',s=100,cmap='copper')
+        if len(target)>0:
+            plt.plot(allgulpoffset_times,target_table[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_int"] + target_table[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_slope"]*allgulpoffset_times,'--',color='red')
+        else:
+            plt.plot(allgulpoffset_times,tab[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_int"] + tab[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_slope"]*allgulpoffset_times,'--',color='red')
+        plt.colorbar(label="Normalized RMS Residual")
+        plt.xlabel("Time (s)")
+        plt.ylabel("RA Offset (pixels)")
+        plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") +"RFCtotal_"+ str("outriggers_" if outriggers else "")+"astrocal_drift.png")
+        plt.close()
     return
     
 
@@ -639,7 +676,16 @@ def astrocal(args):
         print("Reading data for "+ bright_names[bright_idx])
         fnum = int(bright_fnames[bright_idx])
         gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
+        if len(gulps)<args.ngulps:
+            gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
+            gulps = np.unique(gulps)
         ngulps = len(gulps)
+        if len(bright_poserrs)==0 and ngulps>=5:
+            bright_gulpoffsets = []
+            bright_gulpoffset_times = []
+        elif np.all(np.array(bright_poserrs)==-1) and ngulps>=5:
+            bright_gulpoffsets = [-1]*len(bright_poserrs)
+            bright_gulpoffset_times = [-1]*len(bright_poserrs)
         print(bright_idx,fnum,gulps)
        
         g=0
@@ -661,9 +707,17 @@ def astrocal(args):
         else:
         """
         min_gridsize = image_size
-        full_img = np.zeros((image_size,image_size))#,gulpsize,16*nchan_per_node))
-        print("Image shape:",full_img.shape)
+        full_img = np.zeros((image_size,image_size,ngulps))#,gulpsize,16*nchan_per_node))
         #full_img[:,:,:,:] = 0
+        if ngulps >= 5:
+            full_img = np.zeros((image_size,image_size,ngulps))
+            RAs_for_fit = []
+            DECs_for_fit = []
+        else:
+            full_img = np.zeros((image_size,image_size,ngulps))
+        print("Image shape:",full_img.shape)
+        buff = args.buff#50
+
         for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
 
             dat = None
@@ -734,17 +788,27 @@ def astrocal(args):
             
             if len(gulps) >1 and g == 0:
                 ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
-                racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
+                decidx = np.argmin(np.abs(dec_grid_2D[:,0]-dec))
+                print("Estimated pixel size:",np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
+                racutoff_ = 0#get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
                 print("RA cutoff:",racutoff_,"pixels")
                 min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
-                full_img = np.zeros((image_size,min_gridsize))
+                if ngulps >= 5:
+                    full_img = np.zeros((image_size,min_gridsize,ngulps))
+                else:
+                    full_img = np.zeros((image_size,min_gridsize))
                 print("Updated image size:",full_img.shape)
             
             #for i in range(dat.shape[0]):
             for j in range(len(corrs)):
                 for k in range(dat.shape[-1]):
                     for jj in range(nchans_per_node):
-                        if args.ngulps>1:
+                        if ngulps>=5:
+                            full_img[:,:,g] +=  revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                    image_size,robust=args.robust,pixel_resolution=pixel_resolution)[:,g*racutoff_:g*racutoff_ + min_gridsize]
+                        elif ngulps>1:
                             full_img += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
                                                    U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
@@ -756,12 +820,85 @@ def astrocal(args):
                                                    image_size,robust=args.robust,pixel_resolution=pixel_resolution)
                         #full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
             
+
+            #run fit on single gulp 
+            if ngulps>=5:
+                #use the trimmed ra and dec axes so this correction will be appended to RA_cutoff
+                ra_grid_2D_g,dec_grid_2D_g,elev = uv_to_pix(mjd + (gulps[g]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+                ra_grid_2D_g = ra_grid_2D_g[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)]
+                dec_grid_2D_g = dec_grid_2D_g[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)]
+
+                closepix = np.unravel_index(np.argmin(bright_coords[bright_idx].separation(SkyCoord(ra_grid_2D_g*u.deg,
+                                                                                        dec_grid_2D_g*u.deg,frame='icrs'))),ra_grid_2D_g.shape)
+                bbox = (max([closepix[0]-buff,0]),
+                        min([closepix[0]+buff+1,image_size]),
+                        max([closepix[1]-buff,0]),
+                        min([closepix[1]+buff+1,min_gridsize]))
+                input_img = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],g]#.mean((2,3))
+                print(input_img)
+                input_img[np.isnan(input_img)] = np.nanmedian(input_img)
+
+                peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
+                bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
+                bright_pixcoord = SkyCoord(ra_grid_2D_g[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D_g[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
+
+
+                #fit with an ellipse
+                input_ra_grid_2D = ra_grid_2D_g[bbox[0]:bbox[1],bbox[2]:bbox[3]]
+                input_dec_grid_2D = dec_grid_2D_g[bbox[0]:bbox[1],bbox[2]:bbox[3]]
+                input_sigma = 1/np.sqrt(np.clip(input_img,1e-10,np.inf))
+                p0 = (bright_pixcoord.ra.value,bright_pixcoord.dec.value,
+                        pixel_resolution*pixperFWHM*2,pixel_resolution*pixperFWHM*2,
+                        np.pi/2,np.max(input_img))
+                bounds = ([np.nanmin(input_ra_grid_2D),np.nanmin(input_dec_grid_2D),
+                            pixel_resolution*pixperFWHM,
+                            pixel_resolution*pixperFWHM,
+                            0,np.nanmax(input_img)*0.9],
+                        [np.nanmax(input_ra_grid_2D),np.nanmax(input_dec_grid_2D),
+                            max([np.max(input_ra_grid_2D)-np.min(input_ra_grid_2D),np.max(input_dec_grid_2D)-np.min(input_dec_grid_2D)]),
+                            max([np.max(input_ra_grid_2D)-np.min(input_ra_grid_2D),np.max(input_dec_grid_2D)-np.min(input_dec_grid_2D)]),
+                            2*np.pi,np.nanmax(input_img)*2])
+                popt,pcov = curve_fit(fit_function,np.concatenate([input_ra_grid_2D[:,:,np.newaxis],
+                                                                input_dec_grid_2D[:,:,np.newaxis]],2),
+                                                                input_img.flatten(),p0=p0,bounds=bounds,sigma=input_sigma.flatten())
+                bright_pixcoord = SkyCoord(popt[0]*u.deg,popt[1]*u.deg,frame='icrs')
+                param_errs=np.sqrt(pcov[np.arange(pcov.shape[0]),np.arange(pcov.shape[1])])
+                print("Gulp " + str(g) + "  Optimal Parameters:")
+                print("Position:",bright_pixcoord.ra.to(u.hourangle),r'+-',(param_errs[0]*u.deg).to(u.arcsecond),bright_pixcoord.dec,r'+-',(param_errs[1]*u.deg).to(u.arcsecond))
+                print("Semimajor axis:",(0.5*popt[2]*u.deg).to(u.arcmin))
+                print("Semiminor axis:",(0.5*popt[3]*u.deg).to(u.arcmin))
+                print("Angle (counterclockwise from vertical):",(-popt[4]*u.rad).to(u.deg))
+                print("Errors:",np.sqrt(pcov[np.arange(pcov.shape[0]),np.arange(pcov.shape[1])]))
+                RAs_for_fit.append(bright_pixcoord.ra.value)
+                DECs_for_fit.append(bright_pixcoord.dec.value)
             g += 1
+
         full_img /= (gulpsize*ngulps)
         if dat is None or int(dec) != int(search_dec):
             continue
         np.save(copydir+bright_names[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
+        #re-align gulps
+        if ngulps >=5:
+            #get offset in pixels from the first gulp
+            decidx = np.argmin(np.abs(dec_grid_2D[:,0]-dec))
+            pixsize = np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0])
+            cutoff_offsets = np.array((np.array(RAs_for_fit) - RAs_for_fit[0])/pixsize,dtype=int)
+            print("Cutoff corrections:",RAs_for_fit,cutoff_offsets,pixsize)
 
+            #use maximum cutoff to get a new min_gridsize
+            min_gridsize_new = min_gridsize - np.nanmax(cutoff_offsets)
+            full_img_new = np.zeros((image_size,min_gridsize_new))
+            for g in range(1,len(gulps)):
+                if cutoff_offsets[g]>=0:
+                    full_img_new += full_img[:,g*cutoff_offsets[g]:g*cutoff_offsets[g] + min_gridsize_new,g]
+                else:
+                    full_img_new += full_img[:,min_gridsize - g*np.abs(cutoff_offsets[g]) - min_gridsize_new:min_gridsize - g*np.abs(cutoff_offsets[g]),g]
+            full_img = full_img_new
+            min_gridsize = min_gridsize_new
+            bright_gulpoffsets.append(cutoff_offsets)
+            bright_gulpoffset_times.append(mjd + np.array(gulps)*tsamp_ms*gulpsize/86400/1000)
+
+            
         # ASTROMETRIC TEST
         # find the peak pixel in the vicinity of the coordinates
         buff = args.buff#50
@@ -783,9 +920,14 @@ def astrocal(args):
             bright_pixs.append(-1)
             close_pixs.append(-1)
             bright_resid.append(-1)
+            bright_gulpoffsets.append(-1)
+            bright_gulpoffset_times.append(-1)
             print("Excluding " + bright_names[bright_idx])
             continue
-
+        if ngulps>=5:
+            bright_gulpoffsets.append(cutoff_offsets)
+            bright_gulpoffset_times.append(np.array(gulps)*tsamp_ms*gulpsize/1000) #s
+        
 
         closepix = np.unravel_index(np.argmin(bright_coords[bright_idx].separation(SkyCoord(ra_grid_2D*u.deg,
                                                                                         dec_grid_2D*u.deg,frame='icrs'))),ra_grid_2D.shape)
@@ -805,7 +947,7 @@ def astrocal(args):
         #fit with an ellipse
         input_ra_grid_2D = ra_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]
         input_dec_grid_2D = dec_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]
-        input_sigma = np.sqrt(np.clip(input_img,1e-10,np.inf))
+        input_sigma = 1/np.sqrt(np.clip(input_img,1e-10,np.inf))
         p0 = (bright_pixcoord.ra.value,bright_pixcoord.dec.value,
                 pixel_resolution*pixperFWHM*2,pixel_resolution*pixperFWHM*2,
                 np.pi/2,np.max(input_img))
@@ -863,6 +1005,7 @@ def astrocal(args):
         plt.title("SOURCE: " + bright_names[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
         plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=full_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
+        plt.scatter(RAs_for_fit,DECs_for_fit,marker='o',s=1000,edgecolors='red',linewidth=2,facecolors="none",alpha=0.8)
         plt.errorbar(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,xerr=bright_RAerrs_mas[bright_idx]/3600,yerr=bright_DECerrs_mas[bright_idx]/3600,color='red',elinewidth=3)
         plt.xlim(bright_coords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_coords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
         plt.ylim(bright_coords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_coords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))
@@ -883,7 +1026,7 @@ def astrocal(args):
         plt.savefig(img_dir+bright_names[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
         plt.close()
 
-    update_astrocal_table(bright_names,bright_coords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=exclude_table,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
+    update_astrocal_table(bright_names,bright_coords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,bright_gulpoffsets,bright_gulpoffset_times,outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=exclude_table,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
     return
 
 
@@ -1379,7 +1522,7 @@ def speccal(args):
 def main(args):
     if (not args.astrocal_only and not args.speccal_only) or (args.astrocal_only and not args.speccal_only):
         if args.update_only:
-            update_astrocal_table([],[],[],[],[],[],[],[],[],args.outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
+            update_astrocal_table([],[],[],[],[],[],[],[],[],[],[],args.outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
         else:
             astrocal(args)
     if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):

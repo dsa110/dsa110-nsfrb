@@ -1175,6 +1175,36 @@ def LPT_cat(mjd,dd,sep=2.0*u.deg):
 
     return names[idxs],coords[idxs],Ps[idxs],Ws[idxs],S1400s[idxs]
 
+def read_WDMSs(fl=table_dir + "RM2021_WDMS_CAT.csv"):
+    coords = []
+    dists = []
+    with open(fl,"r") as csvfile:
+        i = 0
+        rdr = csv.reader(csvfile,delimiter=',')
+        for row in rdr:
+            if i ==0 : i += 1
+            else:
+                coords.append(SkyCoord(ra=float(row[0])*u.deg,dec=float(row[1])*u.deg,frame='icrs'))
+                dists.append(np.nan if len(row[8])==0 else float(row[8]))
+
+    dists = np.array(dists)
+    return SkyCoord(coords),dists
+
+def WDMS_cat(mjd,dd,sep=2.0*u.deg):
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    coords,dists = read_WDMSs()
+    idx = np.arange(len(coords))
+
+    #print(coords)
+    d2d = c.separation(coords)
+    idxs = idx[d2d<sep]
+
+    return coords[idxs],dists[idxs]
+
+
 def read_RFC(fl=table_dir + "rfc_2025a_cat.txt"):
     dat = np.genfromtxt(fl,comments="#",dtype=str)
     dat[dat=="-9.99"] = "nan"
