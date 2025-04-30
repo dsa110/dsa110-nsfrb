@@ -174,8 +174,14 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False,
     tdelaysall = np.zeros((nchans*2,nDM),dtype=np.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
     tdelaysall[1::2,:] = (np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
     tdelaysall[0::2,:] = (np.array(np.floor(tdelays/tsamp),dtype=np.int8))
-    tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[0::2,:],1 - (tdelays/tsamp - tdelaysall[0::2,:])],axis=0).transpose()
-
+    print("TDELAYSALL:",tdelaysall)
+    tdelays_frac = np.zeros((nchans*2,nDM),dtype=float)
+    tdelays_frac[0::2,:] = 1 - (tdelays/tsamp - np.floor(tdelays/tsamp))#(np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
+    tdelays_frac[1::2,:] = tdelays/tsamp - np.floor(tdelays/tsamp) #(np.array(np.floor(tdelays/tsamp),dtype=np.int8))
+    tdelays_frac = tdelays_frac.transpose()
+    print("TDELAYSFRAC:",tdelays_frac)
+    #tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[0::2,:],1 - (tdelays/tsamp - tdelaysall[0::2,:])],axis=0).transpose()
+    
     #rearrange shift idxs and expand axes
 
     #--case 1: appending previous frame
