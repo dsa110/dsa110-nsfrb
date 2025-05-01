@@ -207,7 +207,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
         return binned_raidxs,binned_decidxs,binned_dmidxs,binned_widthidxs,binned_snridxs
 
 #hdbscan clustering function; clusters in DM, width, RA, DEC space
-def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2,useTOA=False,perc=90):
+def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2,useTOA=False,perc=90,avgcluster=False):
     printlog("WHY ISN'T IT STARTING?",output_file=output_file)
     #f = open(output_file,"a")
     printlog(str(len(cands)) + " candidates",output_file=output_file)
@@ -314,21 +314,23 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
         centroid_TOAs = []
     for k in classnames:
         if k != -1:
-            centroid_ras.append(np.average(raidxs[classes==k],weights=snridxs[classes==k]))
-            centroid_decs.append(np.average(decidxs[classes==k],weights=snridxs[classes==k]))
-            centroid_dms.append(np.average(dmidxs[classes==k],weights=snridxs[classes==k]))
-            centroid_widths.append(np.average(widthidxs[classes==k],weights=snridxs[classes==k]))
-            centroid_snrs.append(np.average(snridxs[classes==k],weights=snridxs[classes==k]))
-            if TOAflag:
-                centroid_TOAs.append(np.average(TOAs[classes==k],weights=snridxs[classes==k]))
-            """
-            centroid_ras.append((np.nansum((snridxs*raidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_decs.append((np.nansum((snridxs*decidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_dms.append((np.nansum((snridxs*dmidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_widths.append((np.nansum((snridxs*widthidxs)[classes==k])/np.nansum(snridxs[classes==k])))
-            centroid_snrs.append(np.nansum((snridxs*snridxs)[classes==k])/np.nansum(snridxs[classes==k]))
-            """
+            if avgcluster:
+                centroid_ras.append(np.average(raidxs[classes==k],weights=snridxs[classes==k]))
+                centroid_decs.append(np.average(decidxs[classes==k],weights=snridxs[classes==k]))
+                centroid_dms.append(np.average(dmidxs[classes==k],weights=snridxs[classes==k]))
+                centroid_widths.append(np.average(widthidxs[classes==k],weights=snridxs[classes==k]))
+                centroid_snrs.append(np.average(snridxs[classes==k],weights=snridxs[classes==k]))
+                if TOAflag:
+                    centroid_TOAs.append(np.average(TOAs[classes==k],weights=snridxs[classes==k]))
             
+            else:
+                centroid_ras.append(raidxs[classes==k][np.nanargmax(snridxs[classes==k])])
+                centroid_decs.append(decidxs[classes==k][np.nanargmax(snridxs[classes==k])])
+                centroid_dms.append(dmidxs[classes==k][np.nanargmax(snridxs[classes==k])])
+                centroid_widths.append(widthidxs[classes==k][np.nanargmax(snridxs[classes==k])])
+                centroid_snrs.append(snridxs[classes==k][np.nanargmax(snridxs[classes==k])])
+                if TOAflag:
+                    centroid_TOAs.append(TOAs[classes==k][np.nanargmax(snridxs[classes==k])])
             #csvwriter.writerow([centroid_ras[-1],centroid_decs[-1],centroid_widths[-1],centroid_dms[-1],centroid_snrs[-1]])
     #fcsv.close()
     centroid_ras = np.array(centroid_ras)
@@ -637,6 +639,15 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         printlog(str(e),output_file=cutterfile)
         return
+
+    #pad searched image with zeros
+    """
+    searched_image = np.pad(searched_image,((0,0),
+                                            (image.shape[1]-searched_image.shape[1],0),
+                                            (0,0),
+                                            (0,0)))
+    printlog("Padded searched image: " + str(searched_image.shape) + str(image.shape),output_file=cutterfile)
+    """
     cand_mjd = Time(cand_isot,format='isot').mjd
     injection_flag,postinjection_flag = is_injection(cand_isot)
     RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,pixperFWHM=pixperFWHM)
@@ -768,9 +779,9 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
             printlog("Cluster iteration " + str(i+1) + "/" + str(args['clusteriters']) + " with min cluster size " + str(mincluster),output_file=cutterfile)
             if useTOA:
-                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),useTOA=True,perc=args['psfpercentile'])
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),useTOA=True,perc=args['psfpercentile'],avgcluster=args['avgcluster'])
             else:
-                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),perc=args['psfpercentile'])
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),perc=args['psfpercentile'],avgcluster=args['avgcluster'])
             if np.all(np.array(classes)==-1):
                 printlog("Minimum number of clusters reached",output_file=cutterfile)
                 break
@@ -868,7 +879,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         
 
     #if set, cut out candidates rejected by the classifier
-    if args['classcut']:
+    if classify_flag and args['classcut']:
         printlog("Classifier rejected " + str(np.sum(predictions)) + "/" + str(len(predictions)) + " candidates",output_file=cutterfile)
         finalcands_new = []
         for i in range(len(finalcands)):

@@ -1,4 +1,6 @@
 import numpy as np
+import glob
+import json
 from scipy.optimize import curve_fit
 from dsamfs import utils as pu
 from dsacalib.utils import Direction
@@ -25,18 +27,34 @@ from nsfrb.flagging import flag_vis
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize,table_dir
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
 
-def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True):
+def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=0):
     """
     dec: current declination
     T: integration time in milliseconds
     """
+    if usefit:
+        srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
+        print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
+        decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
+        idx = np.argmin(np.abs(decs-dec))
+        if np.abs(decs[idx]-dec)<1:
+            
+            f = open(srcs[idx],"r")
+            table = json.load(f)
+            f.close()
+            if 'core_gulp_RA_drift_slope' in table.keys():
+                print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
+                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                print("New RA cutoff:",cutoff_pix)
+                return cutoff_pix
+        print("Fit cal not available, using pix estimate")
     cutoff_as = (T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
     cutoff_pix = np.abs((cutoff_as/3600)/pixsize)#np.abs((cutoff_as/3600)//pixsize)
     print("New RA cutoff:",cutoff_pix)

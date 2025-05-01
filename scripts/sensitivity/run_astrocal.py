@@ -790,8 +790,12 @@ def astrocal(args):
                 ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
                 decidx = np.argmin(np.abs(dec_grid_2D[:,0]-dec))
                 print("Estimated pixel size:",np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
-                racutoff_ = 0#get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
-                print("RA cutoff:",racutoff_,"pixels")
+                if ngulps >= 5:
+                    racutoff_ = 0
+                    print("Running linear fit for RA cutoff")
+                else:
+                    racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
+                    print("Estimating RA cutoff:",racutoff_,"pixels")
                 min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
                 if ngulps >= 5:
                     full_img = np.zeros((image_size,min_gridsize,ngulps))
@@ -824,17 +828,20 @@ def astrocal(args):
             #run fit on single gulp 
             if ngulps>=5:
                 #use the trimmed ra and dec axes so this correction will be appended to RA_cutoff
+                """
                 ra_grid_2D_g,dec_grid_2D_g,elev = uv_to_pix(mjd + (gulps[g]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
                 ra_grid_2D_g = ra_grid_2D_g[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)]
                 dec_grid_2D_g = dec_grid_2D_g[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)]
-
+                """
+                ra_grid_2D_g = ra_grid_2D
+                dec_grid_2D_g = dec_grid_2D
                 closepix = np.unravel_index(np.argmin(bright_coords[bright_idx].separation(SkyCoord(ra_grid_2D_g*u.deg,
                                                                                         dec_grid_2D_g*u.deg,frame='icrs'))),ra_grid_2D_g.shape)
                 bbox = (max([closepix[0]-buff,0]),
                         min([closepix[0]+buff+1,image_size]),
                         max([closepix[1]-buff,0]),
                         min([closepix[1]+buff+1,min_gridsize]))
-                input_img = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],g]#.mean((2,3))
+                input_img = (full_img[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)])[bbox[0]:bbox[1],bbox[2]:bbox[3],g]#.mean((2,3))
                 print(input_img)
                 input_img[np.isnan(input_img)] = np.nanmedian(input_img)
 
@@ -878,6 +885,7 @@ def astrocal(args):
             continue
         np.save(copydir+bright_names[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
         #re-align gulps
+        ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
         if ngulps >=5:
             #get offset in pixels from the first gulp
             decidx = np.argmin(np.abs(dec_grid_2D[:,0]-dec))
@@ -886,26 +894,50 @@ def astrocal(args):
             print("Cutoff corrections:",RAs_for_fit,cutoff_offsets,pixsize)
 
             #use maximum cutoff to get a new min_gridsize
-            min_gridsize_new = min_gridsize - np.nanmax(cutoff_offsets)
+            min_gridsize_new = min_gridsize - np.nanmax(np.abs(cutoff_offsets))
+            peakoffsetidx = np.nanargmax(np.abs(cutoff_offsets))
+            peakoffset = cutoff_offsets[peakoffsetidx]
             full_img_new = np.zeros((image_size,min_gridsize_new))
+
+            #align the reference and peak offset images first
+            if peakoffset>=0:
+                full_img_new += full_img[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new,0]
+                ra_grid_2D = ra_grid_2D[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+                dec_grid_2D = dec_grid_2D[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+                full_img_new += full_img[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset)),peakoffsetidx]
+            else:
+                full_img_new += full_img[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new,peakoffsetidx]
+                full_img_new += full_img[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset)),0]
+                ra_grid_2D = ra_grid_2D[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+                dec_grid_2D = dec_grid_2D[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+            #now the rest
             for g in range(1,len(gulps)):
-                if cutoff_offsets[g]>=0:
-                    full_img_new += full_img[:,g*cutoff_offsets[g]:g*cutoff_offsets[g] + min_gridsize_new,g]
-                else:
-                    full_img_new += full_img[:,min_gridsize - g*np.abs(cutoff_offsets[g]) - min_gridsize_new:min_gridsize - g*np.abs(cutoff_offsets[g]),g]
+                if g != peakoffsetidx:
+                    if peakoffset>=0 and cutoff_offsets[g]>=0:
+                        print(g,"case 1",peakoffsetidx,cutoff_offsets[g])
+                        full_img_new += full_img[:,np.abs(peakoffset)-np.abs(cutoff_offsets[g]):np.abs(peakoffset)-np.abs(cutoff_offsets[g])+min_gridsize_new,g]
+                    elif peakoffset<0 and cutoff_offsets[g]<0:
+                        print(g,"case 2",peakoffsetidx,cutoff_offsets[g])
+                        full_img_new += full_img[:,(min_gridsize - np.abs(peakoffset) + np.abs(cutoff_offsets[g]) - min_gridsize_new):(min_gridsize - np.abs(peakoffset) + np.abs(cutoff_offsets[g])),g]
+                    elif peakoffset>=0 and cutoff_offsets[g]<0:
+                        print(g,"case 3",peakoffsetidx,cutoff_offsets[g])
+                        full_img_new[:,:min([np.abs(peakoffset)+np.abs(cutoff_offsets[g])+min_gridsize_new,min_gridsize])-(np.abs(peakoffset)+np.abs(cutoff_offsets[g]))] += full_img[:,np.abs(peakoffset)+np.abs(cutoff_offsets[g]):min([np.abs(peakoffset)+np.abs(cutoff_offsets[g])+min_gridsize_new,min_gridsize]),g]
+                    elif peakoffset<0 and cutoff_offsets[g]>=0:
+                        print(g,"case 4",peakoffsetidx,cutoff_offsets[g])
+                        full_img_new[:,-(((min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g]))))-max([0,(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g])) - min_gridsize_new)])):] += full_img[:,max([0,(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g])) - min_gridsize_new)]):(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g]))),g]
+            
             full_img = full_img_new
             min_gridsize = min_gridsize_new
             bright_gulpoffsets.append(cutoff_offsets)
-            bright_gulpoffset_times.append(mjd + np.array(gulps)*tsamp_ms*gulpsize/86400/1000)
-
+            bright_gulpoffset_times.append((np.array(gulps)-gulps[0])*tsamp_ms*gulpsize/1000)
+        elif ngulps>1:
+            ra_grid_2D = ra_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
+            dec_grid_2D = dec_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
+        
             
         # ASTROMETRIC TEST
         # find the peak pixel in the vicinity of the coordinates
         buff = args.buff#50
-        ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
-        if ngulps>1:
-            ra_grid_2D = ra_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
-            dec_grid_2D = dec_grid_2D[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - 0):image_size-racutoff_*(ngulps - 1 - 0)]
         
 
 
@@ -1005,7 +1037,7 @@ def astrocal(args):
         plt.title("SOURCE: " + bright_names[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
         plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=full_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
-        plt.scatter(RAs_for_fit,DECs_for_fit,marker='o',s=1000,edgecolors='red',linewidth=2,facecolors="none",alpha=0.8)
+        plt.scatter(RAs_for_fit,DECs_for_fit,marker='o',s=1000,edgecolors='red',linewidth=1,facecolors="none",alpha=0.5)
         plt.errorbar(bright_coords[bright_idx].ra.to(u.deg).value,bright_coords[bright_idx].dec.to(u.deg).value,xerr=bright_RAerrs_mas[bright_idx]/3600,yerr=bright_DECerrs_mas[bright_idx]/3600,color='red',elinewidth=3)
         plt.xlim(bright_coords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_coords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
         plt.ylim(bright_coords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_coords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))

@@ -1,4 +1,5 @@
 import matplotlib
+from scipy.interpolate import interp1d
 from nsfrb.outputlogging import printlog
 import matplotlib.animation as animation
 from nsfrb import imaging
@@ -188,7 +189,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         fig.patch.set_facecolor('red')
     elif slow:
         fig.patch.set_facecolor('lightblue')
-    gs = fig.add_gridspec(4,2)
+    gs = fig.add_gridspec(3,2)
     ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
     #ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
@@ -259,11 +260,27 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax = fig.add_subplot(gs[0,1])#ax=plt.subplot(3,2,2)
     if searched_image is not None:
         #plot the DM transform thing for peak candidate
-        showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
+        showidx = np.nanargmax(snrs)
+        printlog("SHOWING CAND " + str(showidx) + ", SNR=" + str(snrs[showidx]) + ", DM=" + str(DM_trials[dms][showidx]) + ", WID=" + str(widthtrials[wids][showidx]) + ", RAIDX=" + str(ras[showidx]) + ", DECIDX=" + str(decs[showidx]),output_file=cutterfile) 
+        showx,showy,showname = ras[showidx],decs[showidx],names[showidx]
         ax.set_title(showname)
-        ax.imshow(searched_image[int(showy),int(showx),:,:].transpose(),origin="lower",extent=[min(widthtrials),max(widthtrials),min(DM_trials),max(DM_trials)],cmap='plasma',aspect='auto',vmin=0,vmax=np.nanmax(searched_image[int(showy),int(showx),:,:]))
-        ax.axhline(DM_trials[dms][np.argmax(snrs)],color='red',linestyle='--',linewidth=3,zorder=100)
-        ax.axvline(widthtrials[wids][np.argmax(snrs)],color='red',linestyle='--',linewidth=3,zorder=100)
+
+        dmtxinterp1 = np.zeros((len(widthtrials),100))
+        for i in range(len(widthtrials)):
+            finterp = interp1d(DM_trials,searched_image[int(showy),int(showx)-np.abs(img.shape[1]-searched_image.shape[1]),i,:],kind='nearest',fill_value='extrapolate')
+            dmtxinterp1[i,:] = finterp(np.linspace(np.min(DM_trials),np.max(DM_trials),100))
+        dmtxinterp = np.zeros((100,100))
+        for j in range(100):
+            finterp = interp1d(widthtrials,dmtxinterp1[:,j],kind='nearest',fill_value='extrapolate')
+            dmtxinterp[:,j] = finterp(np.linspace(np.min(widthtrials),np.max(widthtrials),100))
+        ax.imshow(dmtxinterp.transpose(),origin="lower",extent=[min(widthtrials),max(widthtrials),min(DM_trials),max(DM_trials)],cmap='plasma',aspect='auto',vmin=0,vmax=np.nanmax(dmtxinterp))
+        
+        for i in range(len(widthtrials)):
+            plt.axvline(widthtrials[i],color='grey',linewidth=1,linestyle='--',zorder=50)
+        for i in range(len(DM_trials)):
+            plt.axhline(DM_trials[i],color='grey',linewidth=1,linestyle='--',zorder=50)
+        ax.axhline(DM_trials[dms][showidx],color='red',linestyle='--',linewidth=3,zorder=100)
+        ax.axvline(widthtrials[wids][showidx],color='red',linestyle='--',linewidth=3,zorder=100)
     """ 
     if 'predicts' in canddict.keys():
         c=ax.scatter(widthtrials[wids][canddict['predicts']==0],
@@ -279,10 +296,11 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     for i in DM_trials:
         ax.axhline(i,color='grey',linestyle='--')
     """
-    ax.set_xlim(np.min(widthtrials),np.max(widthtrials) )
-    ax.set_ylim(np.min(DM_trials),np.max(DM_trials) )
+    ax.set_xlim(np.min(widthtrials)-1,np.max(widthtrials)+1)
+    ax.set_ylim(np.min(DM_trials)-1,np.max(DM_trials)+1)
     ax.set_xlabel("Width (Samples)")
     ax.set_ylabel(r"DM (pc/cc)")
+    ax.set_facecolor('grey')
 
     printlog("dm width plot done",output_file=cutterfile)
 
@@ -290,6 +308,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     printlog(timeseries[0],output_file=cutterfile)
     printlog((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[0]))/1000,output_file=cutterfile)
     printlog(names,output_file=cutterfile)
+    """
     #timeseries
     ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
@@ -299,9 +318,9 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     ax.set_xlim(0,(tsamp_slow if slow else tsamp)*img.shape[2]/1000)
     ax.set_title("De-dispersed Timeseries")
     printlog("herehere",output_file=cutterfile)
-
+    """
     #median subtracted timeseries
-    ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,3)
+    ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
     for i in range(len(timeseries)):
         printlog("iter " + str(i),output_file=cutterfile)
         plt.step((tsamp_slow if slow else tsamp)*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(len(timeseries)),where='post',linewidth=4,label=names[i])
@@ -312,7 +331,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     printlog("timeseries plots done",output_file=cutterfile)
 
     #show dynamic spectrum for highest S/N burst
-    ax = fig.add_subplot(gs[3,:])#ax=plt.subplot(3,2,5)
+    ax = fig.add_subplot(gs[2,:])#ax=plt.subplot(3,2,5)
     printlog("FROM PLOTTING, SNRS",output_file)
     printlog(snrs,output_file)
     printlog(names[np.argmax(snrs)],output_file)
@@ -325,6 +344,15 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     t = "NSFRB " + isot
     if injection and not slow: t = t + " (injection)"
     elif slow: t = t + " (slow)"
+
+    #add parameters of peak candidate
+    t = t + "\n RA={a:.2f}, DEC={b:.2f}, DM={c:.2f}pc/cc, W={d:.2f}s, SNR={g:.2f}".format(a=RA_axis[ras][np.argmax(snrs)],b=DEC_axis[decs][np.argmax(snrs)],c=DM_trials[dms][np.argmax(snrs)],d=widthtrials[wids][np.argmax(snrs)]*(tsamp_slow if slow else tsamp)/1000,g=np.nanmax(snrs))
+    if 'predicts' in canddict.keys():
+        if canddict['predicts'][np.argmax(snrs)]==0:
+            t = t + "\nSource ({p:.2f})%".format(p=canddict['probs'][np.argmax(snrs)]*100)
+        else:
+            t = t + "\nRFI ({p:.2f})%".format(p=canddict['probs'][np.argmax(snrs)]*100)
+
     plt.suptitle(t)
     plt.savefig(output_dir + isot + "_NSFRBcandplot" + str("_slow" if slow else "") + ".png")
     if show:
