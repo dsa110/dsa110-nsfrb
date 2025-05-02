@@ -34,62 +34,139 @@ sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
 
-def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=0):
+def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000):
     """
     dec: current declination
     T: integration time in milliseconds
     """
     if usefit:
         srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
-        print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
-        decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
-        idx = np.argmin(np.abs(decs-dec))
-        if np.abs(decs[idx]-dec)<1:
+        if len(srcs)>0:
+            print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
+            decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
+            idx = np.argmin(np.abs(decs-dec))
+            if np.abs(decs[idx]-dec)<1:
             
-            f = open(srcs[idx],"r")
+                f = open(srcs[idx],"r")
+                table = json.load(f)
+                f.close()
+                if 'core_gulp_RA_drift_slope' in table.keys():
+                    print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
+                    cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                    print("New RA cutoff:",cutoff_pix)
+                    return cutoff_pix
+        else:
+            f = open(table_dir + "/NSFRB_astrocal.json","r")
             table = json.load(f)
             f.close()
             if 'core_gulp_RA_drift_slope' in table.keys():
-                print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
+                print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
                 cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
                 print("New RA cutoff:",cutoff_pix)
                 return cutoff_pix
+
+            
         print("Fit cal not available, using pix estimate")
-    cutoff_as = (T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
+    scale = offset_s*1000/T
+    cutoff_as = scale*(T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
     cutoff_pix = np.abs((cutoff_as/3600)/pixsize)#np.abs((cutoff_as/3600)//pixsize)
     print("New RA cutoff:",cutoff_pix)
     if asint: return int(np.ceil(cutoff_pix))
     else: return cutoff_pix#int(np.ceil(cutoff_pix))
 
 
-def stack_images(imgs,cutoff_pix,offset_i=0,ngulps=None,min_gridsize=None):
+def stack_images(imgs,cutoff_offsets,ref_RA_grid=None,ref_DEC_grid=None):
     """
-    Given a list of images in time order, aligns based on fractional cutoff pixels
+    Given a list of images and cutoffs, aligns them. Cutoffs are estimated
+    from astrometric cal fits or from comparing drift rate to pixel size
+    using get_RA_cutoff()
     """
-    #if cutoff is non-int, shift by two nearest ints and take weighted mean
-    fracmode = (cutoff_pix - int(cutoff_pix)) != 0
-    if fracmode:
-        cutoff_low = int(np.floor(cutoff_pix))
-        cutoff_hi = int(np.ceil(cutoff_pix))
-        frac_cutoff = (cutoff_pix - cutoff_low)
+    cutoff_offsets = -np.array(cutoff_offsets)
+    #if not already, reference cutoffs to the first img 
+    assert(len(imgs)==len(cutoff_offsets))
+    #assert(imgs[0].shape[:2] == ref_RA_grid.shape)
+    assert(cutoff_offsets[0] == 0)
+    
+    #use maximum cutoff to get a new min_gridsize
+    image_size = imgs[0].shape[0]
+    min_gridsize = imgs[0].shape[1]
+    ngulps = len(cutoff_offsets)
+    min_gridsize_new = min_gridsize - np.nanmax(np.abs(cutoff_offsets))
+    peakoffsetidx = np.nanargmax(np.abs(cutoff_offsets))
+    peakoffset = cutoff_offsets[peakoffsetidx]
+    new_shape = list(imgs[0].shape)
+    new_shape[1] = min_gridsize_new
+    #full_img_new = [np.zeros(new_shape)]*len(imgs)
+    full_img_new = []
 
+    #align the reference and peak offset images first
+    ra_grid_2D = None
+    dec_grid_2D = None
+    if peakoffset>=0:
+        full_img_new.append(imgs[0][:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new,...])
+        if ref_RA_grid is not None:
+            if len(np.array(ref_RA_grid).shape) == 2:
+                ra_grid_2D = ref_RA_grid[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+            elif len(np.array(ref_RA_grid).shape) == 1:
+                ra_grid_2D = ref_RA_grid[np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+            else:
+                print("Invalid ra grid shape")
+                ra_grid_2D = None
+        if ref_DEC_grid is not None:
+            if len(np.array(ref_DEC_grid).shape) == 2:
+                dec_grid_2D = ref_DEC_grid[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+            elif len(np.array(ref_DEC_grid).shape) == 1:
+                dec_grid_2D = ref_DEC_grid
+            else:
+                print("Invalid dec grid shape")
+                dec_grid_2D = None
+    else:
+        full_img_new.append(imgs[0][:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset)),...])
+        if ref_RA_grid is not None:
+            if len(np.array(ref_RA_grid).shape) == 2:
+                ra_grid_2D = ref_RA_grid[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+            elif len(np.array(ref_RA_grid).shape) == 1:
+                ra_grid_2D = ref_RA_grid[(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+            else:
+                print("Invalid ra grid shape")
+                ra_grid_2D = None
+        if ref_DEC_grid is not None:
+            if len(np.array(ref_DEC_grid).shape) == 2:
+                dec_grid_2D = ref_DEC_grid[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+            elif len(np.array(ref_DEC_grid).shape) == 1:
+                dec_grid_2D = ref_DEC_grid
+            else:
+                print("Invalid dec grid shape")
+                dec_grid_2D = None
 
-    gridsize = imgs[0].shape[0]
-    if ngulps is None:
-        ngulps = len(imgs)
-    if min_gridsize is None:
-        if fracmode: min_gridsize = int(np.ceil(gridsize - cutoff_hi*(ngulps - 1)))
-        else: min_gridsize = int(np.ceil(gridsize - cutoff_pix*(ngulps - 1)))
-    stacked_img = np.zeros_like(imgs[0])[:,:min_gridsize,...]
-    #print("STACK:",stacked_img.shape,ngulps,cutoff_low,cutoff_hi,frac_cutoff)
-
-    for i in range(len(imgs)):
-        if fracmode:
-            stacked_img += (imgs[i][:,gridsize-min_gridsize - cutoff_low*(ngulps - 1 - (offset_i + i)):gridsize-cutoff_low*(ngulps- 1 - (offset_i + i)),...]*(1-frac_cutoff) + 
-                            imgs[i][:,gridsize-min_gridsize - cutoff_hi*(ngulps - 1 - (offset_i + i)):gridsize-cutoff_hi*(ngulps- 1 - (offset_i + i)),...]*(frac_cutoff))
+        
+    #now the rest
+    for g in range(1,ngulps):
+        if g != peakoffsetidx:
+            if peakoffset>=0 and cutoff_offsets[g]>=0:
+                print(g,"case 1",peakoffsetidx,cutoff_offsets[g])
+                full_img_new.append(imgs[g][:,np.abs(peakoffset)-np.abs(cutoff_offsets[g]):np.abs(peakoffset)-np.abs(cutoff_offsets[g])+min_gridsize_new,...])
+            elif peakoffset<0 and cutoff_offsets[g]<0:
+                print(g,"case 2",peakoffsetidx,cutoff_offsets[g])
+                full_img_new.append(imgs[g][:,(min_gridsize - np.abs(peakoffset) + np.abs(cutoff_offsets[g]) - min_gridsize_new):(min_gridsize - np.abs(peakoffset) + np.abs(cutoff_offsets[g])),...])
+            elif peakoffset>=0 and cutoff_offsets[g]<0:
+                print(g,"case 3",peakoffsetidx,cutoff_offsets[g])
+                tmp = np.zeros(new_shape)
+                tmp[:,:min([np.abs(peakoffset)+np.abs(cutoff_offsets[g])+min_gridsize_new,min_gridsize])-(np.abs(peakoffset)+np.abs(cutoff_offsets[g]))] = imgs[g][:,np.abs(peakoffset)+np.abs(cutoff_offsets[g]):min([np.abs(peakoffset)+np.abs(cutoff_offsets[g])+min_gridsize_new,min_gridsize]),...]
+                full_img_new.append(tmp)
+            elif peakoffset<0 and cutoff_offsets[g]>=0:
+                print(g,"case 4",peakoffsetidx,cutoff_offsets[g])
+                tmp = np.zeros(new_shape)
+                tmp[:,-(((min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g]))))-max([0,(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g])) - min_gridsize_new)])):] = imgs[g][:,max([0,(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g])) - min_gridsize_new)]):(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g]))),...]
+                full_img_new.append(tmp)
         else:
-            stacked_img += imgs[i][:,gridsize-min_gridsize - cutoff_pix*(ngulps - 1 - (offset_i + i)):gridsize-cutoff_pix*(ngulps- 1 - (offset_i + i)),...] 
-    return stacked_img
+            if peakoffset>=0:
+                full_img_new.append(imgs[peakoffsetidx][:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset)),...])
+            else:
+                full_img_new.append(imgs[peakoffsetidx][:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new,...])
+    print(len(full_img_new),len(imgs))
+    return full_img_new,ra_grid_2D,dec_grid_2D,min_gridsize_new
+
 
 def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: np.ndarray = None, robust: float = 0.0,pixel_resolution=None) -> np.ndarray:
     """

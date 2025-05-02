@@ -75,7 +75,7 @@ NSFRB modules
 """
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack 
-from nsfrb.imaging import uv_to_pix
+from nsfrb.imaging import uv_to_pix,stack_images
 
 """
 Dask manager
@@ -124,16 +124,19 @@ class fullimg:
         self.bin_interval_slow = int(self.shape[2])//self.bin_slow
         if slow:
             printlog("bin slow:" + str(self.bin_slow) + "; bin interval:" + str(self.bin_interval_slow),output_file=processfile)
+            """
             self.RA_cutoff = sl.get_RA_cutoff(img_dec,pixsize=np.abs(self.RA_axis[1]-self.RA_axis[0]))
             self.slow_RA_cutoff = (self.bin_slow-1)*self.RA_cutoff
             self.shape = (self.shape[0],self.shape[1]-self.slow_RA_cutoff,self.shape[2],self.shape[3])
             self.image_tesseract = np.zeros((shape[0],shape[1]-self.slow_RA_cutoff,shape[2],shape[3]),dtype=dtype)
             self.RA_axis = self.RA_axis[self.slow_RA_cutoff:]
-
+            """
             #make list of possible mjds
             self.img_id_mjd_list = []
+            self.slow_RA_cutoffs = []
             for i in range(self.bin_slow):
                 self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*self.shape[2]*i/1000/86400))
+                self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*self.shape[2]*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.slowstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
@@ -152,20 +155,25 @@ class fullimg:
         printlog("IT DOES" + str("" if foundmjd else " NOT"),output_file=processfile)
         return (img_idx if foundmjd else -1),foundmjd
     def slow_append_img(self,data,img_idx):
-        #gridsize-min_gridsize - racutoff_*(NGULPS - 1 - g):gridsize-racutoff_*(NGULPS - 1 - g)
+        self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = np.nanmean(data.reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])),3)
+        """
         self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = np.nanmean(data[:,self.shape[0]-self.shape[1]-self.RA_cutoff*(self.bin_slow-1-img_idx):self.shape[0]-self.RA_cutoff*(self.bin_slow-1-img_idx),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])),3)
+        """
         printlog("FROM SLOW APPEND_1 " + str(img_idx) + ":" + str(self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:]),output_file=processfile)
-        #self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = data[:,self.RA_cutoff*img_idx:self.shape[1]+self.slow_RA_cutoff-self.RA_cutoff*(self.bin_slow-img_idx-1),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)
         self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] -= np.nanmedian(self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:],axis=2,keepdims=True)
         printlog("FROM SLOW APPEND_2 " + str(img_idx)  + ":" + str(self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:]),output_file=processfile)
         self.slowstatus[img_idx] = 1
         printlog("MJD LIST:" + str(self.img_id_mjd_list),output_file=processfile)
         printlog("SLOW STATUS:" + str(self.slowstatus),output_file=processfile)
-        """
-        self.image_tesseract[:,:,self.slow_counter*self.bin_interval_slow:(self.slow_counter+1)*self.bin_interval_slow,:] = data[:,self.RA_cutoff*self.slow_counter:self.shape[1]+self.slow_RA_cutoff-self.RA_cutoff*(self.bin_slow-self.slow_counter-1),:,:].reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])).mean(3)
-        self.image_tesseract[:,:,self.slow_counter*self.bin_interval_slow:(self.slow_counter+1)*self.bin_interval_slow,:] -= np.nanmedian(self.image_tesseract[:,:,self.slow_counter*self.bin_interval_slow:(self.slow_counter+1)*self.bin_interval_slow,:],axis=2,keepdims=True)
-        """
         self.slow_counter += 1
+        #align if full
+        if self.slow_is_full():
+            stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i*self.bin_interval_slow:(i+1)*self.bin_interval_slow,:] for i in range(self.bin_slow)],self.slow_RA_cutoffs)
+            self.RA_axis = self.RA_axis[-min_gridsize:]
+            self.slow_RA_cutoff = self.shape[1] - min_gridsize
+            self.image_tesseract = np.concatenate(stack,axis=2)
+            self.shape = self.image_tesseract.shape
+            printlog("Stacked slow images:" + str(self.image_tesseract.shape),output_file=processfile)
         return
     def slow_is_full(self):
         return np.all(self.slowstatus==1)#(self.slow_counter)*self.bin_interval_slow >= self.shape[2]
