@@ -95,6 +95,29 @@ if 'DASKPORT' in os.environ.keys():
     except OSError as exc:
         printlog("Scheduler not started, cannot send to queue",output_file=processfile)
 """
+"""
+Search parameters
+"""
+#tsamp = 130 #ms
+#T = 3250 #ms
+#nsamps = int(T/tsamp)
+#fmax  = 1530 #MHz
+#fmin = 1280 #MHz
+#c = 3e8 #m/s
+#fc = 1400 #MHz
+#lambdac = (c/(fc*1e6)) #m
+#nchans = 16 #16 coarse channels
+#chanbw = (fmax-fmin)/nchans #MHz
+#telescope_diameter = 4.65 #m
+
+
+#resolution parameters
+#pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
+#gridsize = 32#256
+#RA_point = 0 #rad
+#DEC_point = 0 #rad
+
+
 #initialize jax device so we alternate between them if only 1 batch
 jaxdev = 0
 
@@ -102,7 +125,10 @@ jaxdev = 0
 #create axes
 RA_axis,DEC_axis,elev = uv_to_pix(Time.now().mjd,gridsize,pixperFWHM=config.pixperFWHM)
 print(DEC_axis)
+#RA_axis = np.linspace(RA_point-(pixsize*gridsize/2),RA_point+(pixsize*gridsize/2),gridsize)
+#DEC_axis = np.linspace(DEC_point-(pixsize*gridsize/2),DEC_point+(pixsize*gridsize/2),gridsize)
 time_axis = np.linspace(0,T,nsamps) #ms
+#freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B,nsamps,ZERO=True):
@@ -208,6 +234,10 @@ full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
 #get the current noise map from file
 current_noise = noise_update_all(None,gridsize,gridsize,DM_trials,widthtrials,readonly=True) #noise.get_noise_dict(gridsize,gridsize)
 
+#DM_trials = np.concatenate([[0],DM_trials])
+#DM_trials = np.array([0,1000])#np.array([0,100])
+#nDMtrials = len(DM_trials)
+
 #snr threshold
 SNRthresh = 6
 
@@ -257,6 +287,30 @@ def get_last_frame(frame_dir=frame_dir,maxDM=np.max(DM_trials)):
 last_frame = get_last_frame()
 last_frame_init_idx = 0
 
+#antenna positions
+import csv
+ANTENNALONS = []
+ANTENNALATS = []
+ANTENNAELEVS = []
+with open(coordfile,'r') as csvfile:
+    rdr = csv.reader(csvfile,delimiter=',')
+    i = 0
+    for row in rdr:
+        #print(row)
+        if row[1][:3] == 'DSA' and row[1] != 'DSA-110 Station Coordinates':
+            ANTENNALATS.append(float(row[2]))
+            ANTENNALONS.append(float(row[3]))
+            if row[4] == '':
+                ANTENNAELEVS.append(np.nan)
+            else:
+                ANTENNAELEVS.append(float(row[4]))
+csvfile.close()
+
+ANTENNALATS = np.array(ANTENNALATS)
+ANTENNALONS = np.array(ANTENNALONS)
+ANTENNAELEVS = np.array(ANTENNAELEVS)
+#default_PSF = sim.make_PSF_cube()
+#default_PSF_params = (gridsize,
 
 """
 pre-computed psf values
@@ -753,12 +807,57 @@ def snr_vs_RA_DEC_allDMW(image_tesseract_filtered_dm,DM_trials=DM_trials,widthtr
     return image_tesseract_binned
 
 
+def dedisp_pad_with(vector,pad_width,iaxis,kwargs):
+    #we want to make a padding function which allows different number of pad values for each row
+    padvals= kwargs.get('padvals',0) #padvals is a tuple where each element is an array with length equal to the number of rows. This stores the amount to pad each row with
+    endflag = kwargs.get('endflag',False) #False == pad start, True == pad end
+    device = kwargs.get('device',None)
+    cuda = device.type == 'cuda'
+    currpad_dict = kwargs.get('currpad_dict',dict())
+    currpad = currpad_dict['currpad']
+    ax = kwargs.get("ax",0)
+    dd_value = kwargs.get("dd_value",0)
+
+
+
+    if iaxis != ax: return
+    #we will cut the array to be the same size as the input, so pad_width == 0
+    assert(pad_width == (0,0))
+    
+
+    #use the currpad value to index each padvalue
+    if endflag:
+        padshape = (0,padvals[currpad])
+    else:
+        padshape = (padvals[currpad],0)
+    if not cuda:
+        if endflag:
+            vector[:] = np.pad(vector,padshape,mode='constant',constant_values=dd_value)[-len(vector):]
+        else:
+            vector[:] = np.pad(vector,padshape,mode='constant',constant_values=dd_value)[:len(vector)]
+    else:
+        vector_torch = torch.from_numpy(vector).to(device)
+        if endflag:
+            vector[:] = tf.pad(vector_torch,padshape,mode='constant',value=dd_value).to("cpu").numpy()[-len(vector):]
+        else:
+            vector[:] = tf.pad(vector_torch,padshape,mode='constant',value=dd_value).to("cpu").numpy()[:len(vector)]
+        vector_torch.to("cpu")
+        del vector_torch
+        torch.cuda.empty_cache()
+
+    currpad_dict['currpad'] += 1
+    if currpad_dict['currpad'] >= len(padvals): currpad_dict['currpad'] = 0
+    return 
+
+def dedisp_pad(x,tdelays_idx,device,endflag):
+    currpad_dict = {"currpad":0}
+    return np.pad(x,(0,0),dedisp_pad_with,padvals=tdelays_idx,device=device,currpad_dict=currpad_dict,ax=2,dd_value=0,endflag=endflag)
+
 
 
 # Brute force dedispersion
 def dedisperse(image_tesseract_point,DM,tsamp=tsamp,freq_axis=freq_axis,device=None,output_file="",append_last_frame=True):
     """
-    [Deprecated]
     This function dedisperses a dynamic spectrum pixel grid of shape gridsize x gridsize x nsamps x nchans by brute force without accounting for edge effects
     """
 
@@ -1213,12 +1312,156 @@ def dedisperse_allDM(image_tesseract_point,DM_trials,tsamp=tsamp,freq_axis=freq_
 
 
 
-#Consolidated final search functions
-def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
+#Alternate search code using PyTorchDedispersion (Kosogorov in prep) from LWA
+def run_PyTorchDedisp_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,PSF=default_PSF,output_file="",
+        DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,verbose=False,space_filter=True,canddict=dict(),usefft=False):
+    """
+    This is a wrapper around the PyTorchDedispersion code defined in https://github.com/nkosogor/PyTorchDedispersion/, developed by
+    Nikita Kosogorov for use on the LWA.
+    """
+
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    printprefix = ""#"[" + str(raidx_offset) + str(decidx_offset) + str(dm_offset) + "]"
+
+    #check if cuda is available; if not, exit
+    device = torch.device(random.choice(np.arange(torch.cuda.device_count(),dtype=int)) if torch.cuda.is_available() else "cpu")
+    usingGPU = device.type == "cuda"
+    if not usingGPU:
+        print("GPUs not available, using CPUs",file=fout)
+        return -1
+
+    #get axis sizes
+    gridsize_RA = len(RA_axis)
+    gridsize_DEC = len(DEC_axis)
+    gridsize = gridsize_RA
+    nsamps = len(time_axis)
+    nchans = len(freq_axis)
+    nwidthtrials = len(widthtrials)
+    nDMtrials = len(DM_trials)
+
+    if space_filter:
+        assert(gridsize_RA == gridsize_DEC)
+        #create PSF if the shape doesn't match
+        if PSF.shape != image_tesseract.shape:
+            print(printprefix + "Updating PSF...",file=fout)
+            PSF = sim.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+        #2D matched filter for each timestep and channel
+        print(printprefix +"Spatial matched filtering with DSA PSF...",file=fout)
+        if usefft:
+            print(printprefix +"Using 2D FFT method...",file=fout)
+
+        if usingGPU:
+            image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(np.array(PSF,np.float16)),usefft=usefft,device=device,output_file=output_file).numpy()
+
+        else:
+            image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,usefft=usefft,device=device)
+        print(printprefix +"Done!",file=fout)
+        print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+    else:
+        image_tesseract_filtered = image_tesseract
+
+
+    #loop over each pixel
+    image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))
+
+    cands = []
+    candidxs = []
+    candra_idxs = []
+    canddec_idxs = []
+    candwid_idxs = []
+    canddm_idxs = []
+    candsnrs = []
+    for i in range(gridsize_RA):
+        for j in range(gridsize_DEC):
+            #get data tensor
+            data_tensor = torch.from_numpy(image_tesseract_filtered[j,i,:,:].transpose()).to(device)
+
+            #get freq tensor
+            frequencies_tensor = torch.from_numpy(freq_axis).to(device)
+            freq_start = torch.min(frequencies_tensor)
+
+            #get dm range tensor
+            dm_range = torch.from_numpy(DM_trials).to(device)
+
+            #get time res tensor
+            timeax_tensor = torch.from_numpy(time_axis)
+            time_resolution = time_axis[1]-time_axis[0]
+
+            
+            #get width tensor
+            widths = torch.from_numpy(widthtrials).to(device)
+
+            #window size and snr threshold
+            window_size=len(time_axis)//2
+            snr_threshold = SNRthresh
+    
+            #create dedisp, boxcar, threshold plans
+            dedisp_obj = dedispersion.Dedispersion(data_tensor,
+                                                    frequencies_tensor,
+                                                    dm_range,
+                                                    freq_start,
+                                                    time_resolution)
+            dedisp_data = (dedisp_obj.perform_dedispersion()).sum(dim=2)
+
+            boxcar_obj = boxcar_filter.BoxcarFilter(dedisp_data)
+            filt_data = boxcar_obj.apply_boxcar(widths)
+
+            cand_obj = candidate_finder.CandidateFinder(filt_data,window_size)
+            cand_data = cand_obj.find_candidates(snr_threshold,widths,remove_trend=True)
+            snr_data = cand_obj.calculate_snr(filt_data)
+
+            #add to full result arrays
+            image_tesseract_binned[j,i,:,:] = snr_data.to("cpu").numpy().max(2)
+            cands = np.concatenate([cands,[(RA_axis[i],DEC_axis[j],cand_data[k]['Boxcar Width'],DM_trials[cand_data[k]['DM Index']],cand_data[k]['SNR']) for k in range(len(cand_data))]])
+            candidxs = np.concatenate([candidxs,[(i,j,list(widthtrials).index(cand_data[k]['Boxcar Width']),cand_data[k]['DM Index'],cand_data[k]['SNR']) for k in range(len(cand_data))]])
+
+            candra_idxs = np.concatenate([candra_idxs,[i]*len(cand_data)])
+            canddec_idxs = np.concatenate([canddec_idxs,[j]*len(cand_data)])
+            candwid_idxs = np.concatenate([candwid_idxs,[list(widthtrials).index(cand_data[k]['Boxcar Width']) for k in range(len(cand_data))]])
+            canddm_idxs = np.concatenate([canddm_idxs,[cand_data[k]['DM Index'] for k in range(len(cand_data))]])
+            candsnrs = np.concatenate([candsnrs,[cand_data[k]['SNR'] for k in range(len(cand_data))]])
+
+
+    data_tensor.to("cpu")
+    frequencies_tensor.to("cpu")
+    dm_range.to("cpu")
+    widths.to("cpu")
+    del data_tensor
+    del frequencies_tensor
+    del dm_range
+    del widths
+    torch.cuda.empty_cache()
+        
+
+    #make a dictionary for easy plotting of results
+    canddict['ra_idxs'] = copy.deepcopy(candra_idxs)
+    canddict['dec_idxs'] = copy.deepcopy(canddec_idxs)
+    canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+    canddict['dm_idxs'] = copy.deepcopy(canddm_idxs)        
+    canddict['ras'] = RA_axis[np.array(candra_idxs,dtype=int)]
+    canddict['decs'] = DEC_axis[np.array(canddec_idxs,dtype=int)]
+    canddict['wids'] = widthtrials[np.array(candwid_idxs,dtype=int)]
+    canddict['dms'] = DM_trials[np.array(canddm_idxs,dtype=int)]        
+    canddict['snrs'] = copy.deepcopy(candsnrs)
+    print(printprefix +"Done! Found " + str(len(candsnrs)) + " candidates",file=fout)
+    if output_file != "":
+        fout.close()
+    return candidxs,cands,image_tesseract_binned,image_tesseract_filtered,canddict,DM_trials
+    
+#Updated search code
+#run search pipeline with desired DM, width trial range; output candidates to a csv? pkl? txt?
+#takes 4D cube (RA,DEC,TIME,FREQUENCY)
+
+def run_search_new(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
                    multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
                    threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False):
+
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
     a list of candidates' DM, pulse width, RA, declination, and time of arrival(?)
@@ -1231,6 +1474,19 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
     printprefix = "[" + str(raidx_offset) + str(decidx_offset) + str(dm_offset) + "]"
 
+
+    if cuda: 
+        multithreading = False
+        print("CUDA flag overrides multithreading",file=fout)
+    #find available cuda GPU to use
+    if cuda:
+        device = torch.device(random.choice(np.arange(torch.cuda.device_count(),dtype=int)) if torch.cuda.is_available() else "cpu")
+        usingGPU = device.type == "cuda"
+        if not usingGPU:
+            print("GPUs not available, using CPUs",file=fout)
+    else:
+        device = None
+        usingGPU = False
     print("Using device: " + str(device),file=fout)
 
 
@@ -1249,21 +1505,220 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         if not slow:
             assert(gridsize_RA == gridsize_DEC)
 
+        #get PSF if possible
+        #if gridsize in PSF_dict.keys():
+        #    PSF = PSF_dict[gridsize][PSF_decs[np.argmin(PSF_dec_bins-np.mean(DEC_axis))]]
+
+        #create PSF if the shape doesn't match
+        #if PSF.shape != image_tesseract.shape:
+        #    print(printprefix + "Updating PSF...",file=fout)
+        #    PSF = sim.make_PSF_cube(gridsize=gridsize,nsamps=nsamps,nchans=nchans)
+        #2D matched filter for each timestep and channel
         print(printprefix +"Spatial matched filtering with DSA PSF...",file=fout)
         if usefft:
             print(printprefix +"Using 2D FFT method...",file=fout)
-        image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,kernel_size=kernel_size,usefft=usefft,device=device)
-    else:
+        
+
+        if usefft and usingGPU and usejax and DMbatches > 1:
+            #make empty array
+            image_tesseract_filtered = jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(image_tesseract,dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(PSF,dtype=np.float32),jax.devices()[0]))
+            print(printprefix +"Done!",file=fout)
+            print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+            print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
+        elif usefft and usingGPU and usejax and DMbatches == 1:
+            print("Using combined jit with 1 batch",file=fout)
+            image_tesseract_filtered = image_tesseract
+        elif usingGPU:
+            image_tesseract_filtered = matched_filter_space(torch.from_numpy(image_tesseract),torch.from_numpy(PSF),kernel_size=kernel_size,usefft=usefft,device=device,output_file=output_file).numpy()
+            print(printprefix +"Done!",file=fout)
+            print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_filtered))),file=fout)
+            print("Time for Space Filter: " + str(time.time()-t1) + " s",file=fout)
+        else:
+            image_tesseract_filtered = matched_filter_space(image_tesseract,PSF,kernel_size=kernel_size,usefft=usefft,device=device)
+    else: 
         image_tesseract_filtered = image_tesseract
+    #print("POST-FILTER SHAPE: " + str(image_tesseract_filtered.shape) + ","  + str(PSF.shape),file=fout)
+    #print(gridsize,file=fout)
+    
+
     #REVISED IMPLEMENTATION: DO DEDISP AND BOXCAR TOGETHER SO WE DON'T HAVE TO KEEP MOVING TO/FROM GPU
     total_noise=None
+    if usefft and usingGPU and usejax:
+        t1 = time.time()
+        nwidths,ndms = len(widthtrials),len(DM_trials)
+        #get data from previous timeframe
+        if append_frame:
+            global last_frame
+            print("OLD SHAPE:",image_tesseract_filtered.shape,file=fout)
+
+            truensamps = image_tesseract_filtered.shape[2]
+            if RA_cutoff>0:
+                image_tesseract_filtered_cut = np.concatenate([last_frame[:,:-RA_cutoff,:,:],image_tesseract_filtered[:,RA_cutoff:,:,:]],axis=2)
+            else:
+                image_tesseract_filtered_cut = np.concatenate([last_frame,image_tesseract_filtered],axis=2)
+            if PSF.shape[1]>= image_tesseract_filtered_cut.shape[1]:
+                #first trim to equal dimensions as image
+                PSF = PSF[int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2):int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2)+image_tesseract_filtered.shape[0],
+                          int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2):int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2)+image_tesseract_filtered.shape[1],:,:]
+                #then apply RA cutoff
+                if RA_cutoff>0:
+                    PSF = PSF[:,int(RA_cutoff//2):-(RA_cutoff - int(RA_cutoff//2)),:,:]
+            nsamps = image_tesseract_filtered.shape[2]
+            if slow:
+                corr_shifts_all = corr_shifts_all_append_slow
+                tdelays_frac = tdelays_frac_append_slow
+            else:
+                corr_shifts_all = corr_shifts_all_append
+                tdelays_frac = tdelays_frac_append
+            print("NEW SHAPE:",image_tesseract_filtered_cut.shape,file=fout)
+            print("MAXSHIFT:",maxshift,file=fout)
+            print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered_cut.shape),file=fout)
+        
+            #save frame
+            last_frame = image_tesseract_filtered[:,:,-maxshift:,:]
+            #save_last_frame(image_tesseract_filtered)
+            #print("Writing to last_frame.npy",file=fout)
+            if RA_cutoff>0:
+                RA_axis = RA_axis[RA_cutoff:]
+                gridsize_RA = len(RA_axis)
+        else:
+            if PSF.shape[1]>= image_tesseract_filtered.shape[1]:
+                #first trim to equal dimensions as image
+                PSF = PSF[int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2):int((PSF.shape[0]-image_tesseract_filtered.shape[0])//2)+image_tesseract_filtered.shape[0],
+                          int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2):int((PSF.shape[1]-image_tesseract_filtered.shape[1])//2)+image_tesseract_filtered.shape[1],:,:]
+            if slow:
+                corr_shifts_all = corr_shifts_all_no_append_slow
+                tdelays_frac = tdelays_frac_no_append_slow
+            else:
+                corr_shifts_all = corr_shifts_all_no_append
+                tdelays_frac = tdelays_frac_no_append
+            truensamps = nsamps = image_tesseract_filtered.shape[2]
+            image_tesseract_filtered_cut=image_tesseract_filtered
+        assert(PSF.shape[0]<=image_tesseract_filtered_cut.shape[0])
+        assert(PSF.shape[1]<=image_tesseract_filtered_cut.shape[1])
+        #subgrid
+        subgridsize_RA = gridsize_RA//DMbatches
+        subgridsize_DEC = gridsize_DEC//DMbatches
+        #boxcar = full_boxcar_filter
+        
+        #noise prep
+        total_noise = torch.zeros((nwidths,ndms))
+        
+        if slow:
+            prev_noise,prev_noise_N = np.zeros((len(widthtrials),len(DM_trials))),0
+        else:
+            prev_noise,prev_noise_N = current_noise #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
+
+        print("Time for Prep" + str(time.time()-t1),file=fout)
+        t1 = time.time()
+        print("NOISENUM:" + str(prev_noise_N),file=fout)
+        print("INPUT NOISE:" + str(prev_noise),file=fout)
+        if DMbatches > 1:
+            executor = ThreadPoolExecutor(DMbatches*DMbatches)#maxProcesses)
+            task_list = []
+            image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,len(widthtrials),len(DM_trials)))
+            for i in range(DMbatches):
+                for j in range(DMbatches):
+                    if j%2 == 0:
+                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered_cut[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),jax.device_put(tdelays_frac,jax.devices()[0]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[0]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[0]),prev_noise_N,noiseth,i,j))
+                    else:
+                        task_list.append(executor.submit(jax_funcs.dedisp_snr_fft_jit_0,jax.device_put(np.array(image_tesseract_filtered_cut[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:],dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),jax.device_put(tdelays_frac,jax.devices()[1]),jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[1]),jax.device_put(np.array(prev_noise,dtype=np.float16),jax.devices()[1]),prev_noise_N,noiseth,i,j))
+                    
+
+
+            #get results
+            for t in task_list:
+                outtup = t.result()
+                i,j = outtup[2],outtup[3]
+                image_tesseract_binned[j*subgridsize_DEC:(j+1)*subgridsize_DEC,i*subgridsize_RA:(i+1)*subgridsize_RA,:,:] =  np.array(outtup[0])
+                total_noise += np.array(outtup[1])/(DMbatches**2)
+            executor.shutdown()
+        else:
+            #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
+            global jaxdev
+            print("DM TRIALS AND WIDTH TRIALS:" + str(corr_shifts_all.shape) + str(tdelays_frac.shape) + str(full_boxcar_filter.shape),file=fout)
+            print(corr_shifts_all,file=fout)
+            print(tdelays_frac,file=fout)
+            print(full_boxcar_filter,file=fout)
+            if append_frame:
+                outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 prev_noise_N,noiseth)
+            else:
+                outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 prev_noise_N,noiseth)
+            image_tesseract_binned,total_noise,TOAs = np.array(outtup[0]),np.array(outtup[1])[:,np.newaxis].repeat(len(DM_trials),1),np.array(outtup[2])
+            
+            if not slow:
+                jaxdev += 1 
+                jaxdev %= 2 
+        
+        #noise_update_all(total_noise,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,writeonly=True) 
+        print("Time for DM and SNR:" + str(time.time()-t1),file=fout)
+
+        #sort candidates
+        if applySNthresh:
+            t1 = time.time()
+            print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
+            #find candidates above SNR threshold
+            #condition = (image_tesseract_binned>=SNRthresh).flatten()
+            #ncands = np.sum(condition)
+            #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*ndms*nwidths)[condition],(gridsize_DEC,gridsize_RA,nwidths,ndms))#[1].shape
+
+        
+       
+            print(image_tesseract_binned.shape,image_tesseract_filtered_cut.shape,file=fout)
+            canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+            print(canddec_idxs,file=fout)
+            print(candra_idxs,file=fout)
+            print(candwid_idxs,file=fout)
+            print(canddm_idxs,file=fout)
+            #fout.close()
+            ncands = len(canddec_idxs)
+            #print(len(DEC_axis),np.max(canddec_idxs),len(RA_axis),np.max(candra_idxs),file=fout)
+            #fout.close()
+            canddecs = DEC_axis[canddec_idxs]
+            candras = RA_axis[candra_idxs]
+            candwids = widthtrials[candwid_idxs]
+            canddms = DM_trials[canddm_idxs]
+            candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
+            if DMbatches==1:
+                candTOAs = TOAs[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
+            else:
+                candTOAs = -np.ones(ncands)
+            candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+            cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candTOAs[i],candsnrs[i]) for i in range(ncands)]
+
+            #make a dictionary for easy plotting of results
+            canddict['ra_idxs'] = copy.deepcopy(candra_idxs + raidx_offset)
+            canddict['dec_idxs'] = copy.deepcopy(canddec_idxs + decidx_offset)
+            canddict['wid_idxs'] = copy.deepcopy(candwid_idxs)
+            canddict['dm_idxs'] = copy.deepcopy(canddm_idxs + dm_offset)
+            canddict['ras'] = copy.deepcopy(candras)
+            canddict['decs'] = copy.deepcopy(canddecs)
+            canddict['wids'] = copy.deepcopy(candwids)
+            canddict['dms'] = copy.deepcopy(canddms)
+            canddict['snrs'] = copy.deepcopy(candsnrs)
+            canddict['TOAs'] = copy.deepcopy(candTOAs)
+            print("Time for sorting candidates: " + str(time.time()-t1) + " s",file=fout)
+
+
 
     #use the concurrent futures package to search sub-images separately; we have to do this AFTER the spatial matched filter so that the PSF structure is suppressed
-    if multithreading:
+    elif multithreading: 
         #initialize a pool of processes for concurent execution
         if threadDM:maxProcesses = nrows*ncols*len(DM_trials)
         else: maxProcesses = nrows*ncols
-        executor = ThreadPoolExecutor(maxProcesses)
+        executor = ThreadPoolExecutor(maxProcesses) 
 
         #submit a search task to the process pool for each subimage
         assert(gridsize_DEC%nrows == 0) #gridsize must be divisible by number of rows and cols
@@ -1299,12 +1754,12 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                 DEC_axis_i = DEC_axis[row*gridsize_DEC_i:(row+1)*gridsize_DEC_i]
                 print("---> Subimage " + str(i) + " (row=" + str(row) + ",col=" + str(col) + "), shape=" + str(image_tesseract_filtered_i.shape),file=fout)
                 print(output_file[:-4] + "_thread_row" + str(i) + "_col" + str(j) + ".txt",file=fout)
-
+            
                 if threadDM:
                     for k in range(nDMtrials):
                         #define sub-range of DM trials
                         DM_trials_i = DM_trials[k:k+1]
-
+                        
 
                         #make new thread to search sub-image
                         task_list.append(executor.submit(run_search_new,
@@ -1316,7 +1771,7 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                     DM_trials_i,widthtrials,tsamp,SNRthresh,plot,
                                     off,PSF,offpnoise,verbose,output_file,noiseth,dict(),usefft,
                                     False,1,1,False,col*gridsize_RA_i,row*gridsize_DEC_i,k,False,samenoise,cuda))
-
+                
                 else:
                     #make new thread to search sub-image
                     task_list.append(executor.submit(run_search_new,
@@ -1339,7 +1794,7 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                 #save the binned image and candidates
                 candidxs = list(candidxs) + list(candidxs_i)
                 cands = list(cands) + list(cands_i)
-                if threadDM: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,dm_offset_i:dm_offset_i+1] = image_tesseract_binned_i
+                if threadDM: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,dm_offset_i:dm_offset_i+1] = image_tesseract_binned_i    
                 else: image_tesseract_binned[decidx_offset_i:decidx_offset_i + gridsize_DEC_i,raidx_offset_i:raidx_offset_i + gridsize_RA_i,:,:] = image_tesseract_binned_i
 
                 for k in canddict_i.keys():
@@ -1348,7 +1803,6 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #make a dictionary for easy plotting of results
         if applySNthresh:
             ncands = len(cands)
-
     else: #proceed normally
 
         t1 = time.time()
@@ -1356,10 +1810,10 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         nDMtrials = len(DM_trials)
         print(printprefix +"Starting dedispersion with " + str(nDMtrials) + " trials...",file=fout)
         #image_tesseract_dedisp = np.zeros((gridsize_DEC,gridsize_RA,nsamps,nDMtrials)) 
-
+    
 
         if usingGPU:
-            if multithreading:
+            if multithreading: 
                 image_tesseract_dedisp = dedisperse_allDM(torch.from_numpy(image_tesseract_filtered),DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,maxProcesses=maxProcesses).numpy()
             elif usejax:
                 image_tesseract_dedisp = dedisperse_allDM(image_tesseract_filtered,DM_trials=DM_trials,tsamp=tsamp,freq_axis=freq_axis,output_file=output_file,device=device,append_frame=append_frame,DMbatches=DMbatches,usejax=usejax)
@@ -1373,26 +1827,26 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         #print(image_tesseract_dedisp.shape)
         print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_dedisp))),file=fout)
 
-        print(printprefix +"Done!",file=fout)
+        print(printprefix +"Done!",file=fout) 
         print("Time for dedispersion: " + str(time.time()-t1) + " s",file=fout)
 
         t1 = time.time()
         #boxcar filter and get snr using rolled PSF --> gridsize x gridsize x width x DM (x TOA?)
         nwidthtrials = len(widthtrials)
         image_tesseract_binned = np.zeros((gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials)) #stores output array as S/N for each dedispersion and width trial for every pixel
-
+    
         print(printprefix +"Starting boxcar filtering with " + str(nwidthtrials) + " trials...",file=fout)
-
-
+        
+        
         if usingGPU:
             image_tesseract_binned = snr_vs_RA_DEC_allDMW(torch.from_numpy(image_tesseract_dedisp),DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=SNRbatches,usejax=usejax).numpy()
         else:
             image_tesseract_binned = snr_vs_RA_DEC_allDMW(image_tesseract_dedisp,DM_trials,widthtrials,noiseth=noiseth,output_file=output_file,samenoise=samenoise,device=device,exportmaps=exportmaps,usefft=usefft,batches=SNRbatches)
-        print(printprefix +"Done!",file=fout)
+        print(printprefix +"Done!",file=fout)    
         print(printprefix +"---> " + str(np.sum(np.isnan(image_tesseract_binned))),file=fout)
         print("Time for boxcar filter: " + str(time.time()-t1) + " s",file=fout)
 
-    
+
         t1 = time.time()
         if applySNthresh:
             print(printprefix +"Searching for candidates with S/N > " + str(SNRthresh) + "...",file=fout)
@@ -1400,7 +1854,7 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             #condition = (image_tesseract_binned>=SNRthresh).flatten()
             #ncands = np.sum(condition)
             #canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs=np.unravel_index(np.arange(gridsize_DEC*gridsize_RA*nDMtrials*nwidthtrials)[condition],(gridsize_DEC,gridsize_RA,nwidthtrials,nDMtrials))#[1].shape
-
+    
             canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
             ncands = len(canddec_idxs)
 
@@ -1409,7 +1863,7 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             candwids = widthtrials[candwid_idxs]
             canddms = DM_trials[canddm_idxs]
             candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]#.flatten()[condition]
-
+    
             candidxs = [(raidx_offset + candra_idxs[i],decidx_offset + canddec_idxs[i],candwid_idxs[i],dm_offset + canddm_idxs[i],candsnrs[i]) for i in range(ncands)]
             cands = [(candras[i],canddecs[i],candwids[i],canddms[i],candsnrs[i]) for i in range(ncands)]
 
@@ -1440,148 +1894,6 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
             return TOAs,image_tesseract_binned,image_tesseract_filtered,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
 
 
-
-
-
-def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
-                   DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
-                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
-                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
-                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False):
-    """
-    This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
-    a list of candidates' DM, pulse width, RA, declination, and time of arrival(?)
-    """
-
-
-    t1 = time.time()
-    if output_file != "":
-        fout = open(output_file,"a")
-    else:
-        fout = sys.stdout
-
-    #get axis sizes
-    gridsize_RA = len(RA_axis)
-    gridsize_DEC = len(DEC_axis)
-    gridsize = gridsize_RA
-    nsamps = len(time_axis)
-    nchans = len(freq_axis)
-    
-    device = torch.device(random.choice(np.arange(torch.cuda.device_count(),dtype=int)) if torch.cuda.is_available() else "cpu")
-    usingGPU = device.type == "cuda"
-    if not usingGPU:
-        print("GPU unavailable")
-        return None
-    print("Using device: " + str(device),file=fout)
-
-    #REVISED IMPLEMENTATION: DO DEDISP AND BOXCAR TOGETHER SO WE DON'T HAVE TO KEEP MOVING TO/FROM GPU
-    total_noise=None
-    t1 = time.time()
-    nwidths,ndms = len(widthtrials),len(DM_trials)
-    #get data from previous timeframe
-    if append_frame:
-        global last_frame
-        print("OLD SHAPE:",image_tesseract.shape,file=fout)
-
-        truensamps = image_tesseract.shape[2]
-        if RA_cutoff>0:
-            image_tesseract_filtered_cut = np.concatenate([last_frame[:,:-RA_cutoff,:,:],image_tesseract[:,RA_cutoff:,:,:]],axis=2)
-        else:
-            image_tesseract_filtered_cut = np.concatenate([last_frame,image_tesseract],axis=2)
-        if PSF.shape[1]>= image_tesseract_filtered_cut.shape[1]:
-            #first trim to equal dimensions as image
-            PSF = PSF[int((PSF.shape[0]-image_tesseract.shape[0])//2):int((PSF.shape[0]-image_tesseract.shape[0])//2)+image_tesseract.shape[0],
-                      int((PSF.shape[1]-image_tesseract.shape[1])//2):int((PSF.shape[1]-image_tesseract.shape[1])//2)+image_tesseract.shape[1],:,:]
-            #then apply RA cutoff
-            if RA_cutoff>0:
-                PSF = PSF[:,int(RA_cutoff//2):-(RA_cutoff - int(RA_cutoff//2)),:,:]
-        nsamps = image_tesseract.shape[2]
-        if slow:
-            corr_shifts_all = corr_shifts_all_append_slow
-            tdelays_frac = tdelays_frac_append_slow
-        else:
-            corr_shifts_all = corr_shifts_all_append
-            tdelays_frac = tdelays_frac_append
-        print("NEW SHAPE:",image_tesseract_filtered_cut.shape,file=fout)
-        print("MAXSHIFT:",maxshift,file=fout)
-        print("Appending data from previous timeframe, new shape: " + str(image_tesseract_filtered_cut.shape),file=fout)
-
-        #save frame
-        last_frame = image_tesseract[:,:,-maxshift:,:]
-        if RA_cutoff>0:
-            RA_axis = RA_axis[RA_cutoff:]
-            gridsize_RA = len(RA_axis)
-    else:
-        if PSF.shape[1]>= image_tesseract.shape[1]:
-            #first trim to equal dimensions as image
-            PSF = PSF[int((PSF.shape[0]-image_tesseract.shape[0])//2):int((PSF.shape[0]-image_tesseract.shape[0])//2)+image_tesseract.shape[0],
-                      int((PSF.shape[1]-image_tesseract.shape[1])//2):int((PSF.shape[1]-image_tesseract.shape[1])//2)+image_tesseract.shape[1],:,:]
-        if slow:
-            corr_shifts_all = corr_shifts_all_no_append_slow
-            tdelays_frac = tdelays_frac_no_append_slow
-        else:
-            corr_shifts_all = corr_shifts_all_no_append
-            tdelays_frac = tdelays_frac_no_append
-        truensamps = nsamps = image_tesseract.shape[2]
-        image_tesseract_filtered_cut=image_tesseract
-    assert(PSF.shape[0]<=image_tesseract_filtered_cut.shape[0])
-    assert(PSF.shape[1]<=image_tesseract_filtered_cut.shape[1])
-    #subgrid
-    subgridsize_RA = gridsize_RA//DMbatches
-    subgridsize_DEC = gridsize_DEC//DMbatches
-    
-    #noise prep
-    total_noise = torch.zeros((nwidths,ndms))
-
-    if slow:
-        prev_noise,prev_noise_N = np.zeros((len(widthtrials),len(DM_trials))),0
-    else:
-        prev_noise,prev_noise_N = current_noise #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
-
-    print("Time for Prep" + str(time.time()-t1),file=fout)
-    t1 = time.time()
-    print("NOISENUM:" + str(prev_noise_N),file=fout)
-    print("INPUT NOISE:" + str(prev_noise),file=fout)
-
-
-    #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
-    global jaxdev
-    print("DM TRIALS AND WIDTH TRIALS:" + str(corr_shifts_all.shape) + str(tdelays_frac.shape) + str(full_boxcar_filter.shape),file=fout)
-    print(corr_shifts_all,file=fout)
-    print(tdelays_frac,file=fout)
-    print(full_boxcar_filter,file=fout)
-    if append_frame:
-        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 prev_noise_N,noiseth)
-    else:
-        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 prev_noise_N,noiseth)
-    image_tesseract_binned,total_noise,TOAs = np.array(outtup[0]),np.array(outtup[1])[:,np.newaxis].repeat(len(DM_trials),1),np.array(outtup[2])
-
-    if not slow:
-        jaxdev += 1
-        jaxdev %= 2
-    print("Time for DM and SNR:" + str(time.time()-t1),file=fout)
-
-    if output_file != "":
-        fout.close()
-    if append_frame:
-        return TOAs,image_tesseract_binned,image_tesseract[:,:,-truensamps:,:],DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
-    else:
-        return TOAs,image_tesseract_binned,image_tesseract,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
-
-
-
 #function to run image differencing on low resolution DM=0 search
 #def run_imgdiff_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
 #                   DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
@@ -1596,7 +1908,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
 #CONTEXTSETUP = False
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow):
     #global CONTEXTSETUP
     #if not QSETUP and not CONTEXTSETUP:
     #    CONTEXTSETUP = True
@@ -1630,10 +1942,13 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     #print("starting process " + str(img_id) + "...")
     timing1 = time.time()
-    if cuda:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if slow else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow) 
+    if PyTorchDedispersion: #uses Nikita's dedisp code
+        total_noise = None
+        printlog("Using PyTorchDedispersion",output_file=processfile)
+        fullimg.candidxs,fullimg.cands,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,canddict,tmp = run_PyTorchDedisp_search(fullimg.image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,SNRthresh=SNRthresh,canddict=dict(),output_file=output_file,usefft=usefft,space_filter=space_filter,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.DEC_axis[len(fullimg.DEC_axis)//2],T=tsamp*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])))
+
     else:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if slow else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow)
+        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_new(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if slow else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow) 
     
     #update noise
     if not slow and total_noise is not None:
@@ -1702,6 +2017,73 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     else:
         return fullimg.image_tesseract_searched,None,slow
 
+#get cands and clusters from csv file
+def read_cands(fname):
+    cands = []
+    with open(cand_dir+fname,"r") as csvfile:
+        rdr = csv.reader(csvfile,delimiter=',')
+        for row in rdr:#.read_row():
+            cands.append(row)
+    csvfile.close()
+    return cands
 
 
+
+import pickle as pkl
+#function to update the currently stored noisemap
+def update_noisemap(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix.npy",noisemap_info_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix_info.pkl"):
+    #get previous noise map
+    noisemap = np.load(noisemap_file)
+
+    #get info from noise map
+    f = open(noisemap_info_file,'rb')
+    noiseinfo = pkl.load(f)
+    f.close()
+
+    #get standard deviation of new image
+    imagenoisemap = image_tesseract.std(2)
+    imagenoisemap = np.expand_dims(imagenoisemap,axis=2)
+    
+    if noiseinfo['iterations'] == 0:#np.all(noisemap == -1):
+        #if all -1, replace noise map
+        newnoisemap = imagenoisemap
+    else:
+        #otherwise, average together standard deviations
+        newnoisemap = (noisemap*noiseinfo['iterations'] + imagenoisemap)/(noiseinfo['iterations'] + 1)
+
+    #increase iterations
+    noiseinfo['iterations'] += 1
+
+    #write to file
+    np.save(noisemap_file,newnoisemap)
+    f = open(noisemap_info_file,'wb')
+    pkl.dump(noiseinfo,f)
+    f.close()
+    return newnoisemap
+
+
+#normalize using noisemap
+def normalize_image(image_tesseract,noisemap_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix.npy",noisemap_info_file="/dataz/dsa110/imaging/NSFRB_storage/NSFRB_noisemaps/noisemap_256pix_info.pkl",output_file=output_file):
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+
+    #get previous noise map
+    noisemap = np.load(noisemap_file)
+
+    #get info from noise map
+    f = open(noisemap_info_file,'rb')
+    noiseinfo = pkl.load(f)
+    f.close()
+
+    if noiseinfo['iterations']==0:
+        print("Noise map not initialized",file=fout)
+        if output_file != "":
+            fout.close()
+        return image_tesseract
+    else:
+        if output_file != "":
+            fout.close()
+        return image_tesseract/noisemap
 
