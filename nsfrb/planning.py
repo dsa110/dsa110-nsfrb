@@ -1175,6 +1175,62 @@ def LPT_cat(mjd,dd,sep=2.0*u.deg):
 
     return names[idxs],coords[idxs],Ps[idxs],Ws[idxs],S1400s[idxs]
 
+def read_WDMSs(fl=table_dir + "RM2021_WDMS_CAT.csv"):
+    coords = []
+    dists = []
+    with open(fl,"r") as csvfile:
+        i = 0
+        rdr = csv.reader(csvfile,delimiter=',')
+        for row in rdr:
+            if i ==0 : i += 1
+            else:
+                coords.append(SkyCoord(ra=float(row[0])*u.deg,dec=float(row[1])*u.deg,frame='icrs'))
+                dists.append(np.nan if len(row[8])==0 else float(row[8]))
+
+    dists = np.array(dists)
+    return SkyCoord(coords),dists
+
+def WDMS_cat(mjd,dd,sep=2.0*u.deg):
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    coords,dists = read_WDMSs()
+    idx = np.arange(len(coords))
+
+    #print(coords)
+    d2d = c.separation(coords)
+    idxs = idx[d2d<sep]
+
+    return coords[idxs],dists[idxs]
+
+
+def read_RFC(fl=table_dir + "rfc_2025a_cat.txt"):
+    dat = np.genfromtxt(fl,comments="#",dtype=str)
+    dat[dat=="-9.99"] = "nan"
+    names = dat[:,1]
+    coords = SkyCoord([SkyCoord(" ".join(list(dat[i,3:9])),unit=(u.hourangle,u.deg),frame='icrs') for i in range(dat.shape[0])])
+    RA_errs = np.array(dat[:,9],dtype=float)
+    DEC_errs = np.array(dat[:,10],dtype=float)
+    Sfluxs = np.array(dat[:,12],dtype=float)
+    Cfluxs = np.array(dat[:,15],dtype=float)
+    Xfluxs = np.array(dat[:,18],dtype=float)
+    Ufluxs = np.array(dat[:,21],dtype=float)
+    Kfluxs = np.array(dat[:,24],dtype=float)
+    return names,coords,RA_errs,DEC_errs,Sfluxs,Cfluxs,Xfluxs,Ufluxs,Kfluxs
+
+def RFC_cat(mjd,dd,sep=2.0*u.deg):
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    names,coords,RA_errs,DEC_errs,Sfluxs,Cfluxs,Xfluxs,Ufluxs,Kfluxs = read_RFC()
+    idx = np.arange(len(coords))
+
+    #print(coords)
+    d2d = c.separation(coords)
+    idxs = idx[d2d<sep]
+    return names[idxs],coords[idxs],RA_errs[idxs],DEC_errs[idxs],Sfluxs[idxs],Cfluxs[idxs],Xfluxs[idxs],Ufluxs[idxs],Kfluxs[idxs]
 
 def read_magnetars(fl=table_dir + "MCGILL_CATALOG.csv"):
     names = []

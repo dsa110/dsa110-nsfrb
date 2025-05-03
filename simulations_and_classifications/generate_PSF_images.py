@@ -11,7 +11,7 @@ Generate PSF images for declinations spaced by the instantaneous FOV (3 degrees)
 
 
 #simple wrapper function to make single PSF
-def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float32,HA=0,injectnoise=0,noise_only=False,srcDECoffset=0,srcHAoffset=0,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust,xidxs=None,yidxs=None):
+def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float32,HA=0,injectnoise=0,noise_only=False,srcDECoffset=0,srcHAoffset=0,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust):
     num_observations = 1
     noise_std_low = injectnoise#0 #noiseless
     noise_std_high = injectnoise
@@ -26,7 +26,7 @@ def generate_PSF_images(dataset_dir,dec,zoom_pix,tonumpy,nsamps=1,dtype=np.float
     spectral_index_low = spectral_index_high = 0
     tonumpy = True
     print("generating PSF with ",nsamps,"samples")
-    PSF = np.array(generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only,N_NOISE=nsamps,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust,xidxs=xidxs,yidxs=yidxs),dtype=dtype)
+    PSF = np.array(generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=zoom_pix>IMAGE_SIZE//2,noise_only=noise_only,N_NOISE=nsamps,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust),dtype=dtype)
     print("newshape:",PSF.shape)
     return PSF
 

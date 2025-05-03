@@ -25,7 +25,7 @@ from scipy.signal import convolve2d
 from nsfrb import simulating as sim
 from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.outputlogging import printlog,numpy_to_fits
-from nsfrb.imaging import uv_to_pix
+from nsfrb.imaging import uv_to_pix,get_RA_cutoff
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 from astropy.time import Time
@@ -71,7 +71,7 @@ from nsfrb.config import *
 from nsfrb.noise import noise_update,noise_dir,noise_update_all
 from nsfrb import jax_funcs
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,freq_axis
 
 
 
@@ -123,12 +123,12 @@ jaxdev = 0
 
 
 #create axes
-RA_axis,DEC_axis,elev = uv_to_pix(Time.now().mjd,gridsize)
+RA_axis,DEC_axis,elev = uv_to_pix(Time.now().mjd,gridsize,pixperFWHM=config.pixperFWHM)
 print(DEC_axis)
 #RA_axis = np.linspace(RA_point-(pixsize*gridsize/2),RA_point+(pixsize*gridsize/2),gridsize)
 #DEC_axis = np.linspace(DEC_point-(pixsize*gridsize/2),DEC_point+(pixsize*gridsize/2),gridsize)
 time_axis = np.linspace(0,T,nsamps) #ms
-freq_axis = np.linspace(fmin,fmax,nchans) #MHz
+#freq_axis = np.linspace(fmin,fmax,nchans) #MHz
 
 #DM trials
 def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B,nsamps,ZERO=True):
@@ -174,8 +174,14 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False,
     tdelaysall = np.zeros((nchans*2,nDM),dtype=np.int16) #jnp.device_put(jnp.zeros((len(DM_trials),nchans*2),dtype=jnp.int16),jax.devices()[0])
     tdelaysall[1::2,:] = (np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
     tdelaysall[0::2,:] = (np.array(np.floor(tdelays/tsamp),dtype=np.int8))
-    tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[0::2,:],1 - (tdelays/tsamp - tdelaysall[0::2,:])],axis=0).transpose()
-
+    print("TDELAYSALL:",tdelaysall)
+    tdelays_frac = np.zeros((nchans*2,nDM),dtype=float)
+    tdelays_frac[0::2,:] = 1 - (tdelays/tsamp - np.floor(tdelays/tsamp))#(np.array(np.ceil(tdelays/tsamp),dtype=np.int8))
+    tdelays_frac[1::2,:] = tdelays/tsamp - np.floor(tdelays/tsamp) #(np.array(np.floor(tdelays/tsamp),dtype=np.int8))
+    tdelays_frac = tdelays_frac.transpose()
+    print("TDELAYSFRAC:",tdelays_frac)
+    #tdelays_frac = np.concatenate([tdelays/tsamp - tdelaysall[0::2,:],1 - (tdelays/tsamp - tdelaysall[0::2,:])],axis=0).transpose()
+    
     #rearrange shift idxs and expand axes
 
     #--case 1: appending previous frame
@@ -318,15 +324,6 @@ default_PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,gridsize,DEC_axis[int
 """
 pre-computed cutoff pixels
 """
-def get_RA_cutoff(dec,T=T,pixsize=pixsize):
-    """
-    dec: current declination
-    T: integration time in milliseconds
-    """
-    cutoff_as = (T/1000)*15/np.cos(dec*np.pi/180) #arcseconds
-    cutoff_pix = np.abs((cutoff_as/3600)//pixsize)
-    print("New RA cutoff:",cutoff_pix)
-    return int(np.ceil(cutoff_pix))
 default_cutoff = get_RA_cutoff(0)
 
 
@@ -2001,7 +1998,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
     printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
     ftime = open(timelogfile,"a")
-    ftime.write(str(time.time()-timing1)+"\n")
+    ftime.write("[search] " + str(time.time()-timing1)+"\n")
     ftime.close()
 
     if np.nanmax(fullimg.image_tesseract_searched)>SNRthresh:

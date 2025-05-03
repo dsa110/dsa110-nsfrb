@@ -1,4 +1,7 @@
 import numpy as np
+import glob
+import json
+from scipy.optimize import curve_fit
 from dsamfs import utils as pu
 from dsacalib.utils import Direction
 from dsautils.coordinates import create_WCS,get_declination,get_elevation
@@ -24,12 +27,145 @@ from nsfrb.flagging import flag_vis
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize,table_dir
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
+
+def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000):
+    """
+    dec: current declination
+    T: integration time in milliseconds
+    """
+    if usefit:
+        srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
+        if len(srcs)>0:
+            print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
+            decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
+            idx = np.argmin(np.abs(decs-dec))
+            if np.abs(decs[idx]-dec)<1:
+            
+                f = open(srcs[idx],"r")
+                table = json.load(f)
+                f.close()
+                if 'core_gulp_RA_drift_slope' in table.keys():
+                    print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
+                    cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                    print("New RA cutoff:",cutoff_pix)
+                    return cutoff_pix
+        else:
+            f = open(table_dir + "/NSFRB_astrocal.json","r")
+            table = json.load(f)
+            f.close()
+            if 'core_gulp_RA_drift_slope' in table.keys():
+                print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
+                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                print("New RA cutoff:",cutoff_pix)
+                return cutoff_pix
+
+            
+        print("Fit cal not available, using pix estimate")
+    scale = offset_s*1000/T
+    cutoff_as = scale*(T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
+    cutoff_pix = np.abs((cutoff_as/3600)/pixsize)#np.abs((cutoff_as/3600)//pixsize)
+    print("New RA cutoff:",cutoff_pix)
+    if asint: return int(np.ceil(cutoff_pix))
+    else: return cutoff_pix#int(np.ceil(cutoff_pix))
+
+
+def stack_images(imgs,cutoff_offsets,ref_RA_grid=None,ref_DEC_grid=None):
+    """
+    Given a list of images and cutoffs, aligns them. Cutoffs are estimated
+    from astrometric cal fits or from comparing drift rate to pixel size
+    using get_RA_cutoff()
+    """
+    cutoff_offsets = -np.array(cutoff_offsets)
+    #if not already, reference cutoffs to the first img 
+    assert(len(imgs)==len(cutoff_offsets))
+    #assert(imgs[0].shape[:2] == ref_RA_grid.shape)
+    assert(cutoff_offsets[0] == 0)
+    
+    #use maximum cutoff to get a new min_gridsize
+    image_size = imgs[0].shape[0]
+    min_gridsize = imgs[0].shape[1]
+    ngulps = len(cutoff_offsets)
+    min_gridsize_new = min_gridsize - np.nanmax(np.abs(cutoff_offsets))
+    peakoffsetidx = np.nanargmax(np.abs(cutoff_offsets))
+    peakoffset = cutoff_offsets[peakoffsetidx]
+    new_shape = list(imgs[0].shape)
+    new_shape[1] = min_gridsize_new
+    #full_img_new = [np.zeros(new_shape)]*len(imgs)
+    full_img_new = []
+
+    #align the reference and peak offset images first
+    ra_grid_2D = None
+    dec_grid_2D = None
+    if peakoffset>=0:
+        full_img_new.append(imgs[0][:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new,...])
+        if ref_RA_grid is not None:
+            if len(np.array(ref_RA_grid).shape) == 2:
+                ra_grid_2D = ref_RA_grid[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+            elif len(np.array(ref_RA_grid).shape) == 1:
+                ra_grid_2D = ref_RA_grid[np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+            else:
+                print("Invalid ra grid shape")
+                ra_grid_2D = None
+        if ref_DEC_grid is not None:
+            if len(np.array(ref_DEC_grid).shape) == 2:
+                dec_grid_2D = ref_DEC_grid[:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new]
+            elif len(np.array(ref_DEC_grid).shape) == 1:
+                dec_grid_2D = ref_DEC_grid
+            else:
+                print("Invalid dec grid shape")
+                dec_grid_2D = None
+    else:
+        full_img_new.append(imgs[0][:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset)),...])
+        if ref_RA_grid is not None:
+            if len(np.array(ref_RA_grid).shape) == 2:
+                ra_grid_2D = ref_RA_grid[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+            elif len(np.array(ref_RA_grid).shape) == 1:
+                ra_grid_2D = ref_RA_grid[(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+            else:
+                print("Invalid ra grid shape")
+                ra_grid_2D = None
+        if ref_DEC_grid is not None:
+            if len(np.array(ref_DEC_grid).shape) == 2:
+                dec_grid_2D = ref_DEC_grid[:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset))]
+            elif len(np.array(ref_DEC_grid).shape) == 1:
+                dec_grid_2D = ref_DEC_grid
+            else:
+                print("Invalid dec grid shape")
+                dec_grid_2D = None
+
+        
+    #now the rest
+    for g in range(1,ngulps):
+        if g != peakoffsetidx:
+            if peakoffset>=0 and cutoff_offsets[g]>=0:
+                print(g,"case 1",peakoffsetidx,cutoff_offsets[g])
+                full_img_new.append(imgs[g][:,np.abs(peakoffset)-np.abs(cutoff_offsets[g]):np.abs(peakoffset)-np.abs(cutoff_offsets[g])+min_gridsize_new,...])
+            elif peakoffset<0 and cutoff_offsets[g]<0:
+                print(g,"case 2",peakoffsetidx,cutoff_offsets[g])
+                full_img_new.append(imgs[g][:,(min_gridsize - np.abs(peakoffset) + np.abs(cutoff_offsets[g]) - min_gridsize_new):(min_gridsize - np.abs(peakoffset) + np.abs(cutoff_offsets[g])),...])
+            elif peakoffset>=0 and cutoff_offsets[g]<0:
+                print(g,"case 3",peakoffsetidx,cutoff_offsets[g])
+                tmp = np.zeros(new_shape)
+                tmp[:,:min([np.abs(peakoffset)+np.abs(cutoff_offsets[g])+min_gridsize_new,min_gridsize])-(np.abs(peakoffset)+np.abs(cutoff_offsets[g]))] = imgs[g][:,np.abs(peakoffset)+np.abs(cutoff_offsets[g]):min([np.abs(peakoffset)+np.abs(cutoff_offsets[g])+min_gridsize_new,min_gridsize]),...]
+                full_img_new.append(tmp)
+            elif peakoffset<0 and cutoff_offsets[g]>=0:
+                print(g,"case 4",peakoffsetidx,cutoff_offsets[g])
+                tmp = np.zeros(new_shape)
+                tmp[:,-(((min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g]))))-max([0,(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g])) - min_gridsize_new)])):] = imgs[g][:,max([0,(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g])) - min_gridsize_new)]):(min_gridsize - (np.abs(peakoffset)+np.abs(cutoff_offsets[g]))),...]
+                full_img_new.append(tmp)
+        else:
+            if peakoffset>=0:
+                full_img_new.append(imgs[peakoffsetidx][:,(min_gridsize - np.abs(peakoffset) - min_gridsize_new):(min_gridsize - np.abs(peakoffset)),...])
+            else:
+                full_img_new.append(imgs[peakoffsetidx][:,np.abs(peakoffset):np.abs(peakoffset)+min_gridsize_new,...])
+    print(len(full_img_new),len(imgs))
+    return full_img_new,ra_grid_2D,dec_grid_2D,min_gridsize_new
 
 
 def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: np.ndarray = None, robust: float = 0.0,pixel_resolution=None) -> np.ndarray:
@@ -70,51 +206,36 @@ def briggs_weighting(u: np.ndarray, v: np.ndarray, grid_size: int, vis_weights: 
 
     new_weights = vis_weights / (1 + Wk[u_indices * grid_size + v_indices- np.min(u_indices * grid_size + v_indices)] * f2)
 
-    return new_weights
+    return new_weights/np.nansum(new_weights)
 
 
-def robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int = IMAGE_SIZE, robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
+def uniform_grid(u, v, image_size, pixel_resolution, pixperFWHM):
     """
-    Process visibility data and create a dirty image using FFT and Briggs weighting.
-
-    Parameters:
-    chunk_V: Chunk of visibility data.
-    u, v: u,v coordinates.
-    image_size: Size of the output image.
-    robust: Robust parameter for Briggs weighting.
-
-    Returns:
-    The resulting 'dirty' image.
+    Uniform gridding, returns indices
     """
-    pixel_resolution = (0.20 / np.max(np.sqrt(u**2 + v**2))) / 3
+    if pixel_resolution is None:
+        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / pixperFWHM #radians if UV in meters
+    #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
     uv_resolution = 1 / (image_size * pixel_resolution)
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
 
-    briggs_weights = briggs_weighting(u, v, image_size, robust=robust)
+    #removed clip
+    i_indices = ((u + uv_max) / grid_res).astype(int)
+    j_indices = ((v + uv_max) / grid_res).astype(int)
 
-    weighted_V = chunk_V * briggs_weights
-    v_avg = np.mean(weighted_V, axis=0)
+    #remove long baselines
+    uvs = np.sqrt(u**2 + v**2)
+    i_indices = i_indices[uvs<uv_max]
+    j_indices = j_indices[uvs<uv_max]
 
-    i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
-    j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
+    #get conjugate baselines
+    i_conj_indices = image_size - i_indices - 1
+    j_conj_indices = image_size - j_indices - 1
+    
+    return (i_indices,j_indices,i_conj_indices,j_conj_indices)
 
-    visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-    #np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
-
-    if inject_img is not None:
-        if inject_flat:
-            visibility_grid[i_indices,j_indices] += inverse_uniform_image(inject_img,u,v)[i_indices,j_indices]
-        else:
-            visibility_grid += inverse_uniform_image(inject_img,u,v)
-    dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-
-    #return np.real(dirty_image)
-    return np.real(dirty_image) if not return_complex else dirty_image
-
-
-def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,pixperFWHM=pixperFWHM) -> np.ndarray:
+def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, uniform=False, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,pixperFWHM=pixperFWHM, briggs_weights=None,i_indices=None,j_indices=None,i_conj_indices=None,j_conj_indices=None,clipuv=True,keeptime=False, wstack_parallel=False) -> np.ndarray:
     """
     Process visibility data and create a dirty image using FFT and Briggs weighting.
 
@@ -134,53 +255,61 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
     uv_max = uv_resolution * image_size / 2
     grid_res = 2 * uv_max / image_size
 
-    if wstack and w is not None:
-        w_min = -np.max(np.abs(w))
-        w_max = np.max(np.abs(w))
-        w_grid_res = (w_max+1-w_min)/Nlayers_w
-        w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
-
-    #briggs weighting
-    briggs_weights = briggs_weighting(u, v, image_size, robust=robust,pixel_resolution=pixel_resolution)
-    v_avg = np.mean(np.array(chunk_V * briggs_weights), axis=0)
+    if not uniform:
+        #briggs weighting
+        if briggs_weights is None:
+            briggs_weights = briggs_weighting(u, v, image_size, robust=robust,pixel_resolution=pixel_resolution)
+        #print("INPUT VIS SHAPE",chunk_V.shape,briggs_weights.shape)
+        if keeptime: v_avg = chunk_V * briggs_weights * image_size #normalize since ifft has a 1/n term
+        else: v_avg = np.mean(np.array(chunk_V * briggs_weights * image_size), axis=0)
+    else:
+        if keeptime: v_avg = chunk_V
+        else: v_avg = np.mean(np.array(chunk_V), axis=0)
     
-    #removed clip
-    i_indices = ((u + uv_max) / grid_res).astype(int)
-    j_indices = ((v + uv_max) / grid_res).astype(int)
-    if wstack and w is not None:
-        k_indices = ((w - w_min) / w_grid_res).astype(int)
+    if clipuv: v_avg = v_avg[np.sqrt(u**2 + v**2)<uv_max]
+    #print("VIS SHAPE",v_avg.shape)
+    if i_indices is None and j_indices is None:
+        #removed clip
+        i_indices = ((u + uv_max) / grid_res).astype(int)
+        j_indices = ((v + uv_max) / grid_res).astype(int)
+        
+        #remove long baselines
+        uvs = np.sqrt(u**2 + v**2)
+        #v_avg = v_avg[uvs<uv_max]
+        i_indices = i_indices[uvs<uv_max]
+        j_indices = j_indices[uvs<uv_max]
+        if i_conj_indices is None and j_conj_indices is None:
+            #get conjugate baselines
+            i_conj_indices = image_size - i_indices - 1
+            j_conj_indices = image_size - j_indices - 1
+    #$print(v_avg.shape,i_indices.shape,j_indices.shape,i_conj_indices.shape,j_conj_indices.shape)
+    if keeptime:
+        visibility_grid = np.zeros((v_avg.shape[0],image_size, image_size), dtype=complex)
+        for i in range(v_avg.shape[0]):
+            visibility_grid_i = np.zeros((image_size, image_size), dtype=complex)
+            nancondition = ~np.isnan(v_avg[i,:])
+            np.add.at(visibility_grid_i, (np.concatenate([i_indices[nancondition],i_conj_indices[nancondition]]),
+                                    np.concatenate([j_indices[nancondition],j_conj_indices[nancondition]])),
+                                    np.concatenate([v_avg[i,nancondition],np.conj(v_avg[i,nancondition])]))
+            visibility_grid[i,:,:] = visibility_grid_i
 
-    #remove long baselines
-    uvs = np.sqrt(u**2 + v**2)
-    v_avg = v_avg[uvs<uv_max]
-    i_indices = i_indices[uvs<uv_max]
-    j_indices = j_indices[uvs<uv_max]
-    if wstack and w is not None:
-        k_indices = k_indices[uvs<uv_max]
-
-    #get conjugate baselines
-    i_conj_indices = image_size - i_indices - 1
-    j_conj_indices = image_size - j_indices - 1
-    if wstack and w is not None:
-        k_conj_indices = Nlayers_w - k_indices - 1
-
-    if wstack and w is not None:
-        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
     else:
         visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
+        nancondition = ~np.isnan(v_avg)
+        np.add.at(visibility_grid, (np.concatenate([i_indices[nancondition],i_conj_indices[nancondition]]),
+                                    np.concatenate([j_indices[nancondition],j_conj_indices[nancondition]])),
+                                    np.concatenate([v_avg[nancondition],np.conj(v_avg[nancondition])]))
 
     if inject_img is not None:
         #print("IN THE WRONG PLACE")
-        if wstack and w is not None:
-            if inject_flat:
-                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
-                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
-            else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2,pixperFWHM=pixperFWHM)
+        if keeptime:            
+            assert(v_avg.shape[0] == inject_img.shape[2])
+            for i in range(v_avg.shape[0]):
+                if inject_flat:
+                    visibility_grid[i,i_indices,j_indices] += inverse_revised_uniform_image(inject_img[:,:,i],u,v,pixperFWHM=pixperFWHM)[i_indices,j_indices]
+                    visibility_grid[i,i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img[:,:,i],u,v,pixperFWHM=pixperFWHM)[i_conj_indices,j_conj_indices]
+                else:
+                    visibility_grid[i,:,:] += inverse_revised_uniform_image(inject_img[:,:,i],u,v,pixperFWHM=pixperFWHM)
         else:
             if inject_flat:
                 visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)[i_indices,j_indices]
@@ -189,212 +318,36 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
                 visibility_grid += inverse_revised_uniform_image(inject_img,u,v,pixperFWHM=pixperFWHM)
 
     #updated sign convention
-    if wstack and w is not None:
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(0,1)),axes=(0,1)),axes=(0,1))
-        #multiply by phase term and scale factor
-        l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
-        l_grid_3D = l_grid_2D[:,:,np.newaxis]
-        m_grid_3D = m_grid_2D[:,:,np.newaxis]
-        w_grid_3D = w_bins[np.newaxis,np.newaxis,:]
-        dirty_image = np.nansum(dirty_image*np.exp(2*np.pi*1j*w_grid_3D*(np.sqrt(1-l_grid_3D**2-m_grid_3D**2) - 1))*np.sqrt(1 - l_grid_3D**2 - m_grid_3D**2)/(w_max-w_min),2)
-    else:
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-
-    return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
-
-
-
-
-def subrevised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,xidxs=None,yidxs=None,pixperFWHM=pixperFWHM) -> np.ndarray:
-    """
-    Process visibility data and create a dirty image using FFT and Briggs weighting.
-
-    Parameters:
-    chunk_V: Chunk of visibility data.
-    u, v: u,v coordinates.
-    image_size: Size of the output image.
-    robust: Robust parameter for Briggs weighting.
-
-    Returns:
-    The resulting 'dirty' image.
-    """
-    if pixel_resolution is None:
-        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / pixperFWHM #radians if UV in meters
-    #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
-    uv_resolution = 1 / (image_size * pixel_resolution)
-    uv_max = uv_resolution * image_size / 2
-    grid_res = 2 * uv_max / image_size
-
-    if wstack and w is not None:
-        w_min = -np.max(np.abs(w))
-        w_max = np.max(np.abs(w))
-        w_grid_res = (w_max+1-w_min)/Nlayers_w
-        w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
-
-    #briggs weighting
-    briggs_weights = briggs_weighting(u, v, image_size, robust=robust,pixel_resolution=pixel_resolution)
-    v_avg = np.mean(np.array(chunk_V * briggs_weights), axis=0)
-
-    #removed clip
-    i_indices = ((u + uv_max) / grid_res).astype(int)
-    j_indices = ((v + uv_max) / grid_res).astype(int)
-    if wstack and w is not None:
-        k_indices = ((w - w_min) / w_grid_res).astype(int)
-
-    #remove long baselines
-    uvs = np.sqrt(u**2 + v**2)
-    v_avg = v_avg[uvs<uv_max]
-    i_indices = i_indices[uvs<uv_max]
-    j_indices = j_indices[uvs<uv_max]
-    if wstack and w is not None:
-        k_indices = k_indices[uvs<uv_max]
-
-    #get conjugate baselines
-    i_conj_indices = image_size - i_indices - 1
-    j_conj_indices = image_size - j_indices - 1
-    if wstack and w is not None:
-        k_conj_indices = Nlayers_w - k_indices - 1
-
-    if wstack and w is not None:
-        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
-    else:
-        visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
-
-    if inject_img is not None:
-        #print("IN THE WRONG PLACE")
+    if keeptime:
+        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(1,2)),axes=(1,2)),axes=(1,2))
         if wstack and w is not None:
-            if inject_flat:
-                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2)
-                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2)
-            else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2)
-        else:
-            if inject_flat:
-                visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices]
-                visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices]
-            else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
-
-    #updated sign convention
-    if wstack and w is not None:
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(0,1)),axes=(0,1)),axes=(0,1))
-        #multiply by phase term and scale factor
-        l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
-        l_grid_3D = l_grid_2D[:,:,np.newaxis]
-        m_grid_3D = m_grid_2D[:,:,np.newaxis]
-        w_grid_3D = w_bins[np.newaxis,np.newaxis,:]
-        dirty_image = np.nansum(dirty_image*np.exp(2*np.pi*1j*w_grid_3D*(np.sqrt(1-l_grid_3D**2-m_grid_3D**2) - 1))*np.sqrt(1 - l_grid_3D**2 - m_grid_3D**2)/(w_max-w_min),2)
-    elif xidxs is None and yidxs is None:
+            if wstack_parallel:
+                w_min = -np.max(np.abs(w))
+                w_max = np.max(np.abs(w))
+                w_grid_res = (w_max+1-w_min)/Nlayers_w
+                w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
+                l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
+            for i in range(dirty_image.shape[0]):
+                if wstack_parallel:
+                    dirty_image[i,:,:] = process_w_layers_parallel(dirty_image[i,:,:,np.newaxis].repeat(Nlayers_w,2),w_bins,l_grid_2D,m_grid_2D,w_min,w_max)
+                else:
+                    dirty_image[i,:,:] = process_w_layers(dirty_image[i,:,:],w,Nlayers_w)
+    else:
         dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-    else:
-        visibility_grid = ifftshift(visibility_grid)
-        dirty_image = np.zeros((image_size,image_size),dtype=complex)
-        igrid2d,jgrid2d = np.meshgrid(np.arange(image_size),np.arange(image_size))
-        for x in xidxs:
-            for y in yidxs:
-                dirty_image[x,y] = np.sum(visibility_grid*np.exp(1j*2*np.pi*x*igrid2d/image_size)*np.exp(1j*2*np.pi*y*jgrid2d/image_size))
-
-
-    return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
-
-
-
-
-
-
-
-def revised_uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18) -> np.ndarray:
-    """
-    Converts visibility data into a 'dirty' image. The following issues are corrected:
-        - require odd image size
-        - long baselines are excluded
-        - conjugate visibilities are included
-        - FFT sign convention respected
-
-    Parameters:
-    chunk_V: Visibility data (complex numbers).
-    u, v: Coordinates in UV plane.
-    image_size: Output size.
-
-    Returns:
-    A numpy array representing the dirty image.
-    """
-    if pixel_resolution is None:
-        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
-    #pixel_resolution= (1./60.)*(np.pi/180.)/2./0.2
-    uv_resolution = 1 / (image_size * pixel_resolution)
-    uv_max = uv_resolution * image_size / 2
-    grid_res = 2 * uv_max / image_size
-
-    if wstack and w is not None:
-        w_min = -np.max(np.abs(w))
-        w_max = np.max(np.abs(w))
-        w_grid_res = (w_max+1-w_min)/Nlayers_w
-        w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
-
-    v_avg = np.mean(np.array(chunk_V), axis=0)
-    
-    #removed clip
-    i_indices = ((u + uv_max) / grid_res).astype(int)
-    j_indices = ((v + uv_max) / grid_res).astype(int)
-    if wstack and w is not None:
-        k_indices = ((w - w_min) / w_grid_res).astype(int)
-
-    #remove long baselines
-    uvs = np.sqrt(u**2 + v**2)
-    v_avg = v_avg[uvs<uv_max]
-    i_indices = i_indices[uvs<uv_max]
-    j_indices = j_indices[uvs<uv_max]
-    if wstack and w is not None:
-        k_indices = k_indices[uvs<uv_max]
-
-    #get conjugate baselines
-    i_conj_indices = image_size - i_indices - 1
-    j_conj_indices = image_size - j_indices - 1
-    if wstack and w is not None:
-        k_conj_indices = Nlayers_w - k_indices - 1
-
-    if wstack and w is not None:
-        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
-    else:
-        visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
-
-    if inject_img is not None:
-        #print("IN THE WRONG PLACE")
         if wstack and w is not None:
-            if inject_flat:
-                visibility_grid[i_indices,j_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices,np.newaxis].repeat(Nlayers_w,axis=2)
-                visibility_grid[i_conj_indices,j_conj_indices,:] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices,np.newaxis].repeat(Nlayers_w,axis=2)
+            if wstack_parallel:
+                w_min = -np.max(np.abs(w))
+                w_max = np.max(np.abs(w))
+                w_grid_res = (w_max+1-w_min)/Nlayers_w
+                w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
+                l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
+                dirty_image = process_w_layers_parallel(dirty_image[:,:,np.newaxis].repeat(Nlayers_w,2),w_bins,l_grid_2D,m_grid_2D,w_min,w_max)
             else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)[:,:,np.newaxis].repeat(Nlayers_w,axis=2)
-        else:
-            if inject_flat:
-                visibility_grid[i_indices,j_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_indices,j_indices]
-                visibility_grid[i_conj_indices,j_conj_indices] += inverse_revised_uniform_image(inject_img,u,v)[i_conj_indices,j_conj_indices]
-            else:
-                visibility_grid += inverse_revised_uniform_image(inject_img,u,v)
-
-    #updated sign convention
-    if wstack and w is not None:
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(0,1)),axes=(0,1)),axes=(0,1))
-        #multiply by phase term and scale factor
-        l_grid_2D,m_grid_2D = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
-        l_grid_3D = l_grid_2D[:,:,np.newaxis]    
-        m_grid_3D = m_grid_2D[:,:,np.newaxis]    
-        w_grid_3D = w_bins[np.newaxis,np.newaxis,:]
-        dirty_image = np.nansum(dirty_image*np.exp(2*np.pi*1j*w_grid_3D*(np.sqrt(1-l_grid_3D**2-m_grid_3D**2) - 1))*np.sqrt(1 - l_grid_3D**2 - m_grid_3D**2)/(w_max-w_min),2)
+                dirty_image = process_w_layers(dirty_image,w,Nlayers_w)
+    if keeptime:
+        return np.real(dirty_image).transpose((1,2,0)) if not return_complex else dirty_image.transpose((1,2,0)) #DEC,RA,TIME
     else:
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-    
-    return np.real(dirty_image).transpose() if not return_complex else dirty_image.transpose()
+        return np.real(dirty_image) if not return_complex else dirty_image
     
 
 def inverse_revised_uniform_image(dirty_image,u,v,pixperFWHM=pixperFWHM):
@@ -425,78 +378,7 @@ def inverse_revised_uniform_image(dirty_image,u,v,pixperFWHM=pixperFWHM):
     """
     return visibility_grid
 
-def uniform_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int, return_complex=False, inject_img=None, inject_flat=False) -> np.ndarray:
-    """
-    Converts visibility data into a 'dirty' image.
 
-    Parameters:
-    chunk_V: Visibility data (complex numbers).
-    u, v: Coordinates in UV plane.
-    image_size: Output size.
-
-    Returns:
-    A numpy array representing the dirty image.
-    """
-    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
-    uv_resolution = 1 / (image_size * pixel_resolution)
-    uv_max = uv_resolution * image_size / 2
-    grid_res = 2 * uv_max / image_size
-
-    v_avg = np.mean(np.array(chunk_V), axis=0)
-
-    #print("from uniform image:",list(v_avg))
-    i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
-    j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
-    #print("from uniform image:",list(i_indices),list(j_indices))
-    visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-    np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-    #np.add.at(visibility_grid, (j_indices, i_indices), v_avg)
-
-    if inject_img is not None:
-        #print("IN THE WRONG PLACE")
-        if inject_flat:
-            visibility_grid[i_indices,j_indices] += inverse_uniform_image(inject_img,u,v)[i_indices,j_indices] 
-        else:
-            visibility_grid += inverse_uniform_image(inject_img,u,v)
-    #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
-    #visibility_grid[i_indices, j_indices] /= count_indices
-    #print("from uniform image:",visibility_grid)
-    dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-    #print("from uniform image:",dirty_image)
-    return np.real(dirty_image).transpose()  if not return_complex else dirty_image.transpose() 
-
-
-def inverse_uniform_image(dirty_image,u,v):
-    """
-    Inverse of uniform_image, used for injection purposes; inverts image to get gridded visibilities
-
-    Parameters:
-    dirty_image: Dirty image with shape (gridsize,gridsize)
-    pixel_resolution: image pixel size in degrees (?)
-    u,v: Coordinates in UV plane at which visibilities should be returned; the nearest grid point will be used
-    """
-
-    image_size = dirty_image.shape[0]
-    pixel_resolution = (0.20 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3
-    uv_resolution = 1 / (image_size * pixel_resolution)
-    uv_max = uv_resolution * image_size / 2
-    grid_res = 2 * uv_max / image_size
-
-    visibility_grid = fftshift(fft2(fftshift(dirty_image.transpose() )))
-    
-    
-    """
-    #get nearest visibility grid point for each u,v
-    i_indices = np.clip((u + uv_max) / grid_res, 0, image_size - 1).astype(int)
-    j_indices = np.clip((v + uv_max) / grid_res, 0, image_size - 1).astype(int)
-    #count_indices = np.array([np.sum(np.logical_and(i_indices==i_indices[k],j_indices==j_indices[k])) for k in range(len(i_indices))])
-    chunk_V = visibility_grid[i_indices,j_indices]#/count_indices
-    """
-    return visibility_grid
-
-#az_offset=1.23001
-#Lat=37.23
-#Lon=-118.2851
 def DSAelev_to_ASTROPYalt(elev,az=az_offset):
     """
     DSA110 uses elevation from 0 to 180 with azimuth fixed at 1.23 deg
@@ -640,202 +522,24 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
     printlog("RADECSHAPE:" + str(ra_grid.shape) + "," + str(dec_grid.shape),output_file=output_file)
     return ra_grid,dec_grid,elev
 
-#added this function to output the RA and DEC coordinates of each pixel in an image
-influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix_manual(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=3):
+def process_w_layers(dirty_image,w,Nlayers_w):
     """
-    Takes UV grid coordinates and converts them to RA and declination
-
-    Parameters:
-    mjd_obs: Observing time as Mean Julian Date 
-    uv_diag: maximum UV plane extent, i.e. max(sqrt(u^2 + v^2))
-    image_size: output size
-    Lat,Lon: coordinates of observing site
-    timerangems: time range to query for elevation from etcd
-    maxtries: maximum number of iterations before giving up
-
-    Returns:
-    RA and DEC axes as numpy arrays
+    Basic w-stacking without parallel processing
+    dirty_image: (image_size, image_size) complex array
+    w: w coordinates of visibilities used to form dirty_image
+    Nlayers_w: number of W-layers
     """
-    
-    #find RA, dec at center of the image 
-
-    #(1) ovro location
-    loc = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m) #default is ovro
-
-    #(2) observation time
-    tobs = Time(mjd_obs,format='mjd')
-    tms = int(tobs.unix*1000) #ms
-
-
-    if elev is None and RA is None and DEC is None:
-
-        #(3) query antenna elevation at obs time
-        result = dict()
-        tries = 0
-        while len(result) == 0 and tries < maxtries:
-            query = f'SELECT time,ant_el FROM "antmon" WHERE time >= {tms-timerangems}ms and time < {tms+timerangems}ms'
-            result = influx.query(query)
-            tries += 1
-        if len(result) == 0:
-            printlog("Failed to retrieve elevation, using RA,DEC = 0,0",output_file=output_file)
-            icrs_pos = ICRS(ra=0*u.deg,dec=0*u.deg)
-        else:
-            #bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
-            elev = np.nanmedian(result['antmon']['ant_el'].values)#[bestidx]
-
-            #convert to RA,DEC using dsa110-pyutils.cli.radecel method; it can only be run from command line, so we copy/paste
-            """ha = tobs.sidereal_time("apparent", Lon*u.deg)
-            
-            print(f'MJD, RA, Decl, Elev (deg): {mjd_obs}, {ha.to_value(u.deg)}, {elev+Lat-90}, {elev}')
-            icrs_pos = ICRS(ra=(ha.to_value(u.deg))*u.deg,dec=(elev+Lat-90)*u.deg)
-            """
-            alt,az = DSAelev_to_ASTROPYalt(elev,az)
-            printlog("Retrieved elevation: " + str(elev) + "deg",output_file=output_file)
-
-            antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
-
-            #(4) convert to ICRS frame
-            icrs_pos = antpos.transform_to(ICRS())
-    elif elev is None and RA is None and DEC is not None:
-        printlog("Using input declination:" + str(DEC) + "deg",output_file=output_file)
-        icrs_pos = ICRS(ra=get_ra(mjd_obs,DEC,Lon=Lon,Lat=Lat,Height=Height)*u.deg,dec=DEC*u.deg)
-    elif elev is None and RA is not None and DEC is None:
-        printlog("Using input RA:" + str(RA) + "deg",output_file=output_file)
-        #(3) query antenna elevation at obs time
-        result = dict()
-        tries = 0
-        while len(result) == 0 and tries < maxtries:
-            query = f'SELECT time,ant_el FROM "antmon" WHERE time >= {tms-timerangems}ms and time < {tms+timerangems}ms'
-            result = influx.query(query)
-            tries += 1
-        if len(result) == 0:
-            printlog("Failed to retrieve elevation, using RA,DEC = 0,0",output_file=output_file)
-            icrs_pos = ICRS(ra=0*u.deg,dec=0*u.deg)
-        else:
-            #bestidx = np.argmin(np.abs(tobs.mjd - Time(np.array(result['antmon'].index),format='datetime').mjd))
-            elev = np.nanmedian(result['antmon']['ant_el'].values)#[bestidx]
-
-            #convert to RA,DEC using dsa110-pyutils.cli.radecel method; it can only be run from command line, so we copy/paste
-            """ha = tobs.sidereal_time("apparent", Lon*u.deg)
-            
-            print(f'MJD, RA, Decl, Elev (deg): {mjd_obs}, {ha.to_value(u.deg)}, {elev+Lat-90}, {elev}')
-            icrs_pos = ICRS(ra=(ha.to_value(u.deg))*u.deg,dec=(elev+Lat-90)*u.deg)
-            """
-            alt,az = DSAelev_to_ASTROPYalt(elev,az)
-            printlog("Retrieved elevation: " + str(elev) + "deg",output_file=output_file)
-
-            antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
-
-            #(4) convert to ICRS frame
-            icrs_pos = antpos.transform_to(ICRS())
-        
-            icrs_pos = ICRS(ra=RA*u.deg,dec=icrs_pos.dec.value*u.deg)
-    elif RA is None and DEC is None:
-        printlog("Using input elevation: " + str(elev) + "deg",output_file=output_file)
-        """
-        icrs_pos = ICRS(ra=(ha.to_value(u.deg))*u.deg,dec=(elev+Lat-90)*u.deg)
-        """
-        alt,az = DSAelev_to_ASTROPYalt(elev,az)
-        printlog("Using input elevation: " + str(elev) + "deg",output_file=output_file)
-
-        antpos = AltAz(obstime=tobs,location=loc,az=az*u.deg,alt=alt*u.deg)
-
-        #(4) convert to ICRS frame
-        icrs_pos = antpos.transform_to(ICRS())
-    else:
-        printlog("Using input RA,DEC = " + str(RA) + "," + str(DEC),output_file=output_file)
-        icrs_pos = ICRS(ra=RA*u.deg,dec=DEC*u.deg)
-    printlog("Retrieved Coordinates: " + str(tobs.isot) + ", RA="+str(icrs_pos.ra.value) + "deg, DEC="+str(icrs_pos.dec.value) + "deg",output_file=output_file)
-
-
-    #create offset grid using pixel size and max UV diagonal distance
-
-    if uv_diag is None:
-        x_m,y_m,z_m = simulating.get_all_coordinates(flagged_antennas) #meters
-        U,V,W = simulating.compute_uvw(x_m,y_m,z_m,0,icrs_pos.dec.value*np.pi/180) #meters
-        uv_diag = np.max(np.sqrt(U**2 + V**2)) #meters
-    pixel_resolution = (ref_wav / uv_diag) / pixperFWHM
-
-    #make grid of l,m
-    uv_res = 1 / (image_size * (ref_wav/uv_diag/pixperFWHM))
-    m_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))[::-1]
-    l_grid = np.fft.fftshift(np.fft.fftfreq(image_size,d=uv_res))[::-1]
-    
-    if manual:
-        #astropy coordinates are normalized to distance = 1, so we assume the same here
-        THETA = Lat - icrs_pos.dec.value
-        ra_grid = icrs_pos.ra.value + (2*np.arcsin(l_grid/2/np.cos(THETA*np.pi/180))*180/np.pi) + manual_RA_offset
-
-        #interpolation to get DEC grid in +- max ang sep range
-        fint_pos = interp1d(dec_to_m(icrs_pos.dec.value,np.linspace(0,+(pixel_resolution*image_size*180/np.pi),image_size),Lat=Lat),
-                        np.linspace(icrs_pos.dec.value,icrs_pos.dec.value+(pixel_resolution*image_size*180/np.pi),image_size),
-                    fill_value='extrapolate')
-        DEC_grid_pos = fint_pos(m_grid[m_grid>0])
-        fint_neg = interp1d(dec_to_m(icrs_pos.dec.value,np.linspace(-(pixel_resolution*image_size*180/np.pi),0,image_size),Lat=Lat),
-                    np.linspace(icrs_pos.dec.value-(pixel_resolution*image_size*180/np.pi),icrs_pos.dec.value,image_size),
-                    fill_value='extrapolate')
-        DEC_grid_neg = fint_neg(-m_grid[m_grid<=0])
-        dec_grid = np.zeros_like(m_grid)
-        dec_grid[m_grid>0] = DEC_grid_pos
-        dec_grid[m_grid<=0] = DEC_grid_neg
-
-        if two_dim:
-            ra_grid,dec_grid = np.meshgrid(ra_grid,dec_grid)
-    else:
-        w2 = create_WCS(icrs_pos,-pixel_resolution*u.rad,image_size)
-    
-    
-        """elif np.any(np.abs(np.array(list(crpix_dict.keys()))-icrs_pos.dec.value)<pixel_resolution*image_size):
-        #check if there's a crpix entry for this declination; if not, just estimate using pixel resolution, will not have SIN projection though
-        best_dec = list(crpix_dict.keys())[np.argmin(np.abs(np.array(list(crpix_dict.keys()))-icrs_pos.dec.value))]
-
-        #make wcs object from saved cal params
-        printlog("Using WCS from astrometric cal with " + str(crpix_dict[best_dec]['source']),output_file=output_file)
-        w2 = wcs.WCS(naxis=2)
-        w2.wcs.crval = [icrs_pos.ra.value,icrs_pos.dec.value]#crpix_dict[best_dec]['crval']
-        w2.wcs.cdelt = np.array([-pixel_resolution, -pixel_resolution])*180/np.pi
-        w2.wcs.crpix = crpix_dict[best_dec]['crpix']
-        w2.wcs.ctype = ["RA---SIN", "DEC--SIN"]
-        """
-
-        #get axes
-        if two_dim:
-            dec_grid_pix_2D,ra_grid_pix_2D = np.meshgrid(np.arange(image_size,dtype=float),np.arange(image_size,dtype=float))
-            #ra_grid_pix_2D -= (-1 if mjd_obs<crpix_dict[best_dec]['mjd'] else 1)*((np.abs(mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
-            tmp = w2.wcs_pix2world(np.array([ra_grid_pix_2D.flatten(),
-                                     dec_grid_pix_2D.flatten()]).transpose(),0)
-            ra_grid = tmp[:,0].reshape((image_size,image_size)).transpose()
-            dec_grid = tmp[:,1].reshape((image_size,image_size)).transpose()
-
-        else:
-            dec_grid_pix,ra_grid_pix = np.arange(image_size,dtype=float),np.arange(image_size,dtype=float)
-            #ra_grid_pix -= (-1 if mjd_obs<crpix_dict[best_dec]['mjd'] else 1)*((np.abs(mjd_obs-crpix_dict[best_dec]['mjd'])*24)%24)*15*np.cos(icrs_pos.dec.value*np.pi/180)/(pixel_resolution*180/np.pi)
-            tmp = w2.wcs_pix2world(np.array([ra_grid_pix,dec_grid_pix]).transpose(),0)
-            ra_grid = tmp[:,0]
-            dec_grid =tmp[:,1]
-            printlog("RADECSHAPE:",ra_grid.shape,dec_grid.shape,output_file=output_file)
-    """
-    else:
-        pixel_resolution = (0.20 / uv_diag) / 3 #radians
-        offset_grid = np.arange(-image_size//2,image_size//2)*pixel_resolution*180/np.pi #degrees
-
-        assert(len(offset_grid) == image_size)
-
-        #add offset from image center
-        ra_grid = icrs_pos.ra.value + offset_grid[::-1]
-        dec_grid = icrs_pos.dec.value + offset_grid
-
-        if two_dim:
-            ra_grid,dec_grid = np.meshgrid(ra_grid,dec_grid)
-    """
-
-    return ra_grid,dec_grid,elev
-
-    
-
-
-
+    image_size = dirty_image.shape[0]
+    w_min = -np.max(np.abs(w))
+    w_max = np.max(np.abs(w))
+    w_grid_res = (w_max+1-w_min)/Nlayers_w
+    w_bins = np.linspace(w_min,w_max+1,Nlayers_w)
+    binned_ws = w_bins[((w - w_min) / w_grid_res).astype(int)]
+    l_grid,m_grid = np.meshgrid(np.fft.fftshift(np.fft.fftfreq(image_size,grid_res))[::-1],np.fft.fftshift(np.fft.fftfreq(image_size,grid_res)))
+    final_img = np.zeros_like(dirty_image)
+    for w in w_bins:
+        final_img += (dirty_img*np.sum(binned_ws==w)*np.exp(2*np.pi*1j*w*(np.sqrt(1-l_grid**2-m_grid**2) - 1))*np.sqrt(1 - l_grid**2 - m_grid**2)/(w_max-w_min))
+    return final_img
 
 @numba.njit(parallel=True)
 def process_w_layers_parallel(dirty_image: np.ndarray, 
@@ -875,79 +579,3 @@ def process_w_layers_parallel(dirty_image: np.ndarray,
             out_image[i, j] = temp_sum
 
     return out_image
-
-
-def revised_uniform_image_parallel(chunk_V: np.ndarray, 
-                          u: np.ndarray, 
-                          v: np.ndarray, 
-                          image_size: int, 
-                          return_complex=False, 
-                          inject_img=None, 
-                          inject_flat=False, 
-                          pixel_resolution=None, 
-                          wstack=False, 
-                          w=None, 
-                          Nlayers_w=18) -> np.ndarray:
-    """
-    Converts visibility data into a 'dirty' image with possible w-stacking.
-    """
-    if pixel_resolution is None:
-        pixel_resolution = (1 / np.max(np.sqrt(u ** 2 + v ** 2))) / 3 #radians if UV in meters
-    uv_resolution = 1 / (image_size * pixel_resolution)
-    uv_max = uv_resolution * image_size / 2
-    grid_res = 2 * uv_max / image_size
-
-    if wstack and w is not None:
-        w_min = -np.max(np.abs(w))
-        w_max = np.max(np.abs(w))
-        w_grid_res = (w_max+1-w_min)/Nlayers_w
-        w_bins = np.linspace(w_min, w_max+1, Nlayers_w)
-
-    v_avg = np.mean(np.array(chunk_V), axis=0)
-
-    i_indices = ((u + uv_max) / grid_res).astype(int)
-    j_indices = ((v + uv_max) / grid_res).astype(int)
-    if wstack and w is not None:
-        k_indices = ((w - w_min) / w_grid_res).astype(int)
-
-    # remove long baselines
-    uvs = np.sqrt(u**2 + v**2)
-    mask = uvs < uv_max
-    v_avg = v_avg[mask]
-    i_indices = i_indices[mask]
-    j_indices = j_indices[mask]
-    if wstack and w is not None:
-        k_indices = k_indices[mask]
-
-    # get conjugate baselines
-    i_conj_indices = image_size - i_indices - 1
-    j_conj_indices = image_size - j_indices - 1
-    if wstack and w is not None:
-        k_conj_indices = Nlayers_w - k_indices - 1
-
-    if wstack and w is not None:
-        visibility_grid = np.zeros((image_size, image_size, Nlayers_w), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices, k_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices, k_conj_indices), np.conj(v_avg))
-    else:
-        visibility_grid = np.zeros((image_size, image_size), dtype=complex)
-        np.add.at(visibility_grid, (i_indices, j_indices), v_avg)
-        np.add.at(visibility_grid, (i_conj_indices, j_conj_indices), np.conj(v_avg))
-
-
-    if wstack and w is not None:
-        # Perform FFT
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid, axes=(0,1)), axes=(0,1)), axes=(0,1))
-
-        # Precompute grids
-        l_arr = np.fft.fftshift(np.fft.fftfreq(image_size, grid_res))[::-1]
-        m_arr = np.fft.fftshift(np.fft.fftfreq(image_size, grid_res))
-        l_grid_2D, m_grid_2D = np.meshgrid(l_arr, m_arr)
-
-        # Process w-layers in parallel with numba
-        # The dirty_image dimension: (image_size, image_size, Nlayers_w)
-        dirty_image = process_w_layers_parallel(dirty_image, w_bins, l_grid_2D, m_grid_2D, w_min, w_max)
-    else:
-        dirty_image = ifftshift(ifft2(ifftshift(visibility_grid)))
-
-    return np.real(dirty_image).transpose()  if not return_complex else dirty_image.transpose() 

@@ -72,6 +72,13 @@ do
         	tail -$2 ${cwd}-logfiles/time_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
         	echo ">>>>>>>>>>>>>>>"
 
+		echo ""
+		echo ">>>>>>>>>>>>>>> journalctl.txt"
+		journalctl --user --since today -r -n $2 > ${cwd}-logfiles/journalctl.txt
+		cat ${cwd}-logfiles/journalctl.txt
+		echo ">>>>>>>>>>>>>>>"
+
+
 	else
 		echo ""
                 echo ">>>>>>>>>>>>>>> $3.txt"
