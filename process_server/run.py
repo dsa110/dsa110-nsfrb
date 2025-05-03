@@ -108,7 +108,7 @@ def set_pflag_loc(flag=None,on=True,reset=False):
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow):
+    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow,imgdiff=False):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
         self.img_id_isot = img_id_isot
@@ -122,6 +122,7 @@ class fullimg:
         self.slow_counter=0
         self.bin_slow=  bin_slow
         self.bin_interval_slow = int(self.shape[2])//self.bin_slow
+        self.imgdiffgulps = self.shape[2]
         if slow:
             printlog("bin slow:" + str(self.bin_slow) + "; bin interval:" + str(self.bin_interval_slow),output_file=processfile)
             """
@@ -139,6 +140,16 @@ class fullimg:
                 self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*self.shape[2]*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.slowstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
+        elif imgdiff:
+            printlog("starting object for image difference mode with " + str(self.imgdiffgulps) + " gulps at a time",output_file=processfile)
+            #make list of possible mjds
+            self.img_id_mjd_list = []
+            self.slow_RA_cutoffs = []
+            for i in range(self.imgdiffgulps):
+                self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*config.nsamps*i/1000/86400))
+                self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*config.nsamps*i/1000))
+            self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
+            self.imgdiffstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
@@ -154,6 +165,14 @@ class fullimg:
         foundmjd = np.abs(self.img_id_mjd_list[img_idx]-mjd)*86400*1000 <= (config.tsamp*self.shape[2]/2)
         printlog("IT DOES" + str("" if foundmjd else " NOT"),output_file=processfile)
         return (img_idx if foundmjd else -1),foundmjd
+    def imgdiff_mjd_in_img(self,mjd):
+        printlog("CHECKING IF " + str(self.img_id_mjd_list) + " CONTAINS " + str(mjd),output_file=processfile)
+
+        img_idx = np.argmin(np.abs(self.img_id_mjd_list - mjd))
+        foundmjd = np.abs(self.img_id_mjd_list[img_idx]-mjd)*86400*1000 <= (config.tsamp*config.nsamps/2)
+        printlog("IT DOES" + str("" if foundmjd else " NOT"),output_file=processfile)
+        return (img_idx if foundmjd else -1),foundmjd
+
     def slow_append_img(self,data,img_idx):
         self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = np.nanmean(data.reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])),3)
         """
@@ -175,8 +194,30 @@ class fullimg:
             self.shape = self.image_tesseract.shape
             printlog("Stacked slow images:" + str(self.image_tesseract.shape),output_file=processfile)
         return
+    def imgdiff_append_img(self,data,img_idx):
+        self.image_tesseract[:,:,img_idx,0] = np.nanmean(data,(2,3))
+        printlog("FROM IMGDIFF APPEND_1 " + str(img_idx) + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
+        self.image_tesseract[:,:,img_idx,0] -= np.nanmedian(np.nanmean(data,3),axis=2)
+        printlog("FROM IMGDIFF APPEND_2 " + str(img_idx)  + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
+        self.imgdiffstatus[img_idx] = 1
+        printlog("MJD LIST:" + str(self.img_id_mjd_list),output_file=processfile)
+        printlog("IMGDIFF STATUS:" + str(self.imgdiffstatus),output_file=processfile)
+        self.slow_counter += 1
+        #align if full
+        if self.imgdiff_is_full():
+            printlog("STACKING IMAGES",output_file=processfile)
+            stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i:(i+1),:] for i in range(self.imgdiffgulps)],self.slow_RA_cutoffs)
+            self.RA_axis = self.RA_axis[-min_gridsize:]
+            self.imgdiff_RA_cutoff = self.shape[1] - min_gridsize
+            self.image_tesseract = np.concatenate(stack,axis=2)
+            self.shape = self.image_tesseract.shape
+            printlog("Stacked imgdiff images:" + str(self.image_tesseract.shape),output_file=processfile)
+        return
+
     def slow_is_full(self):
         return np.all(self.slowstatus==1)#(self.slow_counter)*self.bin_interval_slow >= self.shape[2]
+    def imgdiff_is_full(self):
+        return np.all(self.imgdiffstatus==1)
     def is_full(self):
         return np.all(self.corrstatus==1)
 
@@ -328,6 +369,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
 
 fullimg_dict = dict()
 slow_fullimg_dict =dict()
+imgdiff_fullimg_dict=dict()
 def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled):
     """
     This function prints the result once a thread finishes processing an image
@@ -335,6 +377,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
     #if QSETUP and not (future.result()[1] is None):
     #    QQUEUE.put(future.result()[1])
     slow = future.result()[2]
+    imgdiff = future.result()[3]
     if etcd_enabled and not (future.result()[1] is None):
         printlog("adding " + future.result()[1] + "to etcd queue",output_file=processfile)
         if slow:
@@ -346,6 +389,17 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
                         "dec":slow_fullimg_dict[timestepisot].img_dec,
                         "img_shape":slow_fullimg_dict[timestepisot].image_tesseract.shape,
                         "img_search_shape":slow_fullimg_dict[timestepisot].image_tesseract_searched.shape
+                    }
+                )
+        elif imgdiff:
+            ETCD.put_dict(
+                    ETCDKEY,
+                    {
+                        "candfile":future.result()[1],
+                        "uv_diag":imgdiff_fullimg_dict[timestepisot].img_uv_diag,
+                        "dec":imgdiff_fullimg_dict[timestepisot].img_dec,
+                        "img_shape":imgdiff_fullimg_dict[timestepisot].image_tesseract.shape,
+                        "img_search_shape":imgdiff_fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
         else:
@@ -368,6 +422,8 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
     #delete from array
     if slow:
         del slow_fullimg_dict[timestepisot]
+    elif imgdiff:
+        del imgdiff_fullimg_dict[timestepisot]
     else:
         del fullimg_dict[timestepisot]
     return
@@ -544,12 +600,30 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             k = img_id_isot
         slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
 
+        #make imgdiff fullimag object
+        imgdiffdone = False
+        for kd in imgdiff_fullimg_dict.keys():
+            img_idx,foundmjd = imgdiff_fullimg_dict[kd].imgdiff_mjd_in_img(img_id_mjd)
+            if (not imgdiff_fullimg_dict[kd].imgdiff_is_full()) and foundmjd:
+                printlog(socksuffix+"IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
+                printlog(socksuffix+str((img_id_mjd - Time(str(kd),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " imgdiff append:" + str(imgdiff_fullimg_dict[kd].slow_counter),output_file=processfile)
+                imgdiff_fullimg_dict[kd].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
+                imgdiffdone=True
+                break
+        if not imgdiffdone:
+            printlog(socksuffix+"FIRST IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
+            imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
+            imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+            kd = img_id_isot
+        imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
+
         #submit task
         stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False)
         stask.add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
+
         #task_list.append(stask)
         if slowsearch_now:
             printlog(socksuffix+"SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
@@ -558,11 +632,26 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False)
                     
             sstask.add_done_callback(lambda future: future_callback(future,args.SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,args.etcd))
             #task_list.append(sstask)
-            return [stask,sstask]
+        
+        if imgdiffsearch_now:
+            printlog(socksuffix+"IMGDIFFSEARCH NOW:" + str(imgdiff_fullimg_dict[kd]),output_file=processfile)
+            printlog(socksuffix+str(imgdiff_fullimg_dict[kd].image_tesseract),output_file=output_file)
+            #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
+            ssstask = executor.submit(sl.search_task,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True)
+
+            ssstask.add_done_callback(lambda future: future_callback(future,args.SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,args.etcd))
+            #task_list.append(sstask)
+
+        if slowsearch_now and not imgdiffsearch_now: return [stask,sstask]
+        elif slowsearch_now and imgdiffsearch_now: return [stask,sstask,ssstask]
+        elif not slowsearch_now and imgdiffsearch_now: return [stask,ssstask]
         return [stask]
     return ECODE_SUCCESS
 
@@ -578,7 +667,7 @@ def main(args):
 
     #update default values and lookup tables
     sl.SNRthresh = args.SNRthresh
-    if args.gridsize != config.gridsize or args.nchans != config.nchans or args.nsamps != config.nsamps:
+    if args.gridsize != config.gridsize or args.nchans != config.nchans or args.nsamps != config.nsamps or args.imgdiffgulps != config.ngulps_per_file:
 
         config.nsamps = args.nsamps
         sl.nsamps = args.nsamps
@@ -588,6 +677,7 @@ def main(args):
         sl.widthtrials = sl.widthtrials[sl.widthtrials<args.nsamps]
         sl.nwidths = len(sl.widthtrials)
         sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,args.nsamps)
+        sl.full_boxcar_filter_imgdiff = sl.gen_boxcar_filter(sl.widthtrials,args.imgdiffgulps)
 
         config.nchans = args.nchans
         sl.nchans = args.nchans
@@ -630,7 +720,7 @@ def main(args):
         sl.default_cutoff = 0
     else:
         printlog(sl.DEC_axis,output_file=processfile)
-        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=sl.DEC_axis[1]-sl.DEC_axis[0])
+        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=np.abs(sl.RA_axis[1]-sl.RA_axis[0]))
         printlog("Initialized pixel cutoff to " + str(sl.default_cutoff) + " pixels",output_file=processfile)
 
     #write DM and width trials to file for cand cutter
@@ -687,16 +777,27 @@ def main(args):
         
         #no append (slow)
         jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),jax.device_put(sl.corr_shifts_all_append,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(sl.corr_shifts_all_append,jax.devices()[0]),
                                                jax.device_put(sl.tdelays_frac_append,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
         jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
-                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),jax.device_put(sl.corr_shifts_all_append,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(sl.corr_shifts_all_append,jax.devices()[1]),
                                                jax.device_put(sl.tdelays_frac_append,jax.devices()[1]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
 
+        #no append, image differencing
+        jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+        jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
 
 
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
@@ -768,6 +869,7 @@ def main(args):
         printlog("FULLIMG_DICTS---------------------------",output_file=processfile)
         printlog(fullimg_dict,output_file=processfile)
         printlog(slow_fullimg_dict,output_file=processfile)
+        printlog(imgdiff_fullimg_dict,output_file=processfile)
         printlog("----------------------------------------",output_file=processfile)
         if len(args.multiport)==0: 
             ret = multiport_task(servSockD,-1,port,maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
@@ -901,6 +1003,7 @@ if __name__=="__main__":
     parser.add_argument('--realtime',action='store_true',help='Running in realtime system, puts image data in PSRDADA buffer')
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     parser.add_argument('--multiport',nargs='+',default=[],help='List of port numbers to listen on, default using single port specified in --port',type=int)
+    parser.add_argument('--imgdiffgulps',type=int,help='Number of gulps to search at a time with image differencing, default=' + str(config.ngulps_per_file),default=config.ngulps_per_file)
     args = parser.parse_args()
 
 

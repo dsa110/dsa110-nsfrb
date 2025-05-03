@@ -204,6 +204,7 @@ def gen_boxcar_filter(widthtrials,truensamps,gridsize=1,nDMtrials=1): #note, you
 
     return boxcar
 full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
+full_boxcar_filter_imgdiff = gen_boxcar_filter(widthtrials,ngulps_per_file)
 
 #get the current noise map from file
 current_noise = noise_update_all(None,gridsize,gridsize,DM_trials,widthtrials,readonly=True) #noise.get_noise_dict(gridsize,gridsize)
@@ -1446,8 +1447,8 @@ def run_search_CPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
-                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
-                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False):
+                   multithreading=False,nrows=1,ncols=1,space_filter=True,
+                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False,imgdiff=False):
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
     a list of candidates' DM, pulse width, RA, declination, and time of arrival(?)
@@ -1467,6 +1468,14 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     nsamps = len(time_axis)
     nchans = len(freq_axis)
     
+
+    if slow:
+        imgdiff = False
+    elif imgdiff:
+        assert(image_tesseract.shape[-1]==1)
+        print("Image differencing mode")
+        append_frame=False
+
     device = torch.device(random.choice(np.arange(torch.cuda.device_count(),dtype=int)) if torch.cuda.is_available() else "cpu")
     usingGPU = device.type == "cuda"
     if not usingGPU:
@@ -1533,7 +1542,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     #noise prep
     total_noise = torch.zeros((nwidths,ndms))
 
-    if slow:
+    if slow or imgdiff:
         prev_noise,prev_noise_N = np.zeros((len(widthtrials),len(DM_trials))),0
     else:
         prev_noise,prev_noise_N = current_noise #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
@@ -1558,7 +1567,14 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                                                  jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
                                                                  jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
                                                                  prev_noise_N,noiseth)
+    elif imgdiff:
+        outtup = jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(full_boxcar_filter_imgdiff,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+                                                                 prev_noise_N,noiseth)
     else:
+
         outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
                                                                  jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
                                                                  jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
@@ -1576,27 +1592,17 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     if output_file != "":
         fout.close()
     if append_frame:
-        return TOAs,image_tesseract_binned,image_tesseract[:,:,-truensamps:,:],DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
+        return TOAs,image_tesseract_binned,image_tesseract[:,:,-truensamps:,:],total_noise
     else:
-        return TOAs,image_tesseract_binned,image_tesseract,DM_trials,raidx_offset,decidx_offset,dm_offset,total_noise
+        return TOAs,image_tesseract_binned,image_tesseract,total_noise
 
 
 
-#function to run image differencing on low resolution DM=0 search
-#def run_imgdiff_search(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,freq_axis=freq_axis,
-#                   DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
-#                   off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
-#                   multithreading=False,nrows=1,ncols=1,space_filter=True,raidx_offset=0,decidx_offset=0,dm_offset=0,
-#                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False):
-#    """
-#    Image differencing search at DM=0
-#    
-#    """
     
 
 
 #CONTEXTSETUP = False
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff):
     #global CONTEXTSETUP
     #if not QSETUP and not CONTEXTSETUP:
     #    CONTEXTSETUP = True
@@ -1631,17 +1637,17 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     #print("starting process " + str(img_id) + "...")
     timing1 = time.time()
     if cuda:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if slow else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow) 
+        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if slow else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff) 
     else:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if slow else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow)
+        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if slow else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff)
     
     #update noise
-    if not slow and total_noise is not None:
+    if not slow and not imgdiff and total_noise is not None:
         global current_noise
         current_noise = (noise_update_all(total_noise,gridsize,gridsize,DM_trials,widthtrials,writeonly=True),current_noise[1] + 1)
 
     #update last frame
-    if not slow and append_frame:
+    if not slow and not imgdiff and append_frame:
         #global last_frame
         save_last_frame(last_frame,full=True)
         printlog("Writing to last_frame.npy",output_file=processfile)
@@ -1649,15 +1655,15 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     if savesearch or len(fullimg.candidxs)>0 or fprtest:
         if (not fprtest) and (not realtime):
             #save image
-            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ".npy","wb")
+            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (not slow and imgdiff) else "") + ".npy","wb")
             np.save(f,fullimg.image_tesseract_binned)
             f.close()
 
             #save fits
-            numpy_to_fits(fullimg.image_tesseract_binned.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot  + ("_slow" if slow else "") +".fits")
+            numpy_to_fits(fullimg.image_tesseract_binned.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot  + ("_slow" if slow else "") +("_imgdiff" if (imgdiff and not slow) else "") +".fits")
             
             #save fits
-            numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + "_searched.fits")
+            numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") +"_searched.fits")
 
 
         #save image OR if realtime, write to psrdada buffers
@@ -1666,21 +1672,21 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
             rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_KEY)
             rtwrite(fullimg.image_tesseract_searched,key=NSFRB_TOADADA_KEY)
         else:
-            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + "_searched.npy","wb")
+            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_searched.npy","wb")
             np.save(f,fullimg.image_tesseract_searched)
             f.close()
 
-            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + "_TOAs.npy","wb")
+            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_TOAs.npy","wb")
             np.save(f,TOAs)
             f.close()
         
-            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + "_input.npy","wb")
+            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_input.npy","wb")
             np.save(f,fullimg.image_tesseract)
             f.close()
 
             if fprtest:
                 f = open(cand_dir + "fpr_test.csv","a")
-                f.write("\n"+fullimg.img_id_isot + "," + str(np.nanmax(fullimg.image_tesseract_searched)))
+                f.write("\n"+fullimg.img_id_isot + "," + str(np.nanmax(fullimg.image_tesseract_searched))) 
                 f.close()
             elif fnrtest:
                 f = open(cand_dir + "fnr_test.csv","a")
@@ -1698,9 +1704,9 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     ftime.close()
 
     if np.nanmax(fullimg.image_tesseract_searched)>SNRthresh:
-        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ".csv",slow
+        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + ".csv",slow,imgdiff
     else:
-        return fullimg.image_tesseract_searched,None,slow
+        return fullimg.image_tesseract_searched,None,slow,imgdiff
 
 
 
