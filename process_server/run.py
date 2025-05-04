@@ -68,7 +68,7 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff
 
 """
 NSFRB modules
@@ -108,7 +108,7 @@ def set_pflag_loc(flag=None,on=True,reset=False):
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow,imgdiff=False):
+    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow,imgdiff=False,bin_imgdiff=bin_imgdiff):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
         self.img_id_isot = img_id_isot
@@ -123,6 +123,7 @@ class fullimg:
         self.bin_slow=  bin_slow
         self.bin_interval_slow = int(self.shape[2])//self.bin_slow
         self.imgdiffgulps = self.shape[2]
+        self.bin_imgdiff = bin_imgdiff
         if slow:
             printlog("bin slow:" + str(self.bin_slow) + "; bin interval:" + str(self.bin_interval_slow),output_file=processfile)
             """
@@ -146,8 +147,9 @@ class fullimg:
             self.img_id_mjd_list = []
             self.slow_RA_cutoffs = []
             for i in range(self.imgdiffgulps):
-                self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*config.nsamps*i/1000/86400))
-                self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*config.nsamps*i/1000))
+                for j in range(self.bin_imgdiff):
+                    self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*config.nsamps*(self.bin_imgdiff*i + j)/1000/86400))
+                self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=j*config.tsamp*config.nsamps*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.imgdiffstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
@@ -195,14 +197,15 @@ class fullimg:
             printlog("Stacked slow images:" + str(self.image_tesseract.shape),output_file=processfile)
         return
     def imgdiff_append_img(self,data,img_idx):
-        self.image_tesseract[:,:,img_idx,0] = np.nanmean(data,(2,3))
+        self.image_tesseract[:,:,int(img_idx//self.bin_imgdiff),0] += np.nanmean(data,(2,3)) 
         printlog("FROM IMGDIFF APPEND_1 " + str(img_idx) + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
-        self.image_tesseract[:,:,img_idx,0] -= np.nanmedian(np.nanmean(data,3),axis=2)
+        self.image_tesseract[:,:,int(img_idx//self.bin_imgdiff),0] -= np.nanmedian(np.nanmean(data,3),axis=2)
         printlog("FROM IMGDIFF APPEND_2 " + str(img_idx)  + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
         self.imgdiffstatus[img_idx] = 1
         printlog("MJD LIST:" + str(self.img_id_mjd_list),output_file=processfile)
         printlog("IMGDIFF STATUS:" + str(self.imgdiffstatus),output_file=processfile)
         self.slow_counter += 1
+        self.imgdiffstatus[:] = 1
         #align if full
         if self.imgdiff_is_full():
             printlog("STACKING IMAGES",output_file=processfile)
@@ -615,6 +618,7 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
             imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
             kd = img_id_isot
+        imgdiffdone = True
         imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
 
         #submit task

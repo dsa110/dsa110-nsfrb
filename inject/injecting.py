@@ -202,6 +202,7 @@ def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width
     Randomly draws injected burst parameters from set of trial DMs, widths and RA/DEC grid
     """
     DMtrials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))
+    DMtrials = DMtrials[DMtrials<2000]
     widthtrials = widthtrials[widthtrials<int(nsamps//2)]
     
     #get RA,DEC axes

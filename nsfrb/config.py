@@ -22,7 +22,8 @@ tsamp_slow = 0.1342182159423828*1000*bin_slow #ms
 baseband_tsamp = 256e-3 #ms
 nsamps = 25
 T = tsamp*nsamps #3250 #ms
-tsamp_imgdiff = T
+bin_imgdiff = 3 #number of samples to bin by
+tsamp_imgdiff = bin_imgdiff*T
 ngulps_per_file = 90
 #nsamps = int(T/tsamp)
 

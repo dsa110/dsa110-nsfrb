@@ -102,8 +102,8 @@ def main(args):
         num_inject = args.num_inject
         if args.num_inject > num_gulps:
             num_inject = num_gulps
+        #inject_gulps = (args.gulp_offset + num_gulps - 1) - np.arange(num_inject) #temporary adjustment
         inject_gulps = np.linspace(args.gulp_offset,args.gulp_offset + num_gulps,num_inject,dtype=int)
-        #inject_gulps = np.random.choice(np.arange(args.gulp_offset, args.gulp_offset + num_gulps,dtype=int),replace=False,size=num_inject)
 
     #parameters from etcd
     #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)

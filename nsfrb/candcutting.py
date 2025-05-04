@@ -1,4 +1,5 @@
 import numpy as np
+from nsfrb.config import nsamps as init_nsamps
 from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY
 from realtime.rtreader import rtread_cand
 from nsfrb.planning import find_fast_vis_label
@@ -81,8 +82,8 @@ sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 """
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,pixperFWHM
 
-
-freq_axis = np.linspace(fmin,fmax,nchans)
+from nsfrb.config import freq_axis
+#freq_axis = np.linspace(fmin,fmax,nchans)
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,outputwraps=True)
 full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
 tDM_max = (4.15)*np.max(DM_trials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
@@ -548,6 +549,7 @@ def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widt
 
 
     canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+    printlog(fname + " CANDS::::",output_file=output_file)
     printlog(canddec_idxs,output_file=output_file)
     printlog(candra_idxs,output_file=output_file)
     printlog(candwid_idxs,output_file=output_file)
@@ -599,12 +601,13 @@ def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widt
 from torchvision import transforms
 from PIL import Image
 def img_to_classifier_format(img,candname,output_dir):
-    img_class_format = np.zeros_like(img,dtype=np.float64)
-    gridsize_DEC,gridsize_RA,nchans = img.shape
     #if not square, pad with zeros
+    gridsize_DEC,gridsize_RA,nchans = img.shape
     if gridsize_DEC > gridsize_RA:
-        img = np.pad(img,((0,0),(int((gridsize_DEC-gridsize_RA)//2),gridsize_DEC - int((gridsize_DEC-gridsize_RA)//2)),(0,0)))
-        gridsize_DEC,gridsize_RA,nchans = img.shape
+        img = np.pad(img,((0,0),(int((gridsize_DEC-gridsize_RA)//2),(gridsize_DEC-gridsize_RA) - int((gridsize_DEC-gridsize_RA)//2)),(0,0))) 
+    gridsize_DEC,gridsize_RA,nchans = img.shape
+    img_class_format = np.zeros_like(img,dtype=np.float64)
+
     for i in range(nchans):
         avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
         filename = f'{candname}_{avg_freq:.2f}_MHz.png'
@@ -815,12 +818,12 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     
 
 
-    classify_flag = (not imgdiff) and (args['classify'] or args['classify3D'])
-    if classify_flag and args['classify']:
+    classify_flag = (args['classify'] or args['classify3D'])
+    if args['classify']:
 
         if args['subimgpix'] == image.shape[0]:
-            printlog("Using full image for classification and cutouts",output_file=cutterfile)
-            data_array = (img_to_classifier_format(image.mean(2),cand_isot,img_dir)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
+            printlog(str("IMGDIFF: " if imgdiff else "") + "Using full image for classification and cutouts;"+str(image.shape),output_file=cutterfile)
+            data_array = (img_to_classifier_format(np.repeat(image.mean(2),nchans,axis=2),cand_isot,img_dir)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
         else:
             #make a binned copy for each candidate
             data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[3]),dtype=np.float64)
@@ -853,14 +856,27 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         predictions, probabilities = classify_images(merged_array, args['model_weights'], verbose=args['verbose'])
         printlog(predictions,output_file=cutterfile)
         printlog(probabilities,output_file=cutterfile)
-
+        
         #only save bursts likely to be real
         #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
     
-    elif classify_flag and args['classify3D']:
+    elif args['classify3D']:
         if args['subimgpix'] == image.shape[0]:
             printlog("Using full image for classification and cutouts",output_file=cutterfile)
-            data_array = (image[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
+            if imgdiff:
+                if useTOA:
+                    tmpsnrs = np.array([fcand[-1] for fcand in finalcands])
+                    tmptoa = np.array([fcand[4] for fcand in finalcands])[np.argmax(tmpsnrs)]
+                    printlog("so far so good",output_file=cutterfile)
+                    if tmptoa < init_nsamps//2:
+                        data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                    else:
+                        data_array = (image[np.newaxis,:,:,-init_nsamps:,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                    printlog("still ok",output_file=cutterfile)
+                else:
+                    data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+            else:
+                data_array = (image[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
         else:
             #make a binned copy for each candidate
             data_array = np.zeros((len(finalcands),args['subimgpix'],args['subimgpix'],image.shape[2],image.shape[3]),dtype=np.float32)
@@ -874,6 +890,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                 printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
 
         #run classifier
+        printlog("still fine",output_file=cutterfile)
         printlog("Start classifying " + str(data_array.shape),output_file=cutterfile)
         predictions, probabilities = classify_images_3D(data_array, args['model_weights3D'], verbose=args['verbose'])
         printlog(predictions,output_file=cutterfile)
@@ -1024,7 +1041,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
             if DM != 0 or not imgdiff:
                 printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc",output_file=cutterfile)
-                freq_axis = np.linspace(fmin,fmax,nchans)
+                #freq_axis = np.linspace(fmin,fmax,nchans)
                 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp_use,nsamps,outputwraps=True,maxshift=0 if (slow or imgdiff) else maxshift)
 
                 printlog("corr shifts shape:" + str(corr_shifts_all_append.shape),output_file=cutterfile)
