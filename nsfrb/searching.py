@@ -1555,38 +1555,39 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
     #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
     global jaxdev
+    usedev = ((jaxdev + 1)%2 if (slow or imgdiff) else jaxdev)
+    if not (slow or imgdiff):
+        jaxdev += 1
+        jaxdev %= 2
     print("DM TRIALS AND WIDTH TRIALS:" + str(corr_shifts_all.shape) + str(tdelays_frac.shape) + str(full_boxcar_filter.shape),file=fout)
     print(corr_shifts_all,file=fout)
     print(tdelays_frac,file=fout)
     print(full_boxcar_filter,file=fout)
     if append_frame:
-        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[usedev]),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
                                                                  prev_noise_N,noiseth)
     elif imgdiff:
-        outtup = jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(full_boxcar_filter_imgdiff,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+        outtup = jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(full_boxcar_filter_imgdiff,dtype=np.float16),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
                                                                  prev_noise_N,noiseth)
     else:
 
-        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(corr_shifts_all,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(tdelays_frac,jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
-                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[((jaxdev + 1)%2 if slow else jaxdev)]),
+        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[usedev]),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
                                                                  prev_noise_N,noiseth)
     image_tesseract_binned,total_noise,TOAs = np.array(outtup[0]),np.array(outtup[1])[:,np.newaxis].repeat(len(DM_trials),1),np.array(outtup[2])
 
-    if not slow:
-        jaxdev += 1
-        jaxdev %= 2
     print("Time for DM and SNR:" + str(time.time()-t1),file=fout)
 
     if output_file != "":
@@ -1652,7 +1653,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         save_last_frame(last_frame,full=True)
         printlog("Writing to last_frame.npy",output_file=processfile)
 
-    if savesearch or len(fullimg.candidxs)>0 or fprtest:
+    if savesearch or np.nanmax(fullimg.image_tesseract_searched)>SNRthresh or fprtest:
         if (not fprtest) and (not realtime):
             #save image
             f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (not slow and imgdiff) else "") + ".npy","wb")

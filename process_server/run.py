@@ -205,7 +205,7 @@ class fullimg:
         printlog("MJD LIST:" + str(self.img_id_mjd_list),output_file=processfile)
         printlog("IMGDIFF STATUS:" + str(self.imgdiffstatus),output_file=processfile)
         self.slow_counter += 1
-        self.imgdiffstatus[:] = 1
+        #self.imgdiffstatus[:] = 1
         #align if full
         if self.imgdiff_is_full():
             printlog("STACKING IMAGES",output_file=processfile)
@@ -618,7 +618,6 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
             imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
             kd = img_id_isot
-        imgdiffdone = True
         imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
 
         #submit task

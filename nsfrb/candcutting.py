@@ -80,7 +80,7 @@ psf_dir = cwd + "-PSF/"
 img_dir = cwd + "-images/"
 sys.path.append(cwd + "/") #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,pixperFWHM
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,pixperFWHM,candplotfile,candplotfile_slow,candplotfile_imgdiff,candplotupdatefile
 
 from nsfrb.config import freq_axis
 #freq_axis = np.linspace(fmin,fmax,nchans)
@@ -1095,6 +1095,14 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         if args['toslack']:
             printlog("sending plot to slack...",output_file=cutterfile)
             send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+            printlog("updating candplot server",output_file=cutterfile)
+            if slow:
+                os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
+            elif imgdiff:
+                os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
+            else:
+                os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
+            os.system("echo " + str("injection:" if injection_flag else "candidate:") + candplot + " > " + candplotupdatefile)
             printlog("done!",output_file=cutterfile)
     
     #cp fast visibilities
