@@ -10,7 +10,7 @@ import os, glob
 from scipy.fftpack import ifftshift, ifft2, fftshift, fft2
 
 from nsfrb.config import tsamp as tsamp_ms
-from nsfrb.config import nsamps
+from nsfrb.config import nsamps,ngulps_per_file,bin_imgdiff
 
 
 """
@@ -18,6 +18,76 @@ Simple periodicity search algorithms
 """
 
 
+def ffa_slow(timeseries,trial_p_samp):
+    """
+    DM=0 FFA brute force implementation
+    """
+    
+    snrs = np.zeros(list(timeseries.shape[:-1]) + [len(trial_p_samp)])
+    n_init = np.nanmedian(np.nanstd(timeseries,-1))
+    print("noise init:",n_init)
+    for i in range(len(trial_p_samp)):
+        maxidx = timeseries.shape[-1] - (timeseries.shape[-1]%trial_p_samp[i])
+        snrs[...,i] = np.nanmax(timeseries[...,:maxidx].reshape(list(timeseries.shape[:-1]) + [maxidx//trial_p_samp[i],trial_p_samp[i]]).mean(-2),axis=-1)/(n_init/np.sqrt(maxidx//trial_p_samp[i]))
+        
+    return snrs
+
+
+def ffa_timing(timeseries,trial_p_samp,ref_p=None):
+    """
+    RMS search of periodogram over fine set of period trials
+    """
+    #make periodogram for reference period
+    if ref_p is None:
+        ref_p = int(np.nanmax(trial_p_samp))
+    maxidx = timeseries.shape[-1] - (timeseries.shape[-1]%ref_p)
+    timeseries = timeseries[...,:maxidx]
+    taxis = np.arange(timeseries.shape[-1])
+    #phasebins = (taxis%ref_p)/ref_p
+    #rows = ref_p*(taxis//ref_p)
+    
+    #get expected indices for trial periods
+    rmss = np.zeros(list(timeseries.shape[:-1])+[len(trial_p_samp),int(ref_p)])
+    for p in range(len(trial_p_samp)):
+        #get expected indices for trial periods
+        idxs = np.arange(int(taxis.shape[-1])//trial_p_samp[p])*trial_p_samp[p]
+        #print(np.sort(np.argsort(timeseries,axis=-1)[::-1][:len(idxs)]))
+        #print(idxs)
+        #loop through trial phases
+        for q in range(int(ref_p)):
+            idxsq = np.clip(q + idxs,0,taxis.shape[0])
+            
+            #get timing residuals using the peak indices
+            idxs_dat = np.sort(np.argsort(timeseries,axis=-1)[::-1][:len(idxsq)])
+            rmss[...,p,q] = np.sqrt(np.nanmean((idxs_dat-idxsq)**2))
+
+    return rmss
+
+
+
+def gen_psamp_trials(trial_p_samp,nsamp=int(ngulps_per_file//bin_imgdiff)):
+    idxs_full = np.zeros((1,1,nsamp,nsamp,len(trial_p_samp)))#np.zeros_like(timeseries,dtype=int)[...,np.newaxis,np.newaxis].repeat(timeseries.shape[-1],-2).repeat(len(trial_p_samp),-1)
+    for i in range(len(trial_p_samp)):
+        idxs = (np.array([trial_p_samp[i]*np.arange(0,nsamp//trial_p_samp[i],dtype=int)]*trial_p_samp[i],dtype=int) + np.arange(trial_p_samp[i])[:,np.newaxis])
+        idxs_full[...,:idxs.shape[0],:idxs.shape[1],i] = idxs
+    return idxs_full, idxs_full!=0
+
+
+
+def ffa_faster(timeseries,idxs_full,bool_idxs_full,periodogram=False):
+    """
+    FFA using pre-computed indices
+    """
+    if periodogram:
+        
+        pgrams = []
+        for p in range(idxs_full.shape[-1]):
+            pgrams.append(np.take_along_axis(timeseries[...,np.newaxis],idxs_full[...,p],axis=-2))
+    #snrs = np.nanmax(pgrams.sum(-2,where=bool_idxs_full),-2)
+    snrs = np.nanmax((np.take_along_axis(timeseries[...,np.newaxis,np.newaxis],idxs_full,axis=-3)).mean(-2,where=bool_idxs_full),-2)
+    return snrs,(None if not periodogram else pgrams)
+
+    
 
 #simple fast folding
 def fast_fold_search(dynspec,trial_P,trial_phase,t_samp=40.96e-6,plot=False,suffix='',path=''):

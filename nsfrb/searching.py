@@ -187,8 +187,8 @@ nDMtrials = len(DM_trials)
 
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps)
 
-
-corr_shifts_all_append_slow,tdelays_frac_append_slow,corr_shifts_all_no_append_slow,tdelays_frac_no_append_slow = gen_dm_shifts(DM_trials,freq_axis,tsamp_slow,nsamps)
+DM_trials_slow = DM_trials #np.array(gen_dm(minDM*5,maxDM,DM_tol_slow,fc*1e-3,nchans,tsamp_slow,chanbw,nsamps))
+corr_shifts_all_append_slow,tdelays_frac_append_slow,corr_shifts_all_no_append_slow,tdelays_frac_no_append_slow = gen_dm_shifts(DM_trials_slow,freq_axis,tsamp_slow,nsamps)
 
 
 #make boxcar filters in advance
@@ -228,7 +228,17 @@ def init_last_frame(gridsize_DEC,gridsize_RA,nsamps,nchans,frame_dir=frame_dir):
     f.close()
     return
 
-    
+"""
+#pulse period trials
+trial_p_samp = np.array([5, 6, 9, 10, 15],dtype=int)
+def gen_psamp_trials(trial_p_samp,nsamp=int(config.ngulps_per_file//config.bin_imgdiff)):
+    idxs_full = np.zeros((1,1,1,nsamp,nsamp,len(trial_p_samp)))#np.zeros_like(timeseries,dtype=int)[...,np.newaxis,np.newaxis].repeat(timeseries.shape[-1],-2).repeat(len(trial_p_samp),-1)
+    for i in range(len(trial_p_samp)):
+        idxs = (np.array([trial_p_samp[i]*np.arange(0,nsamp//trial_p_samp[i],dtype=int)]*trial_p_samp[i],dtype=int) + np.arange(trial_p_samp[i])[:,np.newaxis])
+    return idxs_full, idxs_full!=0
+P_idxs_full,P_bool_idxs_full = gen_psamp_trials(trial_p_samp)
+"""
+
     
 
 def save_last_frame(image_tesseract,full=False,maxDM=np.max(DM_trials),tsamp=tsamp,frame_dir=frame_dir):

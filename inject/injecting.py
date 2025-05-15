@@ -100,9 +100,6 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     #create a noiseless image
     os.system("mkdir " + inject_dir + "dataset_" + isot +"/")
     dataset_dir = inject_dir + "dataset_" + isot +"/"
-    """PSFimg = scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize//2,True,nsamps=nsamps-width+nsamps+maxshift+maxshift,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
-                                    srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
-                                    srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180)"""
     if not noiseonly:
         PSFimg = np.abs(scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize,True,nsamps=width,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
                                     srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
@@ -190,20 +187,24 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         fout.close()
     return sourceimg_dm
 
-
+"""
 default_DMtrials = np.load(cand_dir + "DMtrials.npy")
 default_widthtrials = np.load(cand_dir + "widthtrials.npy")
 #freq_axis = np.linspace(fmin,fmax,nchans)
 tDM_max = (4.15)*np.max(default_DMtrials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
 maxshift = int(np.ceil(tDM_max/tsamp))
-
+"""
+from nsfrb.searching import DM_trials as default_DMtrials
+from nsfrb.searching import widthtrials as default_widthtrials
+#from nsfrb.searching import maxshift
 def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width=np.nan,SNR=np.nan,gridsize=gridsize,DMtrials=default_DMtrials,widthtrials=default_widthtrials,freq_axis=freq_axis,nsamps=nsamps,nchans=nchans,tsamp=tsamp,SNRmin=0,SNRmax=10000,output_file=inject_log_file):
     """
     Randomly draws injected burst parameters from set of trial DMs, widths and RA/DEC grid
     """
-    DMtrials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))
-    DMtrials = DMtrials[DMtrials<2000]
-    widthtrials = widthtrials[widthtrials<int(nsamps//2)]
+    print("FROM DRAW PARAMS:",tsamp)
+    #DMtrials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))
+    #DMtrials = DMtrials[DMtrials<2000]
+    #widthtrials = widthtrials[widthtrials<int(nsamps//2)]
     
     #get RA,DEC axes
     time_start = Time(time_start_isot,format='isot')
@@ -216,9 +217,9 @@ def draw_burst_params(time_start_isot,RA_axis=None,DEC_axis=None,DM=np.nan,width
     tDM_max = (4.15)*np.max(DMtrials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
     maxshift = int(np.ceil(tDM_max/tsamp))
     if np.isnan(DM):
-        DM = np.random.choice(DMtrials)
+        DM = np.random.choice(DMtrials[DMtrials<2000])
     if np.isnan(width):
-        width = np.random.choice(widthtrials)
+        width = np.random.choice(widthtrials[widthtrials<int(nsamps//2)])
     if np.isnan(SNR):
         SNR = uniform.rvs(loc=SNRmin,scale=SNRmax)
 

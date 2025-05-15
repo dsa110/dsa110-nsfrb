@@ -289,10 +289,12 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["rfc_ra"] = bright_nvsscoords[i].ra.value
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["rfc_dec"] = bright_nvsscoords[i].dec.value
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["dir"] = vis_dir + bright_nvssnames[i].replace(" ","") + "/"
-        tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["pixoffsets"] = (list(bright_gulpoffsets[i].astype(float)),list(np.array(bright_gulpoffset_times[i])-bright_gulpoffset_times[i][0]))
+        if type(bright_gulpoffsets[i]) != int:
+            tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["pixoffsets"] = (list(bright_gulpoffsets[i].astype(float)),list(np.array(bright_gulpoffset_times[i])-bright_gulpoffset_times[i][0]))
+            print(tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["pixoffsets"])
         if len(glob.glob(tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["dir"]+"nsfrb_sb00_"+str(bright_fnames[i])+".out"))>0:
             tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["mjd"] = pipeline.read_raw_vis(tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["dir"]+"nsfrb_sb00_"+str(bright_fnames[i])+".out",get_header=True)[1]
-        print(tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["pixoffsets"])
+      
     #update total RMS errors
     allposerrs = []
     allRAerrs = []
@@ -316,9 +318,10 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
                     allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
                     allRFCRAerrs.append(tab[arraykey][k][kk]['RFC_RA_error_deg'])
                     allRFCDECerrs.append(tab[arraykey][k][kk]['RFC_DEC_error_deg'])
-                    allgulpoffsets = np.concatenate([allgulpoffsets,tab[arraykey][k][kk]["pixoffsets"][0]])
-                    allgulpoffset_times = np.concatenate([allgulpoffset_times,np.array(tab[arraykey][k][kk]["pixoffsets"][1]) - tab[arraykey][k][kk]["pixoffsets"][1][0]])
-                    allgulpresids = np.concatenate([allgulpresids,[tab[arraykey][k][kk]['RMS_fit_residual']]*len(tab[arraykey][k][kk]["pixoffsets"][0])])
+                    if 'pixoffsets' in tab[arraykey][k][kk].keys():
+                        allgulpoffsets = np.concatenate([allgulpoffsets,tab[arraykey][k][kk]["pixoffsets"][0]])
+                        allgulpoffset_times = np.concatenate([allgulpoffset_times,np.array(tab[arraykey][k][kk]["pixoffsets"][1]) - tab[arraykey][k][kk]["pixoffsets"][1][0]])
+                        allgulpresids = np.concatenate([allgulpresids,[tab[arraykey][k][kk]['RMS_fit_residual']]*len(tab[arraykey][k][kk]["pixoffsets"][0])])
                 elif len(target)==0:
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
                     allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
@@ -326,9 +329,10 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
                     allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
                     allRFCRAerrs.append(tab[arraykey][k][kk]['RFC_RA_error_deg'])
                     allRFCDECerrs.append(tab[arraykey][k][kk]['RFC_DEC_error_deg'])
-                    allgulpoffsets = np.concatenate([allgulpoffsets,tab[arraykey][k][kk]["pixoffsets"][0]])
-                    allgulpoffset_times = np.concatenate([allgulpoffset_times,np.array(tab[arraykey][k][kk]["pixoffsets"][1])-tab[arraykey][k][kk]["pixoffsets"][1][0]])
-                    allgulpresids = np.concatenate([allgulpresids,[tab[arraykey][k][kk]['RMS_fit_residual']]*len(tab[arraykey][k][kk]["pixoffsets"][0])])
+                    if 'pixoffsets' in tab[arraykey][k][kk].keys(): 
+                        allgulpoffsets = np.concatenate([allgulpoffsets,tab[arraykey][k][kk]["pixoffsets"][0]])
+                        allgulpoffset_times = np.concatenate([allgulpoffset_times,np.array(tab[arraykey][k][kk]["pixoffsets"][1])-tab[arraykey][k][kk]["pixoffsets"][1][0]])
+                        allgulpresids = np.concatenate([allgulpresids,[tab[arraykey][k][kk]['RMS_fit_residual']]*len(tab[arraykey][k][kk]["pixoffsets"][0])])
     allposerrs = np.array(allposerrs)
     allRAerrs = np.array(allRAerrs)
     allDECerrs = np.array(allDECerrs)
@@ -665,6 +669,8 @@ def astrocal(args):
     bright_pixs = []
     close_pixs = []
     bright_resid = []
+    bright_gulpoffsets = []
+    bright_gulpoffset_times = []
     image_size=args.image_size#1101 #8001
     gulpsize = nsamps
     nchan_per_node=nchans_per_node = args.nchans_per_node
@@ -681,6 +687,8 @@ def astrocal(args):
             bright_pixs.append(-1)
             close_pixs.append(-1)
             bright_resid.append(-1)
+            bright_gulpoffsets.append(-1)
+            bright_gulpoffset_times.append(-1)
             print("Excluding " + bright_names[bright_idx])
             continue
 
@@ -692,12 +700,12 @@ def astrocal(args):
             gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
             gulps = np.unique(gulps)
         ngulps = len(gulps)
-        if len(bright_poserrs)==0 and ngulps>=5:
+        """if len(bright_poserrs)==0 and ngulps>=5:
             bright_gulpoffsets = []
             bright_gulpoffset_times = []
         elif np.all(np.array(bright_poserrs)==-1) and ngulps>=5:
             bright_gulpoffsets = [-1]*len(bright_poserrs)
-            bright_gulpoffset_times = [-1]*len(bright_poserrs)
+            bright_gulpoffset_times = [-1]*len(bright_poserrs)"""
         print(bright_idx,fnum,gulps)
        
         g=0

@@ -101,7 +101,6 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
     queue.put(etcd_dict['img_search_shape'])
     return
 
-
 def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")

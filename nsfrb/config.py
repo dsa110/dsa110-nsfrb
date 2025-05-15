@@ -52,6 +52,7 @@ lambdaref = (c/(freq_axis_fullres[0]*1e6))
 #chanbw = (fmax-fmin)/nchans #MHz
 telescope_diameter = 4.65 #m
 DM_tol = 1.6
+DM_tol_slow = 1.2
 
 #resolution parameters
 pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad

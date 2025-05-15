@@ -34,7 +34,7 @@ sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
 
-def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000):
+def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000,pixperFWHM=3):
     """
     dec: current declination
     T: integration time in milliseconds
@@ -52,7 +52,7 @@ def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000
                 f.close()
                 if 'core_gulp_RA_drift_slope' in table.keys():
                     print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
-                    cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                    cutoff_pix = -int((table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)*(pixperFWHM/3))
                     print("New RA cutoff:",cutoff_pix)
                     return cutoff_pix
         else:

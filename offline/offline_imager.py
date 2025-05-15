@@ -105,6 +105,11 @@ def main(args):
         #inject_gulps = (args.gulp_offset + num_gulps - 1) - np.arange(num_inject) #temporary adjustment
         inject_gulps = np.linspace(args.gulp_offset,args.gulp_offset + num_gulps,num_inject,dtype=int)
 
+        if args.slowinject:
+            print("Injecting with slow pipeline")
+            curr_inject_idx = 0
+            curr_inject = inject_gulps[0]
+
     #parameters from etcd
     #test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
 
@@ -262,35 +267,72 @@ def main(args):
 
 
             #creating injection
-            if args.inject and (gulp in inject_gulps) and filelabels[g]==args.filelabel:
+            if args.inject and ((gulp in inject_gulps) or (args.slowinject and gulp>=curr_inject and (gulp-curr_inject)<5)) and filelabels[g]==args.filelabel:
                 print("Injecting pulse in gulp",gulp)
+                if args.slowinject:
+                    slowinject_idx = gulp-curr_inject
+                    print("SLOW INJECTION PARAMS:",curr_inject,slowinject_idx)
                 from inject import injecting
-                offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=args.snr_min_inject,SNRmax=args.snr_max_inject)
-                #offsetRA = offsetDEC = 0
+                if (not args.slowinject):
+                    offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=args.snr_min_inject,SNRmax=args.snr_max_inject)
+                    #offsetRA = offsetDEC = 0
 
-                if args.snr_inject > 0:
-                    SNR = args.snr_inject
-                if args.dm_inject != -1 and args.dm_inject >= 0:
-                    DM = args.dm_inject
-                if args.width_inject > 0:
-                    width = args.width_inject
-                offsetRA = args.offsetRA_inject
-                offsetDEC = args.offsetDEC_inject
-                print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
-                print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
-                noiseless=False
-                if args.solo_inject or args.flat_field or args.gauss_field:
-                    #noiseless=False
-                    dat[:,:,:,:] = 0
-                if args.inject_noiseless:
-                    noiseless=True
-                #noiseless = True
-                #DM = 0
-                #SNR = 10000
-                #width = 2
-                #offsetRA = offsetDEC = 0
-                inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
+                    if args.snr_inject > 0:
+                        SNR = args.snr_inject
+                    if args.dm_inject != -1 and args.dm_inject >= 0:
+                        DM = args.dm_inject
+                    if args.width_inject > 0:
+                        width = args.width_inject
+                    offsetRA = args.offsetRA_inject
+                    offsetDEC = args.offsetDEC_inject
+                    print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
+                    print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
+                    noiseless=False
+                    if args.solo_inject or args.flat_field or args.gauss_field:
+                        #noiseless=False
+                        dat[:,:,:,:] = 0
+                    if args.inject_noiseless:
+                        noiseless=True
+                    #noiseless = True
+                    #DM = 0
+                    #SNR = 10000
+                    #width = 2
+                    #offsetRA = offsetDEC = 0
+                    inject_img = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
 
+                elif args.slowinject and slowinject_idx == 0:
+                    offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(time_start_isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=dat.shape[0],nchans=args.num_chans,tsamp=tsamp*1000,SNRmin=args.snr_min_inject,SNRmax=args.snr_max_inject)
+                    #offsetRA = offsetDEC = 0
+                    width *= 5
+
+                    if args.snr_inject > 0:
+                        SNR = args.snr_inject
+                    if args.dm_inject != -1 and args.dm_inject >= 0:
+                        DM = args.dm_inject
+                    if args.width_inject > 0:
+                        width = args.width_inject
+                    offsetRA = args.offsetRA_inject
+                    offsetDEC = args.offsetDEC_inject
+                    print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
+                    print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
+                    noiseless=False
+                    if args.solo_inject or args.flat_field or args.gauss_field:
+                        #noiseless=False
+                        dat[:,:,:,:] = 0
+                    if args.inject_noiseless:
+                        noiseless=True
+                    #noiseless = True
+                    #DM = 0
+                    #SNR = 10000
+                    #width = 2
+                    #offsetRA = offsetDEC = 0
+                    inject_img_full = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=5*dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
+                    
+                if args.slowinject:
+                    inject_img = inject_img_full[:,:,slowinject_idx*dat.shape[0]:(slowinject_idx+1)*dat.shape[0],:]
+                    if slowinject_idx == 4 and curr_inject_idx < len(inject_gulps)-1:
+                        curr_inject_idx += 1
+                        curr_inject = inject_gulps[curr_inject_idx]
                 if args.flat_field:
                     inject_img = np.ones_like(inject_img)
                 elif args.gauss_field:
@@ -301,11 +343,11 @@ def main(args):
                     inject_img = np.zeros_like(inject_img)
                     inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
                 #report injection in log file
-                with open(inject_file,"a") as csvfile:
-                    wr = csv.writer(csvfile,delimiter=',')
-                    wr.writerow([time_start_isot,DM,width,SNR])
+                if (not args.slowinject) or (args.slowinject and curr_inject==0):
+                    with open(inject_file,"a") as csvfile:
+                        wr = csv.writer(csvfile,delimiter=',')
+                        wr.writerow([time_start_isot,DM,width*5,SNR])
                 csvfile.close()
-
 
             else:
                 inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
@@ -501,6 +543,7 @@ if __name__=="__main__":
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
     parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')
     parser.add_argument('--inject',action='store_true',default=False,help='Inject a burst into the gridded visibilities. Unless the --solo_inject flag is set, a noiseless injection will be integrated into the data.')
+    parser.add_argument('--slowinject',action='store_true',default=False,help='Inject a wider burst to test the slow pipeline')
     parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
     parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=-1)
     parser.add_argument('--snr_min_inject',type=float,help='Minimum injection S/N, default 1e7',default=1e7)

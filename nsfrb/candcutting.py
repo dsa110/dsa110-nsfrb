@@ -42,7 +42,7 @@ import csv
 from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
 from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff
-from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,gen_boxcar_filter,default_PSF
+from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,DM_trials_slow,gen_boxcar_filter,default_PSF
 from nsfrb.outputlogging import printlog
 from nsfrb.outputlogging import send_candidate_slack
 from nsfrb.imaging import uv_to_pix
@@ -631,14 +631,17 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     if slow:
         suff = '_slow'
         tsamp_use = tsamp_slow
+        DM_trials_use = DM_trials_slow
         printlog("SLOW CANDCUTTING",output_file=cutterfile)
     elif imgdiff:
         suff = '_imgdiff'
         tsamp_use = tsamp_imgdiff
+        DM_trials_use = DM_trials
         printlog("IMGDIFF CANDCUTTING",output_file=cutterfile)
     else:
         suff = ""
         tsamp_use = tsamp
+        DM_trials_use = DM_trials
     cand_isot = fname[fname.index("candidates_")+11:fname.index(suff + ".csv")]
 
     try:
@@ -676,7 +679,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                     searched_image,TOAs,
                     args['SNRthresh'],
                     RA_axis,DEC_axis,
-                    widthtrials,DM_trials,canddict,
+                    widthtrials,DM_trials_use,canddict,
                     raidx_offset=np.abs(image.shape[1]-searched_image.shape[1]),
                     decidx_offset=np.abs(image.shape[0]-searched_image.shape[0]))
 
@@ -787,9 +790,9 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
             printlog("Cluster iteration " + str(i+1) + "/" + str(args['clusteriters']) + " with min cluster size " + str(mincluster),output_file=cutterfile)
             if useTOA:
-                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),useTOA=True,perc=args['psfpercentile'],avgcluster=args['avgcluster'])
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),useTOA=True,perc=args['psfpercentile'],avgcluster=args['avgcluster'])
             else:
-                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),perc=args['psfpercentile'],avgcluster=args['avgcluster'])
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = hdbscan_cluster(cands_noninf,min_cluster_size=mincluster,min_samples=args['minsamples'],dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args['SNRthresh'],PSF=(PSF if i==0 else None),perc=args['psfpercentile'],avgcluster=args['avgcluster'])
             if np.all(np.array(classes)==-1):
                 printlog("Minimum number of clusters reached",output_file=cutterfile)
                 break
@@ -922,7 +925,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         with open(recover_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             for j in finalidxs:
-                wr.writerow([cand_isot,DM_trials[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not classify_flag else predictions[j]),(None if not classify_flag else probabilities[j])])
+                wr.writerow([cand_isot,DM_trials_use[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not classify_flag else predictions[j]),(None if not classify_flag else probabilities[j])])
         csvfile.close()
 
 
@@ -1035,7 +1038,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         timeseries = []
         sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[0 if (slow or imgdiff) else maxshift]+[image.shape[3]])),image],axis=2)
         for i in range(len(finalidxs)):
-            DM = DM_trials[int(canddict['dm_idxs'][i])]
+            DM = DM_trials_use[int(canddict['dm_idxs'][i])]
 
             sourceimg = sourceimg_all[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
@@ -1063,7 +1066,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                 #create json file
                 snr=canddict['snrs'][i]
                 width=int(widthtrials[int(canddict['wid_idxs'][i])])
-                dm=int(DM_trials[int(canddict['dm_idxs'][i])])
+                dm=int(DM_trials_use[int(canddict['dm_idxs'][i])])
                 ra=RA_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #RA_axis[int(canddict['ra_idxs'][i])]
                 dec=DEC_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #DEC_axis[int(canddict['dec_idxs'][i])]
                 trigname = canddict['names'][i]
@@ -1086,7 +1089,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         printlog(len(RA_axis),output_file=cutterfile)
         printlog(image.shape,output_file=cutterfile)
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
-                                            DM_trials=DM_trials,widthtrials=widthtrials,
+                                            DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/",show=False,s100=args['SNRthresh']/2,
                                             injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,dec_obs=dec_obs,slow=slow,imgdiff=imgdiff)
@@ -1102,7 +1105,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                 os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
             else:
                 os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
-            os.system("echo " + str("injection:" if injection_flag else "candidate:") + candplot + " > " + candplotupdatefile)
+
             printlog("done!",output_file=cutterfile)
     
     #cp fast visibilities
