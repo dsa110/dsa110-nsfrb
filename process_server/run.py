@@ -634,7 +634,7 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
             sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
-                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,True,False)
                     
             sstask.add_done_callback(lambda future: future_callback(future,args.SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,args.etcd))
@@ -714,9 +714,18 @@ def main(args):
         #sl.default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(sl.DEC_axis),args.kernelsize//2,True,args.nsamps) #make_PSF_cube(gridsize=args.kernelsize,nsamps=args.nsamps,nchans=args.nchans)
         #sl.default_PSF_params = (args.kernelsize,"{d:.2f}".format(d=np.nanmean(sl.DEC_axis)))
 
-        sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
         sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
         sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
+
+        sl.DM_trials_slow = np.array(sl.gen_dm(sl.minDM*5,sl.maxDM*5,config.DM_tol,config.fc*1e-3,config.nchans,config.tsamp_slow,config.chanbw,args.nsamps))#np.array(sl.gen_dm(sl.minDM*5,sl.maxDM,config.DM_tol_slow,config.fc*1e-3,config.nchans,config.tsamp_slow,config.chanbw,args.nsamps))#[0:1]
+        sl.nDMtrials_slow = len(sl.DM_trials_slow)
+
+        sl.corr_shifts_all_append_slow,sl.tdelays_frac_append_slow,sl.corr_shifts_all_no_append_slow,sl.tdelays_frac_no_append_slow = sl.gen_dm_shifts(sl.DM_trials_slow,sl.freq_axis,config.tsamp_slow,config.nsamps)
+
+        #sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
+        sl.tDM_max_slow = (4.15)*np.max(sl.DM_trials_slow)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
+        sl.maxshift_slow = int(np.ceil(sl.tDM_max_slow/config.tsamp_slow))
+
 
         printlog("UPDATED MAXSHIFT:" + str(sl.maxshift),output_file=processfile)
     if args.nocutoff:
@@ -737,6 +746,7 @@ def main(args):
     if args.initframes:
         printlog("Initializing previous frames...",output_file=processfile)
         sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps-sl.maxshift,args.nchans)
+        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps-sl.maxshift_slow,args.nchans,slow=True)
 
     #initialize noise stats
     if args.initnoise or args.initnoisezero:
@@ -781,14 +791,29 @@ def main(args):
         #no append (slow)
         jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
-                                               jax.device_put(sl.corr_shifts_all_append,jax.devices()[0]),
-                                               jax.device_put(sl.tdelays_frac_append,jax.devices()[0]),
+                                               jax.device_put(sl.corr_shifts_all_no_append_slow,jax.devices()[0]),
+                                               jax.device_put(sl.tdelays_frac_no_append_slow,jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
         jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                jax.device_put(sl.corr_shifts_all_append,jax.devices()[1]),
                                                jax.device_put(sl.tdelays_frac_append,jax.devices()[1]),
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+
+
+        #append (slow)
+        jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(sl.corr_shifts_all_append_slow,jax.devices()[0]),
+                                               jax.device_put(sl.tdelays_frac_append_slow,jax.devices()[0]),
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+        jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(sl.corr_shifts_all_append_slow,jax.devices()[1]),
+                                               jax.device_put(sl.tdelays_frac_append_slow,jax.devices()[1]),
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
 

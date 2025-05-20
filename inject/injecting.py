@@ -133,11 +133,11 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         noiseimg1 = noiseimg[:,:,:int(loc*nsamps)+maxshift,:]
         noiseimg2 = noiseimg[:,:,int(loc*nsamps)+maxshift:,:]
         
-        print(noiseimg1.shape,noiseimg2.shape,noiseimg.shape,PSFimg.shape,vi_scale,file=fout)
         if noiseonly:
             PSFimg = noiseimg
         else:
             PSFimg = np.concatenate([noiseimg2,PSFimg,noiseimg1],axis=2)
+        print(noiseimg1.shape,noiseimg2.shape,noiseimg.shape,PSFimg.shape,vi_scale,file=fout)
     else:
         nn = nsamps+maxshift
         if not noiseonly: nn -= width

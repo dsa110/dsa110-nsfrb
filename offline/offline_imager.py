@@ -343,7 +343,7 @@ def main(args):
                     inject_img = np.zeros_like(inject_img)
                     inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
                 #report injection in log file
-                if (not args.slowinject) or (args.slowinject and curr_inject==0):
+                if (not args.slowinject) or (args.slowinject and curr_inject_idx==0):
                     with open(inject_file,"a") as csvfile:
                         wr = csv.writer(csvfile,delimiter=',')
                         wr.writerow([time_start_isot,DM,width*5,SNR])
@@ -518,6 +518,7 @@ def main(args):
             if filelabels[g] != args.filelabel or gulp < args.gulp_offset:#else:
                 print("Writing to last_frame.npy")
                 np.save(frame_dir + "last_frame.npy",dirty_img)
+                np.save(frame_dir + "last_frame_slow.npy",dirty_img)
         time.sleep(args.sleeptime)
     if args.multiimage:
         executor.shutdown()

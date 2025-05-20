@@ -36,6 +36,8 @@ import csv
 import os
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,bad_antennas
 
+plotting_now = False
+
 """
 #f = open("../metadata.txt","r")
 #cwd = f.read()[:-1]
@@ -163,6 +165,11 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     """
     Makes updated diagnostic plots for search system
     """
+    global plotting_now
+    while plotting_now:
+        continue
+    plotting_now = True
+    print("PLOTTING NOW",str("slow" if slow else ""))
     if slow:
         tsamp_use = tsamp_slow
         plotsuffix = "_slow"
@@ -372,6 +379,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         plt.show()
     else:
         plt.close()
+    plotting_now = False
     return isot + "_NSFRBcandplot" +plotsuffix + ".png"
 
 def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_file=binary_file):
