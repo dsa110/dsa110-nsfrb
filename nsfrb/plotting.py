@@ -165,10 +165,10 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     """
     Makes updated diagnostic plots for search system
     """
-    global plotting_now
-    while plotting_now:
-        continue
-    plotting_now = True
+    #global plotting_now
+    #while plotting_now:
+    #    continue
+    #plotting_now = True
     print("PLOTTING NOW",str("slow" if slow else ""))
     if slow:
         tsamp_use = tsamp_slow
@@ -379,7 +379,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         plt.show()
     else:
         plt.close()
-    plotting_now = False
+    #plotting_now = False
     return isot + "_NSFRBcandplot" +plotsuffix + ".png"
 
 def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_file=binary_file):

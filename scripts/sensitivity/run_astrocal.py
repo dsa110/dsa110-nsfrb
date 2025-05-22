@@ -598,7 +598,7 @@ def astrocal(args):
         print("Running astrometric calibration pipeline with RFC sources ",idxnames)
     else:
         
-        fluxth = np.sort(vis_Sfluxes)[-args.numsources]
+        fluxth = np.sort(vis_Sfluxes)[-min([len(vis_Sfluxes),args.numsources_RFC])]
         bright_coords = vis_coords[vis_Sfluxes>=fluxth]
         bright_RAerrs_mas = vis_RAerrs_mas[vis_Sfluxes>=fluxth]
         bright_DECerrs_mas = vis_DECerrs_mas[vis_Sfluxes>=fluxth]
@@ -1139,7 +1139,7 @@ def speccal(args):
         bright_nvssms = vis_nvssms[idxs]
         print("Running astrometric calibration pipeline with NVSS sources ",idxnames)
     else:
-        fluxth = np.sort(vis_nvssfluxes)[-args.numsources]
+        fluxth = np.sort(vis_nvssfluxes)[-min([len(vis_nvssfluxes),args.numsources_NVSS])]
         bright_nvsscoords = vis_nvsscoords[vis_nvssfluxes>=fluxth]
         bright_nvssfluxes = vis_nvssfluxes[vis_nvssfluxes>=fluxth]
         bright_nvssms = vis_nvssms[vis_nvssfluxes>=fluxth]
@@ -1556,7 +1556,8 @@ if __name__=="__main__":
     parser.add_argument('--init_speccal',action='store_true',help='Initialize json flux cal table')
     #parser.add_argument('--UTCday',type=str,help='UTC day to run fluxcal with in ISO format (e.g. 2024-06-12); if not given, uses the previous day',default=Time(Time.now().mjd,format='mjd').isot[:10])
     parser.add_argument('--search_dec',type=float,help='If given, searches for source observations at this dec; otherwise uses median dec from past day',default=180.0)
-    parser.add_argument('--numsources',type=int,help='Maximum number of sources to use for fluxcal, takes the brightest within 0.5 degrees of the current dec, default=10',default=10)
+    parser.add_argument('--numsources_NVSS',type=int,help='Maximum number of sources to use for fluxcal, takes the brightest within 0.5 degrees of the current dec, default=10',default=10)
+    parser.add_argument('--numsources_RFC',type=int,help='Maximum number of sources to use for fluxcal, takes the brightest within 0.5 degrees of the current dec, default=10',default=10)
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=8)
     parser.add_argument('--image_size',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)

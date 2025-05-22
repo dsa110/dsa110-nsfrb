@@ -58,11 +58,11 @@ wavs = c/(freqs*1e6) #m
 TXtask_list = []
 def offline_image_task(dat, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None, k_indices_all=None, k_conj_indices_all=None, Nlayers_w=18,pixperFWHM=pixperFWHM,wstack_parallel=False):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
 
-    outimage = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples))
+    outimage = np.zeros((args.gridsize,args.gridsize,args.num_time_samples))
     for jj in range(nchans_per_node):
         #if briggs:
         #print("INPUT SHAPE",dat[:,:,jj,:].mean(2))#dat[:,:,jj,:].transpose((0,2,1)).shape)
-        outimage = revised_robust_image(dat[:,:,jj,:].mean(2),#.transpose((0,2,1)),#dat[i:i+1, :, jj, k],
+        outimage += revised_robust_image(dat[:,:,jj,:].mean(2),#.transpose((0,2,1)),#dat[i:i+1, :, jj, k],
                                             U_wavs[:,jj],
                                             V_wavs[:,jj],
                                             gridsize,
@@ -327,6 +327,7 @@ def main(args):
                     #width = 2
                     #offsetRA = offsetDEC = 0
                     inject_img_full = injecting.generate_inject_image(time_start_isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=5*dat.shape[0],DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
+                    np.save(img_dir + "CURRENTSLOWINJECTIONFULL.npy",inject_img_full)
                     
                 if args.slowinject:
                     inject_img = inject_img_full[:,:,slowinject_idx*dat.shape[0]:(slowinject_idx+1)*dat.shape[0],:]

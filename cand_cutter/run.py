@@ -18,7 +18,7 @@ import argparse
 from astropy.time import Time
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
-from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor,wait
 import glob
 from nsfrb import candcutting as cc
 
@@ -115,6 +115,8 @@ def main(args):
 
 
     #start main loop
+    tasklist=[]
+    counter = 0
     while True:
         #if dask scheduler is setup, look for candidates in the queue
         if args.etcd:#'DASKPORT' in os.environ.keys() and QSETUP:
@@ -125,7 +127,17 @@ def main(args):
             img_shape = tuple(QQUEUE.get())
             img_search_shape = tuple(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-            future = executor.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args))
+            tasklist.append(executor.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args)))
+            counter += 1
+            if counter >= 3:
+                printlog("CLEANING UP CANDCUTTER TASKS...",output_file=cutterfile)
+                for t in tasklist:
+                    if not t.done():
+                        wait([t])
+                printlog("DONE",output_file=cutterfile)
+                tasklist = []
+                counter = 0
+                
             #printlog(future.result(),output_file=cutterfile)
             #fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
         else:
@@ -147,6 +159,7 @@ def main(args):
             #if 'DASKPORT' in os.environ.keys() and QSETUP:
             #    printlog("Restarting Dask client...",output_file=cutterfile)
             #    #QCLIENT.restart_workers(QWORKERS)
+
     return 0
 
 if __name__=="__main__":
