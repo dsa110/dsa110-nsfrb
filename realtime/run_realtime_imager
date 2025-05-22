@@ -5,4 +5,4 @@
 #create psrdada buffer
 dada_db -k caba -b 14899200
 
-python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/realtime_imager.py 1 --verbose --num_time_samples 25 --nchans_per_node 8 --gridsize 301 --flagBPASS --flagBPASSBURST --briggs --robust 2 --save --verbose "$@"
+python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/realtime_imager.py 1 --verbose --num_time_samples 25 --nchans_per_node 8 --gridsize 301 --flagBPASS --flagBPASSBURST --briggs --robust 2 --verbose --multiimage "$@"

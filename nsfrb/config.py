@@ -124,6 +124,7 @@ inject_file = cwd + "-injections/injections.csv"
 recover_file = cwd + "-injections/recoveries.csv"
 binary_file = cwd + "-logfiles/binary_log.txt"
 inject_log_file = cwd + "-logfiles/inject_log.txt"
+rtbench_file = cwd + "-logfiles/rttimes_log.txt"
 
 import casatools as cc
 me = cc.measures()

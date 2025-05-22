@@ -23,7 +23,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rtbench_file
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
@@ -32,7 +32,7 @@ from tqdm import tqdm
 import time
 from scipy.stats import norm,multivariate_normal
 #import nsfrb.searching as sl
-from nsfrb.outputlogging import numpy_to_fits
+from nsfrb.outputlogging import numpy_to_fits,printlog
 #from nsfrb import calibration as cal
 from nsfrb import pipeline
 import os
@@ -90,7 +90,7 @@ def realtime_image_task(dat, U_wavs, V_wavs, i_indices_all, j_indices_all, i_con
                                             i_conj_indices=i_conj_indices_all,
                                             j_conj_indices=j_conj_indices_all,
                                             clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)
-    return outimage,j
+    return outimage
 
 
 
@@ -137,7 +137,8 @@ def main(args):
         timestamp = Time(mjd,format='mjd').isot
         
         #params from etcd
-        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)        fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1))
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)        
+        fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1))
         
         #use MJD to get pointing
         time_start_isot = Time(mjd,format='mjd').isot
@@ -165,11 +166,11 @@ def main(args):
         uv_diag=np.max(np.sqrt(U**2 + V**2))
         pixel_resolution = (lambdaref / uv_diag) / args.pixperFWHM
 
-        if verbose: printlog(str(antenna_order,len(antenna_order)),output_file=logfile)#x_m.shape,y_m.shape,z_m.shape)
-        if verbose: printlog(str(UVW.shape,U.shape,V.shape,W.shape),output_file=logfile)
+        if verbose: printlog(str(antenna_order)+str(len(antenna_order)),output_file=logfile)#x_m.shape,y_m.shape,z_m.shape)
+        if verbose: printlog(str(UVW.shape),output_file=logfile)
         if verbose: printlog(UVW,output_file=logfile)
 
-        printlog("Print bad channels:",np.isnan(dat.mean((0,1,3))),output_file=logfile)
+        printlog("Print bad channels:" + str(np.isnan(dat.mean((0,1,3)))),output_file=logfile)
 
         RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,DEC=Dec,output_file=logfile)
         HA_axis = RA_axis[int(len(RA_axis)//2)] - RA_axis
@@ -225,7 +226,7 @@ def main(args):
         #imaging
         printlog("Start imaging",output_file=logfile)
         if args.wstack: printlog("W-stacking with "+str(args.Nlayers)+" layers",output_file=logfile)
-        dirty_img[:,:,:] = np.nan#*np.ones((args.gridsize,args.gridsize,dat.shape[0],args.num_chans))
+        dirty_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         j=args.sb
         if args.multiimage:
             task_list = []
@@ -254,16 +255,16 @@ def main(args):
                     bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
                     
 
-            for jj in range(args.nchans_per_node:
-                printlog("submitting task:"+str(j),output_file=logfile)
-                task_list.append(executor.submit(offline_image_task,dat[:,:,jj,:],
+            for jj in range(args.nchans_per_node):
+                printlog("submitting task:"+str(jj),output_file=logfile)
+                task_list.append(executor.submit(realtime_image_task,dat[:,:,jj,:],
                                                     U_wavs[:,jj],
                                                     V_wavs[:,jj],
                                                     i_indices_all[:,jj],
                                                     j_indices_all[:,jj],
                                                     i_conj_indices_all[:,jj],
                                                     j_conj_indices_all[:,jj],
-                                                    None if not args.briggs else bweights_all,
+                                                    None if not args.briggs else bweights_all[:,jj],
                                                     args.gridsize,
                                                     pixel_resolution,
                                                     args.nchans_per_node,
@@ -284,23 +285,23 @@ def main(args):
             wait(task_list)
             for t in task_list:
                 dirty_img += t.result()[0]
-                ftime = open(timelogfile,"a")
-                ftime.write("[image] " + str(time.time()-timage)+"\n")
-                ftime.close()
-            else:
-                for jj in range(args.nchans_per_node):
-                    chanidx = (args.nchans_per_node*j)+jj
-                    U_wav = U/(ct.C_GHZ_M/fobs[chanidx])
-                    V_wav = V/(ct.C_GHZ_M/fobs[chanidx])
-                    W_wav = None if not args.wstack else W/(ct.C_GHZ_M/fobs[chanidx])
-                    i_indices,j_indices,i_conj_indices,j_conj_indices = uniform_grid(U_wav, V_wav, args.gridsize, pixel_resolution, args.pixperFWHM)
-                    if args.briggs:
-                        bweights = briggs_weighting(U_wav, V_wav, args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
+                #ftime = open(timelogfile,"a")
+                #ftime.write("[image] " + str(time.time()-timage)+"\n")
+                #ftime.close()
+        else:
+            for jj in range(args.nchans_per_node):
+                chanidx = (args.nchans_per_node*j)+jj
+                U_wav = U/(ct.C_GHZ_M/fobs[chanidx])
+                V_wav = V/(ct.C_GHZ_M/fobs[chanidx])
+                W_wav = None if not args.wstack else W/(ct.C_GHZ_M/fobs[chanidx])
+                i_indices,j_indices,i_conj_indices,j_conj_indices = uniform_grid(U_wav, V_wav, args.gridsize, pixel_resolution, args.pixperFWHM)
+                if args.briggs:
+                    bweights = briggs_weighting(U_wav, V_wav, args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
 
-                    for i in range(dat.shape[0]):
-                        for k in range(dat.shape[-1]):
-                            if k == 0 and jj == 0:
-                                dirty_img[:,:,i] += revised_robust_image(dat[i:i+1, :, jj, k],
+                for i in range(dat.shape[0]):
+                    for k in range(dat.shape[-1]):
+                        if k == 0 and jj == 0:
+                            dirty_img[:,:,i] += revised_robust_image(dat[i:i+1, :, jj, k],
                                             U_wav,
                                             V_wav,
                                             args.gridsize,
@@ -313,14 +314,14 @@ def main(args):
                                             w=W_wav,
                                             Nlayers_w=args.Nlayers,
                                             pixperFWHM=args.pixperFWHM,
-                                            briggs_weights=None if (not args.briggs) else bweights,
+                                            briggs_weights=None if (not args.briggs) else bweights[:,jj],
                                             i_indices=i_indices,
                                             j_indices=j_indices,
                                             i_conj_indices=i_conj_indices,
                                             j_conj_indices=j_conj_indices,
                                             wstack_parallel=args.wstack_parallel)
-                            else:
-                                dirty_img[:,:,i] += revised_robust_image(dat[i:i+1, :, jj, k],
+                        else:
+                            dirty_img[:,:,i] += revised_robust_image(dat[i:i+1, :, jj, k],
                                             U_wav,
                                             V_wav,
                                             args.gridsize,
@@ -351,8 +352,11 @@ def main(args):
 
         if args.inject:
             inject_count += 1   
-        printlog(str("Imaging complete:" + str(time.time()-timage) + "s",output_file=logfile)
+        printlog(str("Imaging complete:" + str(time.time()-timage) + "s"),output_file=logfile)
         #print(dirty_img) 
+        ftime = open(rtbench_file,"a")
+        ftime.write(str(time.time()-timage)+"\n")
+        ftime.close()
     return
 
 
@@ -373,6 +377,7 @@ if __name__=="__main__":
     parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
+    parser.add_argument('--bmax',type=float,help='Maximum baseline length to include, default=None',default=np.inf)
     parser.add_argument('--wstack',action='store_true',help='If set use w-stacking algorithm with --Nlayers layers')
     parser.add_argument('--wstack_parallel',action='store_true',help='If set uses parallel processing for w-stacking')
     parser.add_argument('--Nlayers',type=int,help='Number of layers for w-stacking',default=18)
@@ -381,6 +386,10 @@ if __name__=="__main__":
     parser.add_argument('--flagBPASS',action='store_true',help='Flag channels when BPASS template RFI is detected, which is simpl comparison to bandpass mean in visibilities')
     parser.add_argument('--flagFRCBAND',action='store_true',help='Flag channels in FRC miltiary allocation 1435-1525 MHz')
     parser.add_argument('--flagBPASSBURST',action='store_true',help='Flag channel when BPASS template RFI is detected in any timestep, i.e. should detect pulsed narrowband RFI')
+    parser.add_argument('--flagcorrs',type=int,nargs='+',default=[],help='List of sb nodes [0,15] to flag, in addition to whichever ones are in nsfrb.config')
+    parser.add_argument('--flagants',type=int,nargs='+',default=[],help='List of antennas to flag, in addition to whichever ones are in nsfrb.config')
+    parser.add_argument('--flagchans',type=int,nargs='+',default=[],help='List of channels [0,(16*nchans_per_node - 1)] to flag')
+    parser.add_argument('--flagbase',type=int,nargs='+',default=[],help='List of baselines [0,4655] to flag')
     parser.add_argument('--nbase',type=int,help='Expected number of baselines',default=4656)
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of processes used for multithreading; only used if --multiimage is set; default=16',default=16)
     parser.add_argument('--multiimage',action='store_true',help='If set, uses multithreading for imaging')
