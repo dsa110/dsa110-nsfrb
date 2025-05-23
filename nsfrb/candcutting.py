@@ -538,7 +538,7 @@ def read_candfile(fname):
     csvfile.close()
     return raw_cand_names,finalcands
 
-def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0):
+def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0,maxcands=np.inf):
 
     t1 = time.time()
     printlog("Searching for candidates with S/N > " + str(SNRthresh) + "...",output_file=output_file)
@@ -549,6 +549,14 @@ def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widt
 
 
     canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs = np.nonzero(image_tesseract_binned>=SNRthresh)
+    if ~np.isinf(maxcands) and len(canddec_idxs)>maxcands:
+        printlog("Limiting to max " + str(maxcands) + " candidates",output_file=output_file)
+        candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
+        idxs = np.argsort(candsnrs)[-maxcands:]
+        canddec_idxs = canddec_idxs[idxs]
+        candra_idxs = candra_idxs[idxs]
+        candwid_idxs = candwid_idxs[idxs]
+        canddm_idxs = canddm_idxs[idxs]
     printlog(fname + " CANDS::::",output_file=output_file)
     printlog(canddec_idxs,output_file=output_file)
     printlog(candra_idxs,output_file=output_file)
@@ -681,7 +689,8 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                     RA_axis,DEC_axis,
                     widthtrials,DM_trials_use,canddict,
                     raidx_offset=np.abs(image.shape[1]-searched_image.shape[1]),
-                    decidx_offset=np.abs(image.shape[0]-searched_image.shape[0]))
+                    decidx_offset=np.abs(image.shape[0]-searched_image.shape[0]),
+                    maxcands=args['maxcands'])
 
     #prune candidates with infinite signal-to-noise for clustering
     cands_noninf = []

@@ -32,7 +32,7 @@ def read_buffer_multisamp(reader, nbls, nchan, npol,nsamps,dtype=np.float32,dtyp
 
     page = reader.getNextPage()
     reader.markCleared()
-    print(page,type(page))
+    #print(page,type(page))
     data = np.frombuffer(page.tobytes(),dtype=dtype)
     data = data.view(dtype)
     data = data.reshape(-1, 2).view(dtypecomplex).squeeze(axis=-1)
@@ -86,7 +86,7 @@ def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize
     else:
         #read header
         header = reader.getHeader()
-        print(header)
+        #print(header)
         mjd = np.float64(header['MJD'])
         sb = int(header['SB'])
         dec = np.float32(header['DEC'])

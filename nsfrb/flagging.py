@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,tsamp
 
 
-def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf,flagged_chans=np.array([]),flagged_baseline_idxs=np.array([])):
+def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf,flagged_chans=np.array([]),flagged_baseline_idxs=np.array([]),verbose=False,returnidxs=False):
     """
     Removes visibilities containing flagged antennas and below minimum 
     baseline length
@@ -56,9 +56,9 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
             flagged_vis.append(list(bname.index.values).index(i))
 
     flagged_vis = np.array(flagged_vis,dtype=int)
-    print("Flagged visibilities:",np.array(list(bname))[flagged_vis])
+    if verbose: print("Flagged visibilities:",np.array(list(bname))[flagged_vis])
     unflagged_vis = np.array(list(set(np.arange(len(bname)))-set(flagged_vis)),dtype=int)
-    print("Unflagged visibilities:",np.array(list(bname))[unflagged_vis])
+    if verbose: print("Unflagged visibilities:",np.array(list(bname))[unflagged_vis])
     antenna_order = list(set(antenna_order)-set(flagged_antennas))
     bname = bname[np.array(bname.index.values.tolist())[unflagged_vis]]
     blen = blen[unflagged_vis]
@@ -74,7 +74,7 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
     blen = blen[blen_mask]
     UVW = UVW[:,blen_mask,:]
     dat = dat[:,blen_mask,:,:]
-
+    unflagged_vis = unflagged_vis[blen_mask]
 
     #flag corrs
     if len(flagged_corrs) > 0:
@@ -97,8 +97,9 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
             flag_channels = fct(dat)
             if len(flag_channels)>0:
                 dat[:,:,flag_channels,:] = np.nan
-            print("Flagging channels:",flag_channels,"using template",fct)
-
+            if verbose: print("Flagging channels:",flag_channels,"using template",fct)
+    if returnidxs:
+        return dat, bname, blen, UVW, antenna_order,unflagged_vis
     return dat, bname, blen, UVW, antenna_order
 
 def fct_FRCBAND(dat):

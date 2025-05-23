@@ -224,11 +224,14 @@ def uniform_grid(u, v, image_size, pixel_resolution, pixperFWHM):
     i_indices = ((u + uv_max) / grid_res).astype(int)
     j_indices = ((v + uv_max) / grid_res).astype(int)
 
+    """
     #remove long baselines
     uvs = np.sqrt(u**2 + v**2)
+    print(i_indices.shape)
     i_indices = i_indices[uvs<uv_max]
     j_indices = j_indices[uvs<uv_max]
-
+    print(j_indices.shape)
+    """
     #get conjugate baselines
     i_conj_indices = image_size - i_indices - 1
     j_conj_indices = image_size - j_indices - 1

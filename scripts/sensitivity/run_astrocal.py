@@ -14,6 +14,8 @@ from matplotlib.patches import Ellipse
 from nsfrb.config import *
 import numpy as np
 import csv
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import os
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
@@ -232,7 +234,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
         plt.plot(faxis,pfunc(faxis),color='red')
         plt.fill_between(faxis,pfunc_down(faxis),pfunc_up(faxis),color='red',alpha=0.5)
-    plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper')
+    plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4)
     plt.xlabel("Mean Pixel Value per Time Sample (arb. units)")
     plt.ylabel("NVSS Flux (mJy)")
     plt.title("Last Updated: " + Time.now().isot)
@@ -412,7 +414,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
     plt.figure(figsize=(12,12))
     plt.axvline(0,color='grey',alpha=0.5)
     plt.axhline(0,color='grey',alpha=0.5)
-    plt.scatter(allRAerrs*60,allDECerrs*60,c=allresids,marker="o",s=100,cmap='copper')
+    plt.scatter(allRAerrs*60,allDECerrs*60,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4)
     if len(target)>0:
         plt.errorbar(target_table[str('outriggers' if outriggers else 'core') + "_RA_offset_deg"]*60,target_table[str('outriggers' if outriggers else 'core') + "_DEC_offset_deg"]*60,
                 xerr=60*target_table[str('outriggers' if outriggers else 'core') + "_RA_error_deg"],yerr=60*target_table[str('outriggers' if outriggers else 'core') + "_DEC_error_deg"],capsize=10,color='red')
@@ -432,7 +434,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
 
     if len(allgulpoffsets)>=2:
         plt.figure(figsize=(12,12))
-        plt.scatter(allgulpoffset_times,allgulpoffsets,c=allgulpresids,marker='o',s=100,cmap='copper')
+        plt.scatter(allgulpoffset_times,allgulpoffsets,c=allgulpresids,marker='o',s=100,cmap='copper',alpha=0.4)
         if len(target)>0:
             plt.plot(allgulpoffset_times,target_table[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_int"] + target_table[str('outriggers' if outriggers else 'core') + "_gulp_RA_drift_slope"]*allgulpoffset_times,'--',color='red')
         else:
@@ -598,11 +600,22 @@ def astrocal(args):
         print("Running astrometric calibration pipeline with RFC sources ",idxnames)
     else:
         
-        fluxth = np.sort(vis_Sfluxes)[-min([len(vis_Sfluxes),args.numsources_RFC])]
+        if args.minsrc_RFC<len(vis_Sfluxes):
+            useidxs = (np.argsort(vis_Sfluxes)[::-1])[args.minsrc_RFC:min([args.minsrc_RFC+args.numsources_RFC,len(vis_Sfluxes)])]#[max([0,len(vis_Sfluxes)-(args.numsources_RFC+args.minsrc_RFC)]):max([0,len(vis_Sfluxes)-args.minsrc_RFC])]
+        else:
+            print("invalid min src")
+            return
+        bright_coords = vis_coords[useidxs]
+        bright_RAerrs_mas = vis_RAerrs_mas[useidxs]
+        bright_DECerrs_mas = vis_DECerrs_mas[useidxs]
+        bright_Sfluxes = vis_Sfluxes[useidxs]
+        """
+        fluxth = np.sort(vis_Sfluxes)[max([0,len(vis_Sfluxes)-(args.numsources_RFC+args.minsrc_RFC)]):max([0,len(vis_Sfluxes)-args.minsrc_RFC])]
         bright_coords = vis_coords[vis_Sfluxes>=fluxth]
         bright_RAerrs_mas = vis_RAerrs_mas[vis_Sfluxes>=fluxth]
         bright_DECerrs_mas = vis_DECerrs_mas[vis_Sfluxes>=fluxth]
         bright_Sfluxes = vis_Sfluxes[vis_Sfluxes>=fluxth]
+        """
         print("Running astrometric calibration pipeline with " + str(len(bright_coords)) + " brightest RFC sources at dec=" + str(search_dec) + ":")
 
    
@@ -736,7 +749,7 @@ def astrocal(args):
         else:
             full_img = np.zeros((image_size,image_size,ngulps))
         print("Image shape:",full_img.shape)
-        buff = args.buff#50
+        buff = args.buff_astrocal#50
 
         for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
 
@@ -957,7 +970,7 @@ def astrocal(args):
             
         # ASTROMETRIC TEST
         # find the peak pixel in the vicinity of the coordinates
-        buff = args.buff#50
+        buff = args.buff_astrocal#50
         
 
 
@@ -1139,10 +1152,21 @@ def speccal(args):
         bright_nvssms = vis_nvssms[idxs]
         print("Running astrometric calibration pipeline with NVSS sources ",idxnames)
     else:
-        fluxth = np.sort(vis_nvssfluxes)[-min([len(vis_nvssfluxes),args.numsources_NVSS])]
+        #useidxs = np.argsort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
+        if args.minsrc_NVSS < len(vis_nvssfluxes):
+            useidxs = (np.argsort(vis_nvssfluxes)[::-1])[args.minsrc_NVSS:min([args.minsrc_NVSS+args.numsources_NVSS,len(vis_nvssfluxes)])]#
+        else:
+            print("invalid min source")
+            return
+        bright_nvsscoords = vis_nvsscoords[useidxs]
+        bright_nvssfluxes = vis_nvssfluxes[useidxs]
+        bright_nvssms = vis_nvssms[useidxs]
+        """
+        fluxth = np.sort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
         bright_nvsscoords = vis_nvsscoords[vis_nvssfluxes>=fluxth]
         bright_nvssfluxes = vis_nvssfluxes[vis_nvssfluxes>=fluxth]
         bright_nvssms = vis_nvssms[vis_nvssfluxes>=fluxth]
+        """
         print("Running astrometric calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest NVSS sources at dec=" + str(search_dec) + ":")
 
 
@@ -1253,7 +1277,7 @@ def speccal(args):
 
         print(bright_idx,fnum,gulps)
         g=0
-        buff = args.buff
+        buff = args.buff_speccal
         min_gridsize = image_size
         copydir = vis_dir + bright_nvssnames[bright_idx].replace(" ","") + "/"
         sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
@@ -1425,6 +1449,18 @@ def speccal(args):
 
         
         #find the expected source position based on astrometric cal offsets and errors...somehow...then get brightest pixel
+        astrocaltable_f = open(table_dir + "NSFRB_astrocal.json","rb")
+        astrocaltable = json.load(astrocaltable_f)
+        astrocaltable_f.close()
+        if 'core_RA_offset_deg' in astrocaltable.keys() and 'core_DEC_offset_deg' in astrocaltable.keys():
+            print("applying best astrometric correction:",astrocaltable['core_RA_offset_deg'],astrocaltable['core_DEC_offset_deg'])
+            ra_grid_2D -= astrocaltable['core_RA_offset_deg']
+            dec_grid_2D -= astrocaltable['core_DEC_offset_deg']
+        #if 'core_RA_error_deg' in astrocaltable.keys() and 'core_DEC_error_deg' in astrocaltable.keys():
+            #buff = int(np.ceil(3*(astrocaltable['core_RA_error_deg'] + astrocaltable['core_DEC_error_deg'])/2)/np.abs(dec_grid_2D[1,0]-dec_grid_2D[0,0]))
+            #print("new buffer:",buff)
+            
+
         closepix = np.unravel_index(np.argmin(bright_nvsscoords[bright_idx].separation(SkyCoord(ra_grid_2D*u.deg,
                                                                                            dec_grid_2D*u.deg,frame='icrs'))),ra_grid_2D.shape)
         bbox = (max([closepix[0]-buff,0]),
@@ -1444,8 +1480,14 @@ def speccal(args):
             peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
             bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
             bright_pixcoord = SkyCoord(ra_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
+        """
+        peakpix = np.unravel_index(np.argmin(bright_nvsscoords[bright_idx].separation(SkyCoord(ra_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]*u.deg,
+            dec_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]*u.deg,frame='icrs'))),bbox)
+        bright_pixcoord = bright_nvsscoords[bright_idx]
+        bright_pixel = closepix #
+        """
         bright_pixel = np.unravel_index(np.argmin(bright_pixcoord.separation(SkyCoord(ra=ra_grid_2D*u.deg,dec=dec_grid_2D*u.deg,frame='icrs')).value),ra_grid_2D.shape)
-
+        
         #plotting
         plt.figure(figsize=(12,12))
         fullmean = True
@@ -1558,10 +1600,13 @@ if __name__=="__main__":
     parser.add_argument('--search_dec',type=float,help='If given, searches for source observations at this dec; otherwise uses median dec from past day',default=180.0)
     parser.add_argument('--numsources_NVSS',type=int,help='Maximum number of sources to use for fluxcal, takes the brightest within 0.5 degrees of the current dec, default=10',default=10)
     parser.add_argument('--numsources_RFC',type=int,help='Maximum number of sources to use for fluxcal, takes the brightest within 0.5 degrees of the current dec, default=10',default=10)
+    parser.add_argument('--minsrc_NVSS',type=int,help='Number of sources to skip',default=0)
+    parser.add_argument('--minsrc_RFC',type=int,help='Number of sources to skip',default=0)
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=8)
     parser.add_argument('--image_size',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
-    parser.add_argument('--buff',type=int,help='Radius in pixels around the NVSS position to search for peak pixel, default=5',default=5)
+    parser.add_argument('--buff_speccal',type=int,help='Radius in pixels around the NVSS position to search for peak pixel, default=5',default=5)
+    parser.add_argument('--buff_astrocal',type=int,help='Radius in pixels around the NVSS position to search for peak pixel, default=5',default=5)
     parser.add_argument('--flagSWAVE',action='store_true',help='Flag channels when SWAVE template RFI is detected, which manifests as a 2 Hz sin wave over ~5 minutes of data')
     parser.add_argument('--flagBPASS',action='store_true',help='Flag channels when BPASS template RFI is detected, which is simpl comparison to bandpass mean in visibilities')
     parser.add_argument('--flagFRCBAND',action='store_true',help='Flag channels in FRC miltiary allocation 1435-1525 MHz')
