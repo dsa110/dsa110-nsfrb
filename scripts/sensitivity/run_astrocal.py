@@ -198,6 +198,28 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         
             print("Updated flux conversion fit: FLUX = (",popt[1],"+-",popterrs[1],") + (",popt[0],"+-",popterrs[0],")MEAS_FLUX") 
         allresids = np.abs((allnvssfluxes - pfunc(allfluxs))/allnvssfluxes)
+
+        #estimate Smin from noise level
+        try:
+            noisef = open(noise_dir + "noise_301x301.pkl","rb")
+            stat_noise = pkl.load(noisef)[0][1]
+            noisef.close()
+            Smin = (stat_noise[1]/nchans)*popt[0] + popt[1]
+            Smin_uperr = ((stat_noise[1]/nchans)*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
+            Smin_loerr = Smin - ((stat_noise[1]/nchans)*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
+            if len(target)>0:
+                target_table[arraykey + "_Smin"] = Smin
+                target_table[arraykey + "_Smin_uperr"] = Smin_uperr
+                target_table[arraykey + "_Smin_loerr"] = Smin_loerr
+            else:
+                tab[arraykey + "_Smin"] = Smin
+                tab[arraykey + "_Smin_uperr"] = Smin_uperr
+                tab[arraykey + "_Smin_loerr"] = Smin_loerr
+        except Exception as exc:
+            print(exc)
+            Smin = np.nan
+        """
+        allresids = np.abs((allnvssfluxes - pfunc(allfluxs))/allnvssfluxes)
         if np.any(allresids > fitresid_th):
             Smin = np.nanpercentile(allnvssfluxes[allresids > fitresid_th],90)
             print("Estimating sensitivity limit from 90th percentile of sources with > ",100*fitresid_th,"% Flux Error: Smin=",Smin,"mJy")
@@ -211,6 +233,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             else:
                 tab[arraykey + "_Smin"] = np.nan
             Smin = np.nan
+        """
     except Exception as exc:
         badsoln = True
         print("Flux cal linear fit failed with error:",exc)
@@ -243,6 +266,20 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
 
     if not badsoln and not np.isnan(Smin):
         plt.axhline(Smin,color='purple',linestyle='--')
+        plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
+        plt.text(0.06,Smin,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour median): "+str(np.around(Smin))+" mJy",fontsize=15)
+        print("Estimated sensitivity:",Smin,"mJy")
+    #estimate and plot theoretical sensitivity
+    SEFD=7000
+    N=97 - int(0 if outriggers else len(outrigger_antennas)) - len(bad_antennas)
+    BW = chanbw*nchans*1E6
+    print(N,BW,tsamp_ms)
+    NSFRBsens = 2*SEFD*1000/np.sqrt((N*(N-1))*BW*tsamp_ms*2/1000) #mJy
+    print("Comparing to theoretical sensitivity:",NSFRBsens,"mJy")
+    plt.axhline(NSFRBsens,color='blue',linestyle='--')
+    plt.text(0.07,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    plt.ylim(NSFRBsens/2)
+
     #plt.yscale("log")
     #plt.xscale("log")
     plt.colorbar(label="Linear Fit Residual")

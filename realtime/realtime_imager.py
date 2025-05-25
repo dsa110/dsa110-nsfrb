@@ -23,7 +23,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rtbench_file,nsamps
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rtbench_file,nsamps,T
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
@@ -344,9 +344,15 @@ def main(args):
                                             
         
         #if verbose: printlog(str("Imaging complete:" + str(time.time()-timage) + "s"),output_file=logfile)
+        rtime=time.time()-timage
         ftime = open(rtbench_file,"a")
-        ftime.write(str(time.time()-timage)+"\n")
+        ftime.write(str(rtime)+"\n")
         ftime.close()
+        if rtime>T:
+            executor.shutdown()
+            printlog("Realtime exceeded, shutting down imager",output_file=logfile)
+            return 
+
 
         #send to proc server
         if args.save:
