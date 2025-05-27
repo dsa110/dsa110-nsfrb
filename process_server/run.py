@@ -83,6 +83,8 @@ Dask manager
 import dsautils.dsa_store as ds
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/candidates'
+ETCDKEY_TIMING = f'/mon/nsfrb/timing'
+ETCDKEY_PACKET = f'/mon/nsfrb/packets'
 
 from nsfrb import searching as sl
 """
@@ -416,6 +418,10 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
                         "img_search_shape":fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
+    timing_dict = ETCD.get_dict(ETCDKEY_TIMING)
+    timing_dict["search_time"]=future.result()[-1]
+    ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
+
     printlog(future.result()[0],output_file=processfile)
     pl.binary_plot(future.result()[0],SNRthresh,timestepisot,RA_axis,DEC_axis)
     printlog("****Thread Completed****",output_file=processfile)
@@ -431,19 +437,11 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
         del fullimg_dict[timestepisot]
     return
 
+
 ECODE_BREAK = -1
 ECODE_CONT = -2
 ECODE_SUCCESS = 0
-multiport_accepting = dict()
-def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,headersize,datasize,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
-                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
-                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor):
-    """
-    This task sets up the given socket to accept connections, reads
-    data when a client connects, and submits a search task
-    """
-    if ii != -1: multiport_accepting[ii] = False
+def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,headersize,datasize,testh23,offline):
     socksuffix = "SOCKET " + str(ii) + " >>"
     printlog(socksuffix + "accepting connection...",output_file=processfile,end='')
     clientSocket,address = servSockD.accept()
@@ -522,7 +520,7 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             totalbytessend += clientSocket.send(successmsg)
         printlog(socksuffix+"Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
         return ECODE_CONT#continue
-    
+
     #try to parse to get address
     try:
         corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=headersize,datasize=datasize,port=port,corr_address=corr_address,testh23=testh23)
@@ -555,15 +553,27 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
     if pflag != 0:
         return ECODE_CONT #continue
     printlog(socksuffix+"Data: " + str(arrData),output_file=processfile)
-    
-    #reopen
-    if ii != -1: multiport_accepting[ii] = True
 
+    #reopen
+
+    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData
+
+multiport_accepting = dict()
+def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,ii,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff):
+    """
+    This task sets up the given socket to accept connections, reads
+    data when a client connects, and submits a search task
+    """
+
+    socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
     if img_id_isot not in fullimg_dict.keys():
         fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])))
 
-    printlog("IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
+    printlog(socksuffix+"IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
     #add image and update flags
     fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
     #if the image is complete, start the search
@@ -587,38 +597,43 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
 
 
         #make slow fullimag object
-        slowdone = False
-        for k in slow_fullimg_dict.keys():
-            img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
-            if (not slow_fullimg_dict[k].slow_is_full()) and foundmjd:
-                printlog(socksuffix+"SLOW MJD:" + str(img_id_mjd),output_file=processfile)
-                printlog(socksuffix+str((img_id_mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
-                slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
-                slowdone = True
-                break
-        if not slowdone:
-            printlog(socksuffix+"FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
-            slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),slow=True)
-            slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
-            k = img_id_isot
-        slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
-
+        if slow:
+            slowdone = False
+            for k in slow_fullimg_dict.keys():
+                img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
+                if (not slow_fullimg_dict[k].slow_is_full()) and foundmjd:
+                    printlog(socksuffix+"SLOW MJD:" + str(img_id_mjd),output_file=processfile)
+                    printlog(socksuffix+str((img_id_mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
+                    slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
+                    slowdone = True
+                    break
+            if not slowdone:
+                printlog(socksuffix+"FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
+                slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),slow=True)
+                slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+                k = img_id_isot
+            slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
+        else:
+            slowsearch_now = False
         #make imgdiff fullimag object
-        imgdiffdone = False
-        for kd in imgdiff_fullimg_dict.keys():
-            img_idx,foundmjd = imgdiff_fullimg_dict[kd].imgdiff_mjd_in_img(img_id_mjd)
-            if (not imgdiff_fullimg_dict[kd].imgdiff_is_full()) and foundmjd:
-                printlog(socksuffix+"IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
-                printlog(socksuffix+str((img_id_mjd - Time(str(kd),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " imgdiff append:" + str(imgdiff_fullimg_dict[kd].slow_counter),output_file=processfile)
-                imgdiff_fullimg_dict[kd].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
-                imgdiffdone=True
-                break
-        if not imgdiffdone:
-            printlog(socksuffix+"FIRST IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
-            imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
-            imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
-            kd = img_id_isot
-        imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
+        if imgdiff:
+            imgdiffdone = False
+            for kd in imgdiff_fullimg_dict.keys():
+                img_idx,foundmjd = imgdiff_fullimg_dict[kd].imgdiff_mjd_in_img(img_id_mjd)
+                if (not imgdiff_fullimg_dict[kd].imgdiff_is_full()) and foundmjd:
+                    printlog(socksuffix+"IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
+                    printlog(socksuffix+str((img_id_mjd - Time(str(kd),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " imgdiff append:" + str(imgdiff_fullimg_dict[kd].slow_counter),output_file=processfile)
+                    imgdiff_fullimg_dict[kd].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
+                    imgdiffdone=True
+                    break
+            if not imgdiffdone:
+                printlog(socksuffix+"FIRST IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
+                imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
+                imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+                kd = img_id_isot
+            imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
+        else:
+            imgdiffsearch_now = False
 
         #submit task
         stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
@@ -879,7 +894,7 @@ def main(args):
             servSockD_list[ii].listen(args.maxconnect)
             printlog("Made connection",output_file=processfile)
             printlog("")
-            multiport_accepting[ii] = True
+            #multiport_accepting[ii] = True
 
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
@@ -899,14 +914,17 @@ def main(args):
         printlog(slow_fullimg_dict,output_file=processfile)
         printlog(imgdiff_fullimg_dict,output_file=processfile)
         printlog("----------------------------------------",output_file=processfile)
+        packet_dict = dict()
+        packet_dict["dropped"] = 0
         if len(args.multiport)==0: 
             ret = multiport_task(servSockD,-1,port,maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor)
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff)
             if type(ret) == int:
                 if ret == ECODE_CONT:
+                    packet_dict["dropped"] += 1
                     printlog("multiport task exited with error code " + str(ret),output_file=processfile)
                     printlog("--continuing",output_file=processfile)
                     continue
@@ -922,18 +940,28 @@ def main(args):
                     break
             else:
                task_list += list(ret) 
+            ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
         else:
-            for ii in range(len(servSockD_list)):
-                #if multiport_accepting[ii]:
-                #printlog("TASK " + str(ii),output_file=processfile)
-                
-                #try submitting immediately then waiting for all tasks from this iteration to finish
-                multiport_task_list.append(executor.submit(multiport_task,servSockD_list[ii],ii,args.multiport[ii],maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
+            #SELECT
+            readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout)
+            printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
+            for ii in range(len(readsockets)):
+                #read data
+                ret=readcorrdata(readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
+                                    maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
+                                    args.offline)
+                if type(ret) != int:
+                    corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = ret
+                    multiport_task_list.append(executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+                                    ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor))
-                multiport_num_list.append(ii)
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff))
+                    multiport_num_list.append(ii)
+                else:
+                    packet_dict["dropped"] += 1
+            ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
             wait(multiport_task_list)
 
             #check if any have finished
@@ -1032,6 +1060,8 @@ if __name__=="__main__":
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     parser.add_argument('--multiport',nargs='+',default=[],help='List of port numbers to listen on, default using single port specified in --port',type=int)
     parser.add_argument('--imgdiffgulps',type=int,help='Number of gulps to search at a time with image differencing, default=' + str(config.ngulps_per_file),default=config.ngulps_per_file)
+    parser.add_argument('--slow',action='store_true',help='Activate slow search pipeline, which bins data by 5 samples and re-searches')
+    parser.add_argument('--imgdiff',action='store_true',help='Activate image differencing search pipeline, which bins data by 25 samples and searches 5-minute chunk at DM=0')
     args = parser.parse_args()
 
 

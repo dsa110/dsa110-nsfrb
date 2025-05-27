@@ -149,6 +149,29 @@ maxrawsamps = 2250
 
 #psrdada key
 NSFRB_PSRDADA_KEY = 0xcaba
+NSFRB_PSRDADA_TESTKEYS = {0:0xcab0,
+                          1:0xcab1,
+                          2:0xcab2,
+                          3:0xcab3,
+                          4:0xcab4,
+                          5:0xcab5,
+                          6:0xcab6,
+                          7:0xcab7,
+                          8:0xcab8,
+                          9:0xcab9,
+                          10:0xcaba,
+                          11:0xcabb,
+                          12:0xcabc,
+                          13:0xcabd,
+                          14:0xcabe,
+                          15:0xcabf}
 NSFRB_CANDDADA_KEY = 0xcada
 NSFRB_SRCHDADA_KEY = 0xcaea
 NSFRB_TOADADA_KEY = 0xcafa
+
+NSFRB_PSRDADA_BYTES = 14899200
+NSFRB_CANDDADA_BYTES = 144961600
+NSFRB_SRCHDADA_BYTES = 28992320
+NSFRB_TOADADA_BYTES = 28992320
+
+

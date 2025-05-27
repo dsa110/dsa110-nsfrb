@@ -282,7 +282,6 @@ default_PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,gridsize,DEC_axis[int
 
 
 
-
 """
 pre-computed cutoff pixels
 """
@@ -1664,7 +1663,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     global default_PSF_params
     global PSF_dict
 
-    default_PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,kernel_size,fullimg.img_dec,default_PSF_params,default_PSF,nsamps=nsamps)
+    #default_PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,kernel_size,fullimg.img_dec,default_PSF_params,default_PSF,nsamps=nsamps)
     global last_frame
     global last_frame_init_idx
     global last_frame_slow
@@ -1722,7 +1721,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         if realtime:
             rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_KEY)
             rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_KEY)
-            rtwrite(fullimg.image_tesseract_searched,key=NSFRB_TOADADA_KEY)
+            rtwrite(TOAs,key=NSFRB_TOADADA_KEY)
         else:
             f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_searched.npy","wb")
             np.save(f,fullimg.image_tesseract_searched)
@@ -1756,9 +1755,9 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     ftime.close()
 
     if np.nanmax(fullimg.image_tesseract_searched)>SNRthresh:
-        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + ".csv",slow,imgdiff
+        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + ".csv",slow,imgdiff,time.time()-timing1
     else:
-        return fullimg.image_tesseract_searched,None,slow,imgdiff
+        return fullimg.image_tesseract_searched,None,slow,imgdiff,time.time()-timing1
 
 
 

@@ -431,11 +431,19 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
         del fullimg_dict[timestepisot]
     return
 
-
 ECODE_BREAK = -1
 ECODE_CONT = -2
 ECODE_SUCCESS = 0
-def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,headersize,datasize,testh23,offline):
+multiport_accepting = dict()
+def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,headersize,datasize,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor):
+    """
+    This task sets up the given socket to accept connections, reads
+    data when a client connects, and submits a search task
+    """
+    if ii != -1: multiport_accepting[ii] = False
     socksuffix = "SOCKET " + str(ii) + " >>"
     printlog(socksuffix + "accepting connection...",output_file=processfile,end='')
     clientSocket,address = servSockD.accept()
@@ -514,7 +522,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,header
             totalbytessend += clientSocket.send(successmsg)
         printlog(socksuffix+"Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
         return ECODE_CONT#continue
-
+    
     #try to parse to get address
     try:
         corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=headersize,datasize=datasize,port=port,corr_address=corr_address,testh23=testh23)
@@ -547,27 +555,15 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,header
     if pflag != 0:
         return ECODE_CONT #continue
     printlog(socksuffix+"Data: " + str(arrData),output_file=processfile)
-
+    
     #reopen
+    if ii != -1: multiport_accepting[ii] = True
 
-    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData
-
-multiport_accepting = dict()
-def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,ii,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
-                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
-                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor):
-    """
-    This task sets up the given socket to accept connections, reads
-    data when a client connects, and submits a search task
-    """
-
-    socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
     if img_id_isot not in fullimg_dict.keys():
         fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])))
 
-    printlog(socksuffix+"IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
+    printlog("IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
     #add image and update flags
     fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
     #if the image is complete, start the search
@@ -883,7 +879,7 @@ def main(args):
             servSockD_list[ii].listen(args.maxconnect)
             printlog("Made connection",output_file=processfile)
             printlog("")
-            #multiport_accepting[ii] = True
+            multiport_accepting[ii] = True
 
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
@@ -927,24 +923,17 @@ def main(args):
             else:
                task_list += list(ret) 
         else:
-            #SELECT
-            readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout)
-            printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
-            for ii in range(len(readsockets)):
-                #read data
-                ret=readcorrdata(readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
-                                    maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
-                                    args.offline)
-                if type(ret) != int:
-                    corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = ret
-
-                    multiport_task_list.append(executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
-                                    ii,args.testh23,
+            for ii in range(len(servSockD_list)):
+                #if multiport_accepting[ii]:
+                #printlog("TASK " + str(ii),output_file=processfile)
+                
+                #try submitting immediately then waiting for all tasks from this iteration to finish
+                multiport_task_list.append(executor.submit(multiport_task,servSockD_list[ii],ii,args.multiport[ii],maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor))
-                    multiport_num_list.append(ii)
+                multiport_num_list.append(ii)
             wait(multiport_task_list)
 
             #check if any have finished

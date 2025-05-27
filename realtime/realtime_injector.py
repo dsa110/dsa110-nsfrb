@@ -25,7 +25,8 @@ my_cnf = cnf.Conf(use_etcd=True)
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,tsamp
-from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra
+#from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra
+from nsfrb.imaging import uv_to_pix
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data
 from nsfrb.plotting import plot_uv_analysis, plot_dirty_images
@@ -107,7 +108,7 @@ def main(args):
         Dec = Dec_axis[int(args.gridsize//2)]
 
         #creating injection
-        offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(Time.now().isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=args.num_time_samples,nchans=args.num_chans,tsamp=tsamp,SNRmin=10000000,SNRmax=100000000)
+        offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(Time.now().isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=args.num_time_samples,nchans=args.num_chans,tsamp=tsamp,SNRmin=args.snr_min_inject,SNRmax=args.snr_max_inject)
         #offsetRA = offsetDEC = 0
 
         if args.snr_inject > 0:
@@ -123,7 +124,7 @@ def main(args):
         noiseless=False
         if args.inject_noiseless:
             noiseless=True
-        inject_img = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=args.num_time_samples,DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly)
+        inject_img = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=args.num_time_samples,DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
         if args.flat_field:
             inject_img = np.ones_like(inject_img)
         elif args.gauss_field:
@@ -198,5 +199,10 @@ if __name__=="__main__":
     parser.add_argument('--point_field',action='store_true',help='Illuminate a point source')
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
     parser.add_argument('--waittime',type=int,help='Time between injections, default 5 minutes',default=5)
+    parser.add_argument('--snr_min_inject',type=float,help='Minimum injection S/N, default 1e7',default=1e7)
+    parser.add_argument('--snr_max_inject',type=float,help='Maximum injection S/N, default 1e8',default=1e8)
+    parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')
+    parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
+    parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     args = parser.parse_args()
     main(args)

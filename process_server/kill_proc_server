@@ -1,4 +1,8 @@
 #!/bin/bash
 
+dada_db -k cada -d
+dada_db -k caea -d
+dada_db -k cafa -d
+
 kill -9 -"$(pgrep run_proc_server)"
 

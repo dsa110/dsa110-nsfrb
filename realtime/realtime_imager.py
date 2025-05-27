@@ -40,7 +40,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,timelogfile
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,timelogfile,NSFRB_PSRDADA_TESTKEYS,local_inject_dir
 
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
@@ -65,7 +65,7 @@ from multiprocessing import Process, Queue
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/fastvis'
 ETCDKEY_INJECT = f'/mon/nsfrb/inject'
-
+ETCDKEY_TIMING = f'/mon/nsfrb/timing'
 
 #flagged antennas/
 TXtask_list = []
@@ -101,7 +101,7 @@ def main(args):
     #verbose = args.verbose
 
     if args.inject:
-        inject_count = 90
+        inject_count = args.inject_interval
 
 
     #printlog("Using multi-threaded imaging with " + str(args.maxProcesses) + "threads",output_file=logfile)
@@ -164,6 +164,9 @@ def main(args):
         dat = None
         while (dat is None) or dat.shape[0]<args.num_time_samples:
             #printlog("Waiting for data in psrdada buffer")
+            #if args.testh23:
+            #    dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_TESTKEYS[args.sb],nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
+            #else:
             dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
             #printlog(str((mjd,sb,Dec)),output_file=logfile)
             assert(sb==args.sb)
@@ -174,6 +177,9 @@ def main(args):
             else:
                 dat = np.concatenate([dat,dat_i])
             #printlog(dat.shape,output_file=logfile)
+        if args.testh23:
+            mjd = Time.now().mjd
+
         timage = time.time()
         
         #manual flagging
@@ -245,7 +251,7 @@ def main(args):
         
 
         #creating injection
-        if args.inject and (inject_count>=90):
+        if args.inject and (inject_count>=args.inject_interval):
             inject_count = 0
             #if verbose: printlog("Injecting pulse",output_file=logfile)
 
@@ -253,31 +259,44 @@ def main(args):
             injection_params = ETCD.get_dict(ETCDKEY_INJECT)
             if injection_params is None:
                 #if verbose: printlog("Injection not ready, postponing",output_file=logfile)
-                inject_count = 90
+                inject_count = args.inject_interval
             else:
                 #update dict
                 if 'ISOT' not in injection_params.keys():
                     injection_params['ISOT'] = time_start_isot
-
+                print(injection_params)
                 #acknowledge receipt
-                injection_params["ack"][args.sb] = True
+                if args.testh23:
+                    for sbi in range(16):
+                        injection_params["ack"][sbi] = True
+                else:
+                    injection_params["ack"][args.sb] = True
 
                 #check if correct time
                 if time_start_isot == injection_params['ISOT']:
-                    injection_params["injected"][args.sb] = True
+                    if args.testh23:
+                        for sbi in range(16):
+                            injection_params["injected"][sbi] = True
+                    else:
+                        injection_params["injected"][args.sb] = True
                 ETCD.put_dict(ETCDKEY_INJECT,injection_params)
 
                 if time_start_isot == injection_params['ISOT']:
                     #if verbose: printlog("Injection" + injection_params['ID'] + "found",output_file=logfile)
                     fname = "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy"
                     #copy
-                    os.system("scp h24.pro.pvt:" + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
+                    if args.testh23:
+                        os.system("cp " + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
+                    else:
+                        os.system("scp h24.pro.pvt:" + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
+                    
+                    
                     #read
                     inject_img = np.load(local_inject_dir + fname)
                     #clear data if we only want the injection
                     if injection_params['inject_only']: dat[:,:,:,:] = 0
                     inject_flat = injection_params['inject_flat']
-                    #if verbose: printlog("Done injecting",output_file=logfile)
+                    if args.verbose: printlog("Done injecting",output_file=logfile)
         else:
             inject_flat = False
             inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
@@ -345,6 +364,22 @@ def main(args):
         
         #if verbose: printlog(str("Imaging complete:" + str(time.time()-timage) + "s"),output_file=logfile)
         rtime=time.time()-timage
+        timing_dict = ETCD.get_dict(ETCDKEY_TIMING)
+        if timing_dict is None:
+            timing_dict = dict()
+        if args.testh23:
+            for sbi in range(16):
+                timing_dict[sbi] = dict()
+                timing_dict[sbi]["ISOT"] = time_start_isot
+                timing_dict[sbi]["image_time"] = rtime
+                #timing_dict[sbi]["tx_time"] = -1
+        else:
+            timing_dict[args.sb] = dict()
+            timing_dict[args.sb]["ISOT"] = time_start_isot
+            timing_dict[args.sb]["image_time"] = rtime
+            #timing_dict[args.sb]["tx_time"] = -1
+        #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
+
         ftime = open(rtbench_file,"a")
         ftime.write(str(rtime)+"\n")
         ftime.close()
@@ -358,10 +393,21 @@ def main(args):
         if args.save:
             np.save(img_dir + time_start_isot + "_rtimage.npy",dirty_img)
         if args.search:
-
-            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,:,0] ,verbose=args.verbose,retries=5,keepalive_time=10)
-            #if args.verbose: printlog(msg,output_file=logfile)
-
+            if args.testh23:
+                ttx = time.time()
+                for sbi in range(16):
+                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(sbi%len(args.multiport))])
+            
+                    #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10)
+                    #if args.verbose: printlog(msg,output_file=logfile)
+                    txtime = time.time()-ttx
+                    timing_dict[sbi]["tx_time"] = txtime
+            else:
+                ttx = time.time()
+                msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(args.sb%len(args.multiport))])
+                txtime = time.time()-ttx
+                timing_dict[args.sb]["tx_time"] = txtime
+        ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
         if args.inject:
             inject_count += 1   
     return
@@ -406,6 +452,8 @@ if __name__=="__main__":
     parser.add_argument('--stagger_multisend',type=float,help='Specifies the time in seconds between sending each subband, default 0 sends all at once',default=0)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
+    parser.add_argument('-T','--testh23',action='store_true')
+    parser.add_argument('--inject_interval',type=int,help='Number of gulps between injections',default=90)
     args = parser.parse_args()
     main(args)
 
