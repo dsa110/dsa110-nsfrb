@@ -83,8 +83,8 @@ Dask manager
 import dsautils.dsa_store as ds
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/candidates'
-ETCDKEY_TIMING = f'/mon/nsfrb/timing'
-ETCDKEY_PACKET = f'/mon/nsfrb/packets'
+ETCDKEY_SEARCHTIMING = f'/mon/nsfrbsearchtiming'
+ETCDKEY_PACKET = f'/mon/nsfrbpackets'
 
 from nsfrb import searching as sl
 """
@@ -418,9 +418,11 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
                         "img_search_shape":fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
-    timing_dict = ETCD.get_dict(ETCDKEY_TIMING)
+    #timing_dict = ETCD.get_dict(ETCDKEY_SEARCHTIMING)
+    #if timing_dict is None: timing_dict = dict()
+    timing_dict = dict()
     timing_dict["search_time"]=future.result()[-1]
-    ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
+    ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
 
     printlog(future.result()[0],output_file=processfile)
     pl.binary_plot(future.result()[0],SNRthresh,timestepisot,RA_axis,DEC_axis)

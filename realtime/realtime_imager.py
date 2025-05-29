@@ -66,6 +66,7 @@ ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/fastvis'
 ETCDKEY_INJECT = f'/mon/nsfrb/inject'
 ETCDKEY_TIMING = f'/mon/nsfrb/timing'
+ETCDKEY_TIMING_LIST = [f'/mon/nsfrbtiming/'+str(i+1) for i in range(len(corrs))]
 
 #flagged antennas/
 TXtask_list = []
@@ -124,17 +125,6 @@ def main(args):
 
 
     #flagging andd baseline cut
-    """fcts = []
-    if args.flagSWAVE:
-        fcts.append(fct_SWAVE)
-    if args.flagBPASS:
-        fcts.append(fct_BPASS)
-    if args.flagFRCBAND:
-        fcts.append(fct_FRCBAND)
-    if args.flagBPASSBURST:
-        fcts.append(fct_BPASSBURST)
-    dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, list(flagged_antennas) + list(args.flagants), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts, flagged_chans=args.flagchans, flagged_baseline_idxs=args.flagbase, bmax=args.bmax)
-    """
     tmp, bname, blen, UVW, antenna_order,keep = flag_vis(np.zeros((nsamps,UVW.shape[1],args.nchans_per_node,2)), bname, blen, UVW, antenna_order, list(flagged_antennas) + list(args.flagants), bmin, [], flag_channel_templates = [], flagged_chans=[], flagged_baseline_idxs=args.flagbase, bmax=args.bmax, returnidxs=True)
     #keep = np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2)>args.bmin
     U = UVW[0,:,1]
@@ -195,59 +185,6 @@ def main(args):
         
         #use MJD to get pointing
         time_start_isot = Time(mjd,format='mjd').isot
-        """
-        #if verbose: printlog("DEC from file:" + str(Dec),output_file=logfile)
-        pt_dec = Dec*np.pi/180.
-        #if verbose: printlog("Pointing dec (deg):" + str(pt_dec*180/np.pi),output_file=logfile)
-        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-        
-
-        #flagging andd baseline cut
-        #fcts = []
-        #if args.flagSWAVE:
-        #    fcts.append(fct_SWAVE)
-        #if args.flagBPASS:
-        #    fcts.append(fct_BPASS)
-        #if args.flagFRCBAND:
-        #    fcts.append(fct_FRCBAND)
-        #if args.flagBPASSBURST:
-        #    fcts.append(fct_BPASSBURST)
-        #dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, list(flagged_antennas) + list(args.flagants), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts, flagged_chans=args.flagchans, flagged_baseline_idxs=args.flagbase, bmax=args.bmax)
-        # 
-        keep = np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2)>args.bmin
-        U = UVW[0,keep,1]
-        V = UVW[0,keep,0]
-        W = UVW[0,keep,2]
-        dat = dat[:,keep,:,:]
-        uv_diag=np.max(np.sqrt(U**2 + V**2))
-        pixel_resolution = (lambdaref / uv_diag) / args.pixperFWHM
-
-        
-
-        U_wavs = U[:,np.newaxis]/(ct.C_GHZ_M/fobs)
-        V_wavs = V[:,np.newaxis]/(ct.C_GHZ_M/fobs)
-        if args.wstack or args.wstack_parallel:
-            W_wavs = W[:,np.newaxis]/(ct.C_GHZ_M/fobs)
-        else:
-            W_wavs = np.zeros((len(W),args.nchans_per_node))
-        i_indices_all,j_indices_all,i_conj_indices_all,j_conj_indices_all = uniform_grid(U_wavs, V_wavs, args.gridsize, pixel_resolution, args.pixperFWHM)
-        bweights_all = np.zeros(U_wavs.shape)
-        if args.briggs:
-            for jj in range(args.nchans_per_node):
-                bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
-        
-        #i_indices_all = np.zeros(U_wavs.shape,dtype=int)
-        #j_indices_all = np.zeros(V_wavs.shape,dtype=int)
-        #k_indices_all = np.zeros(W_wavs.shape,dtype=int)
-        #i_conj_indices_all = np.zeros(U_wavs.shape,dtype=int)
-        #j_conj_indices_all = np.zeros(V_wavs.shape,dtype=int)
-        #k_conj_indices_all = np.zeros(W_wavs.shape,dtype=int)
-        #bweights_all = np.zeros(U_wavs.shape)
-        #if verbose: printlog(str(antenna_order)+str(len(antenna_order)),output_file=logfile)#x_m.shape,y_m.shape,z_m.shape)
-        #if verbose: printlog(str(UVW.shape),output_file=logfile)
-        #if verbose: printlog(UVW,output_file=logfile)
-        #if verbose: printlog("Print bad channels:" + str(np.isnan(dat.mean((0,1,3)))),output_file=logfile)
-        """
         
 
         #creating injection
@@ -315,17 +252,6 @@ def main(args):
         tgrid = time.time()
         #if verbose: printlog("gridding in advance...",output_file=logfile)
         #make U,V,Ws in advance
-        """
-        for jj in range(args.nchans_per_node):
-            chanidx = (args.nchans_per_node*j)+jj
-            #U_wavs[:,jj] = U/(ct.C_GHZ_M/fobs[chanidx])
-            #V_wavs[:,jj] = V/(ct.C_GHZ_M/fobs[chanidx])
-            #if args.wstack or args.wstack_parallel:
-            #    W_wavs[:,jj] = W/(ct.C_GHZ_M/fobs[chanidx])
-            #i_indices_all[:,jj],j_indices_all[:,jj],i_conj_indices_all[:,jj],j_conj_indices_all[:,jj] = uniform_grid(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, pixel_resolution, args.pixperFWHM)
-            #if args.briggs:
-            #    bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
-        """         
 
         for jj in range(args.nchans_per_node):
             #if verbose: printlog("submitting task:"+str(jj),output_file=logfile)
@@ -364,19 +290,22 @@ def main(args):
         
         #if verbose: printlog(str("Imaging complete:" + str(time.time()-timage) + "s"),output_file=logfile)
         rtime=time.time()-timage
-        timing_dict = ETCD.get_dict(ETCDKEY_TIMING)
-        if timing_dict is None:
-            timing_dict = dict()
         if args.testh23:
-            for sbi in range(16):
-                timing_dict[sbi] = dict()
-                timing_dict[sbi]["ISOT"] = time_start_isot
-                timing_dict[sbi]["image_time"] = rtime
+            for sbi in range(len(corrs)):
+                timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
+                if timing_dict is None: timing_dict = dict()
+                timing_dict["corr_num"] = sbi
+                timing_dict["ISOT"] = time_start_isot
+                timing_dict["image_time"] = rtime
+                ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
                 #timing_dict[sbi]["tx_time"] = -1
         else:
-            timing_dict[args.sb] = dict()
-            timing_dict[args.sb]["ISOT"] = time_start_isot
-            timing_dict[args.sb]["image_time"] = rtime
+            timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
+            if timing_dict is None: timing_dict = dict()
+            timing_dict["corr_num"] = args.sb
+            timing_dict["ISOT"] = time_start_isot
+            timing_dict["image_time"] = rtime
+            ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
             #timing_dict[args.sb]["tx_time"] = -1
         #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
 
@@ -395,19 +324,24 @@ def main(args):
         if args.search:
             if args.testh23:
                 ttx = time.time()
-                for sbi in range(16):
+                for sbi in range(len(corrs)):
                     msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(sbi%len(args.multiport))])
             
                     #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10)
                     #if args.verbose: printlog(msg,output_file=logfile)
                     txtime = time.time()-ttx
-                    timing_dict[sbi]["tx_time"] = txtime
+                    timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
+                    if timing_dict is None: timing_dict = dict()
+                    timing_dict["tx_time"] = txtime
+                    ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
             else:
                 ttx = time.time()
                 msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(args.sb%len(args.multiport))])
                 txtime = time.time()-ttx
-                timing_dict[args.sb]["tx_time"] = txtime
-        ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
+                timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
+                if timing_dict is None: timing_dict = dict()
+                timing_dict["tx_time"] = txtime
+                ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
         if args.inject:
             inject_count += 1   
     return
