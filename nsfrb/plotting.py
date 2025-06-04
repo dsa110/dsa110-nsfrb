@@ -599,28 +599,21 @@ def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"
 
         #quantize search time
         search_time_quantize = np.clip(np.array(search_time_all/interval,dtype=int),0,len(time_levels)-1)
+        search_txtime_quantize = np.clip(np.array(search_txtime_all/interval,dtype=int),0,len(time_levels)-1)
         f = open(plotfile_searchtime,"w")
-        f.write("Process Server Search Time (s)\n")
+        f.write("Process Server Search Time (s)  " + " "*2*int(showsamps//3) + "Process Server Cand Stream Time (s)\n")
         for lev_i in np.arange(len(time_levels),dtype=int)[::-1]:
             p = np.array([" "]*len(search_time_all))
             p[search_time_quantize==lev_i] = "*"
-            f.write(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "\n")
-        f.write(tickmarks + "\n")
-        f.write(timelabel + "\n")
-        f.write(" "*int(showsamps//3) + "Time Offset (s)\n")
-        f.write("-"*showsamps + "\n\n\n")
+            p2 = np.array([" "]*len(search_txtime_all))
+            p2[search_txtime_quantize==lev_i] = "*"
 
-        #quantize search time
-        search_time_quantize = np.clip(np.array(search_txtime_all/interval,dtype=int),0,len(time_levels)-1)
-        f.write("Process Server Cand Stream Time (s)\n")
-        for lev_i in np.arange(len(time_levels),dtype=int)[::-1]:
-            p = np.array([" "]*len(search_txtime_all))
-            p[search_time_quantize==lev_i] = "*"
-            f.write(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "\n")
-        f.write(tickmarks + "\n")
-        f.write(timelabel + "\n")
-        f.write(" "*int(showsamps//3) + "Time Offset (s)\n")
-        f.write("-"*showsamps + "\n\n\n")
+            f.write(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "  " + str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "\n")
+        f.write(tickmarks + "  " + tickmarks + "\n")
+        f.write(timelabel + "  " + timelabel + "\n")
+        f.write(" "*int(showsamps//3) + "Time Offset (s)  " + " "*int(showsamps//3) + " "*int(showsamps//3) + "Time Offset (s)\n")
+        f.write("-"*showsamps*2 + "\n\n\n")
+
 
 
 

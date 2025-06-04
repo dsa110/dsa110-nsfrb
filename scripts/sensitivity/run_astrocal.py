@@ -1233,24 +1233,22 @@ def speccal(args):
         #bright_catflags = vis_catflags[idxs]
         print("Running astrometric calibration pipeline with NVSS sources ",idxnames)
     else:
-        #useidxs = np.argsort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
-        if args.minsrc_NVSS < len(vis_nvssfluxes):
-            useidxs = (np.argsort(vis_nvssfluxes)[::-1])[args.minsrc_NVSS:min([args.minsrc_NVSS+args.numsources_NVSS,len(vis_nvssfluxes)])]#
-        else:
-            print("invalid min source")
-            return
-        bright_nvsscoords = vis_nvsscoords[useidxs]
-        bright_nvssfluxes = vis_nvssfluxes[useidxs]
-        #bright_nvssms = vis_nvssms[useidxs]
-        #bright_catflags = vis_catflags[useidxs]
 
-        """
-        fluxth = np.sort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
-        bright_nvsscoords = vis_nvsscoords[vis_nvssfluxes>=fluxth]
-        bright_nvssfluxes = vis_nvssfluxes[vis_nvssfluxes>=fluxth]
-        bright_nvssms = vis_nvssms[vis_nvssfluxes>=fluxth]
-        """
-        print("Running astrometric calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest NVSS sources at dec=" + str(search_dec) + ":")
+        if args.randomsources:
+            print("radnomly selecting " + str(args.numsources_NVSS) + " sources for flux calibration")
+            useidxs = np.random.choice(np.arange(len(vis_nvsscoords),dtype=int),args.numsources_NVSS,replace=False)
+            bright_nvsscoords = vis_nvsscoords[useidxs]
+            bright_nvssfluxes = vis_nvssfluxes[useidxs]
+        else:
+            #useidxs = np.argsort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
+            if args.minsrc_NVSS < len(vis_nvssfluxes):
+                useidxs = (np.argsort(vis_nvssfluxes)[::-1])[args.minsrc_NVSS:min([args.minsrc_NVSS+args.numsources_NVSS,len(vis_nvssfluxes)])]#
+            else:
+                print("invalid min source")
+                return
+            bright_nvsscoords = vis_nvsscoords[useidxs]
+            bright_nvssfluxes = vis_nvssfluxes[useidxs]
+            print("Running flux calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest NVSS sources at dec=" + str(search_dec) + ":")
 
 
     #find the files within the timestamp
@@ -1722,5 +1720,6 @@ if __name__=="__main__":
     parser.add_argument('--reftimeISOT',type=str,help='reference time, default now',default='')
     parser.add_argument('--fluxmin',type=float,help='minimum flux of sources for speccal in mJy',default=0)
     parser.add_argument('--fluxmax',type=float,help='maximum flux of sources for speccal in mJy',default=np.inf)
+    parser.add_argument('--randomsources',action='store_true',help='Select random set of calibrators near the specified declination instead of taking the brightest')
     args = parser.parse_args()
     main(args)

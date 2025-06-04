@@ -1174,7 +1174,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         if args['toslack']:
             #printlog("sending plot to slack...",output_file=cutterfile)
             #send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
-            """
+            
             printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
             
             if slow:
@@ -1183,7 +1183,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                 os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
             else:
                 os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
-            
+            """
             #notify
             f = open(frame_dir + "lastcand_srvfile.txt","w")
             f.write(candplot)

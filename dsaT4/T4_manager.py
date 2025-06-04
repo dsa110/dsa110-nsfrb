@@ -1,4 +1,10 @@
-from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff
+from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis
+from nsfrb import plotting as pl
+from event import names
+import csv
+from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
+from nsfrb.classifying_with_time import classify_images_3D
+from concurrent.futures import ThreadPoolExecutor
 from nsfrb.imaging import uv_to_pix
 from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,DM_trials_slow,gen_boxcar_filter,default_PSF
 import argparse
@@ -36,8 +42,9 @@ compatible with DSA-110 event scheduler
 """
 
 #client = Client('10.41.0.254:8781')
-client = Client('tcp://10.42.0.228:8786')#10.42.0.232:8786')
-LOCK = Lock('update_json')
+#client = ThreadPoolExecutor(40)#Client('tcp://10.42.0.228:8786')#10.42.0.232:8786')
+LOCK = None #Lock('update_json')
+    
 ds = dsa_store.DsaStore()
 """
 LOGGER = dsl.DsaSyslogger()
@@ -94,8 +101,22 @@ from nsfrb.config import cutterfile
 from simulations_and_classifications import generate_PSF_images as scPSF
 def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag):
     raw_cand_names,finalcands = d_future.result()
-    if not args.cluster or len(finalcands)>=args.mincluster:
-        return raw_cand_names,finalcands
+    if not (args.cluster and len(finalcands)>=args.mincluster):
+        #cut by S/N if still too many
+        if args.maxcand:
+            printlog("Identifying max S/N candidate",output_file=cutterfile)
+            sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
+            finalcands = sortedcands[0:1]
+            finalidxs = np.arange(1)
+        elif len(finalcands) >args.maxcands_postcluster:
+            printlog(cand_isot + "has too many candidates to process post-clustering (" + str(len(finalcands)) + ">" + str(args.maxcands_postcluster) + ") limit...",output_file=cutterfile)
+            sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
+            finalcands = sortedcands[:int(args.maxcands_postcluster)]
+            finalidxs = np.arange(len(finalcands),dtype=int)
+            printlog("done, cut to " + str(len(finalcands)) + " candidates",output_file=cutterfile)
+
+
+        return finalcands,finalidxs
     
     finalidxs = np.arange(len(finalcands),dtype=int)
     useTOA=args.useTOA and len(finalcands[0])==6
@@ -144,7 +165,7 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
     return finalcands,finalidxs
 
 
-def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag):
+def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff):
     finalcands,finalidxs = d_future.result()
     classify_flag = (args.classify or args.classify3D)
     useTOA=args.useTOA and len(finalcands[0])==6
@@ -221,6 +242,9 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
         printlog("still fine",output_file=cutterfile)
         printlog("Start classifying " + str(data_array.shape),output_file=cutterfile)
         predictions, probabilities = classify_images_3D(data_array, args.model_weights3D, verbose=args.verbose)
+        if args.testtrigger:
+            predictions = np.zeros(len(finalcands))
+            probabilities = np.zeros(len(finalcands))
         printlog(predictions,output_file=cutterfile)
         printlog(probabilities,output_file=cutterfile)
 
@@ -238,12 +262,17 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
         finalcands = finalcands_new
         if len(finalcands) == 0:
             printlog("No remaining candidates, done",output_file=cutterfile)
+            os.system("rm " + raw_cand_dir + "*" + cand_isot + "*")
             return
+        probabilities = probabilities[predictions==0]
+        predictions = predictions[predictions==0]
+        finalidxs = np.arange(len(finalcands),dtype=int)
     return finalcands,finalidxs,predictions,probabilities
 
 from nsfrb.searching import maxshift
-def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,slow,imgdiff,injection_flag,postinjection_flag):
+def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D):
     res = d_future.result()
+    print("RIGHT HERE",res)
     if res is None:
         return
     elif len(res) == 4:
@@ -254,6 +283,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
         classify_flag = False
     else:
         return
+    print("done parsing result")
     
     #if its an injection write the highest SNR candidate to the injection tracker
     useTOA=args.useTOA and len(finalcands[0])==6
@@ -265,7 +295,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                 wr.writerow([cand_isot,DM_trials_use[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not classify_flag else predictions[j]),(None if not classify_flag else probabilities[j])])
         csvfile.close()
 
-
+    print("done updating recoveries")
     #make final directory for candidates
     os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff)
 
@@ -276,6 +306,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
         if lastname == "None":
             lastname = None
     lnamefile.close()
+    print("done getting lastname")
 
     #lastname =      #once we have etcd, change to 'names.get_lastname()'
     allcandnames = []
@@ -306,6 +337,8 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     lnamefile.close()
     printlog("done naming stuff",output_file=cutterfile)
 
+    print("dones writing to csv")
+    print(finalidxs,finalcands)
     #make subdirectories for candidates
     for j in finalidxs:
 
@@ -314,11 +347,10 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
         os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname)
         os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/voltages")
 
-    #send candidates to slack 
     if len(finalidxs) > 0:
         #make diagnostic plot
         printlog("making diagnostic plot...",output_file=cutterfile,end='')
-        canddict = dict()
+        canddict=dict()
         canddict['ra_idxs'] = [finalcands[j][0] for j in finalidxs]
         canddict['dec_idxs'] = [finalcands[j][1] for j in finalidxs]
         canddict['wid_idxs'] = [finalcands[j][2] for j in finalidxs]
@@ -338,6 +370,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
         timeseries = []
         sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[0 if (slow or imgdiff) else maxshift]+[image.shape[3]])),image],axis=2)
         for i in range(len(finalidxs)):
+            print(i)
             DM = DM_trials_use[int(canddict['dm_idxs'][i])]
 
             sourceimg = sourceimg_all[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
@@ -362,59 +395,65 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                 sourceimg_dm = sourceimg
             timeseries.append(np.nanmean(sourceimg_dm,(0,1,3)))
 
+            print(injection_flag,canddict)
             if not injection_flag:
+                print("IN THIS LOOP FOR SOME REASON")
                 #create json file
                 snr=canddict['snrs'][i]
                 width=int(widthtrials[int(canddict['wid_idxs'][i])])
-                dm=int(DM_trials_use[int(canddict['dm_idxs'][i])])
+                print("HERE")
+                dm=DM_trials_use[int(canddict['dm_idxs'][i])]
+                print(dm,canddict['dec_idxs'],canddict['ra_idxs'],RA_axis_2D.shape)
                 ra=RA_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #RA_axis[int(canddict['ra_idxs'][i])]
+                print("HEREHERE")
                 dec=DEC_axis_2D[int(canddict['dec_idxs'][i]),int(canddict['ra_idxs'][i])] #DEC_axis[int(canddict['dec_idxs'][i])]
+                print("HALO")
                 trigname = canddict['names'][i]
                 printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
+                print("ALMOST DONE")
                 if useTOA:
                     toa = canddict['TOAs'][i]
                     cand_mjd = Time(Time(cand_isot,format='isot').mjd + (canddict['TOAs'][i]*(tsamp_use)/1000/86400),format='mjd').mjd
                 else:
                     cand_mjd = Time(cand_isot,format='isot').mjd
-                
+                print("ALMOST ALMOST DONE")
                 fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
+
                 printlog(fl,output_file=cutterfile)
-    if len(res) == 4:
+    
+        print("writecands done")
         if not injection_flag:
-            return finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,fl
+            return list(res) + [canddict,allcandnames,timeseries,fl]
         else:
-            return finalcands,finalidxs,predictions,probabilities,canddict,allcandnames
-    elif len(res) == 2:
-        if not injection_flag:
-            return finalcands,finalidxs,canddict,allcandnames,fl
-        else:
-            return finalcands,finalidxs,canddict,allcandnames
+            return list(res) + [canddict,allcandnames,timeseries]
     return
 
-def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,output_dir,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
+def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
     res = d_future.result()
     if res is None:
         return
-    elif len(res) == 7:
-        finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,jsonfname = res
+    elif len(res) == 8:
+        finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
         classify_flag = True
         #injection_flag = True
-    elif len(res) == 6:
-        finalcands,finalidxs,predictions,probabilities,allcandnames,canddict = res
+    elif len(res) == 7:
+        finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,timeseries = res
         classify_flag = True
         #injection_flag = False
-    elif len(res) == 5:
-        finalcands,finalidxs,canddict,allcandnames,jsonfname = res
+    elif len(res) == 6:
+        finalcands,finalidxs,canddict,allcandnames,timeseries,jsonfname = res
         classify_flag = False
         #injection_flag = True
-    elif len(res) == 4:
-        finalcands,finalidxs,allcandnames,canddict = res
+    elif len(res) == 5:
+        finalcands,finalidxs,canddict,allcandnames,timeseries = res
         classify_flag = False
         #injection_flag = False
     else:
         return
 
     printlog("Creating candplot...",output_file=cutterfile)
+    print(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+    print(canddict,image,RA_axis,DEC_axis)
     candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/",show=False,s100=args.SNRthresh/2,
@@ -423,9 +462,21 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff)
 
     if args.toslack:
-        printlog("sending plot to slack...",output_file=cutterfile)
-        send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+        #printlog("sending plot to slack...",output_file=cutterfile)
+        #send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+        printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
 
+        if slow:
+            os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
+        elif imgdiff:
+            os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
+        else:
+            os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
+        printlog("sending notification via x11...",output_file=cutterfile)
+        os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
+        os.system("echo " + str((2/3) if imgdiff else 1) + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
+        os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
+        printlog("done!",output_file=cutterfile)
     if args.trigger:
         T4trigger = event.create_event(fl)
         return list(res) + [candplot, T4trigger]
@@ -473,7 +524,7 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     return
 
 
-def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,lock=LOCK):
+def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,lock=LOCK):
     """
     Modelled from dsa110-T3/dsaT3/T3_manager.submit_cand(); Given filename of trigger json,
     create DSACand and submit to scheduler for T3 processing
@@ -482,31 +533,31 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
 
     #(1) sort candidates
     canddict = dict()
-    d_sort = client.submit(cc.sort_cands,fname,searched_image,TOAs,args.SNRthresh,RA_axis,DEC_xis,widthtrials,DM_trials_use,canddict,
+    d_sort = client.submit(cc.sort_cands,fname,searched_image,TOAs,args.SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials_use,canddict,
                             np.abs(image.shape[1]-searched_image.shape[1]),
                             np.abs(image.shape[0]-searched_image.shape[0]),
-                            cutterfile,0,args.maxcands,args.writeraw,lock=lock,priority=1,resources={'MEMORY': 10e9})
+                            cutterfile,0,args.maxcands,args.writeraw)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(2) clustering
-    d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3) classifying
-    d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(4) writing csvs and jsons for remaining cands (might not be any remaining cands)
-    d_write = client.submit(writecand_manage,d_classify,image,args,DM_trials_use,widthtrials,suff,cand_isot,slow,imgdiff,injection_flag,postinjection_flag,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_write = client.submit(writecands_manage,d_classify,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(5) sending alerts (slack, triggers, etc)
-    d_trigger = client.submit(sendtrigger_manage,d_write,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,output_dir,cand_isot,suff,cutterfile,injection_flag,postinjection_flag,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_trigger = client.submit(sendtrigger_manage,d_write,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
     
     #(6) archiving
-    d_archive = client.submit(archive_manage,d_trigger,cand_isot,suff,cutterfile,injection_flag,postinjection_flag,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_archive = client.submit(archive_manage,d_trigger,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     if args.trigger:
-        d_cs = client.submit(run_createstructure_nsfrb, d_trigger, key=f"run_createstructure_nsfrb-{d.trigname}", lock=lock, priority=1)  # create directory structure
-        d_vc = client.submit(run_voltagecopy_nsfrb, d_cs, key=f"run_voltagecopy_nsfrb-{d.trigname}", lock=lock)  # copy voltages
-        d_h5 = client.submit(run_hdf5copy_nsfrb, d_cs, key=f"run_hdf5copy_nsfrb-{d.trigname}", lock=lock)  # copy hdf5
-        fut = client.submit(run_final_nsfrb, (d_h5, d_cs, d_vc), key=f"run_final_nsfrb-{d.trigname}", lock=lock)
+        d_cs = client.submit(run_createstructure_nsfrb, d_trigger, key=f"run_createstructure_nsfrb-{d.trigname}")#, lock=lock, priority=1)  # create directory structure
+        d_vc = client.submit(run_voltagecopy_nsfrb, d_cs, key=f"run_voltagecopy_nsfrb-{d.trigname}")#, lock=lock)  # copy voltages
+        d_h5 = client.submit(run_hdf5copy_nsfrb, d_cs, key=f"run_hdf5copy_nsfrb-{d.trigname}")#, lock=lock)  # copy hdf5
+        fut = client.submit(run_final_nsfrb, (d_h5, d_cs, d_vc), key=f"run_final_nsfrb-{d.trigname}")#, lock=lock)
         return fut
     return d_archive
 
@@ -788,20 +839,28 @@ def main(args):
     sys.stderr = open(error_file,"w")
     printlog("Starting T4 Manager (realtime candcutter)...",output_file=cutterfile)
     printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
-    ETCD.add_watch(ETCDKEY, etcd_to_queue)
+    if not args.testtrigger:
+        ETCD.add_watch(ETCDKEY, etcd_to_queue)
     tasklist=[]
     counter = 0
+    client = ThreadPoolExecutor(40)
 
     while True:
-
-        printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)        
-        fname = raw_cand_dir + str(QQUEUE.get())
-        uv_diag = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
-        dec = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
-        img_shape = tuple(QQUEUE.get())
-        img_search_shape = tuple(QQUEUE.get())
-        printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
-        
+        if not args.testtrigger:
+            printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)        
+            fname = raw_cand_dir + str(QQUEUE.get())
+            uv_diag = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
+            dec_obs = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
+            img_shape = tuple(QQUEUE.get())
+            img_search_shape = tuple(QQUEUE.get())
+            printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
+        else:
+            fname = raw_cand_dir + "candidates_" + Time.now().isot + ".csv"
+            uv_diag = 500
+            dec_obs = 71.6
+            img_shape = (301,301)
+            img_search_shape = (301,301)
+            printlog("Generating injected cand")
         slow = 'slow' in fname
         imgdiff = 'imgdiff' in fname
         if slow:
@@ -819,7 +878,8 @@ def main(args):
             tsamp_use = tsamp
             DM_trials_use = DM_trials
         cand_isot = fname[fname.index("candidates_")+11:fname.index(suff + ".csv")]
-
+        
+        """
         if 'slow' in fname:
             rtkey1 = NSFRB_CANDDADA_SLOW_KEY
             rtkey2 = NSFRB_SRCHDADA_SLOW_KEY
@@ -835,7 +895,22 @@ def main(args):
         image = rtread_cand(key=rtkey1,gridsize_dec=img_shape[0],gridsize_ra=img_shape[1],nsamps=img_shape[2],nchans=img_shape[3])
         searched_image = rtread_cand(key=rtkey2,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
         TOAs = (rtread_cand(key=rtkey3,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])).astype(int)
-
+        """
+        if not args.testtrigger:
+            try:
+                image = np.load(raw_cand_dir + cand_isot + suff + ".npy")
+                searched_image = np.load(raw_cand_dir + cand_isot + suff + "_searched.npy")
+                TOAs = np.load(raw_cand_dir + cand_isot + suff + "_TOAs.npy").astype(int)
+            except Exception as e:
+                printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
+                printlog(str(e),output_file=cutterfile)
+                os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*")
+                return
+        else:
+            from scipy.stats import uniform
+            searched_image = uniform.rvs(loc=0,scale=args.SNRthresh+1,size=((301,301,5,16)))
+            image = uniform.rvs(size=((301,301,25,16)))
+            TOAs = np.zeros((301,301,25,16),dtype=int)
         cand_mjd = Time(cand_isot,format='isot').mjd
         injection_flag,postinjection_flag = cc.is_injection(cand_isot)
         RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,pixperFWHM=pixperFWHM)
@@ -846,14 +921,19 @@ def main(args):
         nsamps = image.shape[2]
 
         #submit task
-        submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
-                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag)
-        
+        tasklist.append(submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
+                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client)) 
 
         #client.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args),resources={'MEMORY':10e9})
         if args.sleep > 0:
             printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
             time.sleep(args.sleep)
+        elif args.testtrigger:
+            for i in range(len(tasklist)):
+                res = tasklist[i].result()
+                print(res)
+            printlog("Sleeping for " + str(60/60) + " minutes",output_file=cutterfile)
+            time.sleep(60)
 
     return 0
 
@@ -892,6 +972,7 @@ if __name__=="__main__":
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     parser.add_argument('--avgcluster',action='store_true', help='Average parameters of each cluster; if not set, takes peak cluster member parameters')
     parser.add_argument('--writeraw',action='store_true',help='Write raw candidates to a csv file')
+    parser.add_argument('--testtrigger',action='store_true',help='Inject fake data to test T4')
     args = parser.parse_args()
     
     main(args)

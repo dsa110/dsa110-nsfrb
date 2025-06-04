@@ -66,6 +66,7 @@ if not CORR_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-candidates/raw_cands/")
     os.system("mkdir ../dsa110-nsfrb-candidates/final_cands/")
     os.system("mkdir ../dsa110-nsfrb-candidates/backup_raw_cands/")
+    
     """
     #create injections directory
     os.system("mkdir ../dsa110-nsfrb-injections/")
@@ -75,6 +76,7 @@ if not CORR_INSTALL:
 
     #create directory for observing plans
     os.system("mkdir ../dsa110-nsfrb-plans/")
+    os.system("mkdir ../dsa110-nsfrb-candplotserver/")
     import csv
 
     """ 
