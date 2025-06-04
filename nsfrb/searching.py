@@ -29,7 +29,7 @@ from nsfrb.imaging import uv_to_pix,get_RA_cutoff
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 from astropy.time import Time
-from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY
+from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,NSFRB_CANDDADA_SLOW_KEY,NSFRB_SRCHDADA_SLOW_KEY,NSFRB_TOADADA_SLOW_KEY,NSFRB_CANDDADA_IMGDIFF_KEY,NSFRB_SRCHDADA_IMGDIFF_KEY,NSFRB_TOADADA_IMGDIFF_KEY
 from realtime.rtwriter import rtwrite
 
 fsize=45
@@ -71,7 +71,7 @@ from nsfrb.config import *
 from nsfrb.noise import noise_update,noise_dir,noise_update_all
 from nsfrb import jax_funcs
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,freq_axis
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,freq_axis,srchtx_file
 
 
 
@@ -268,11 +268,22 @@ def get_last_frame(frame_dir=frame_dir,maxDM=np.max(DM_trials),slow=False):
     image_tesseract = np.load(f)
     f.close()
     return image_tesseract
-
-last_frame = get_last_frame()
+try:
+    last_frame = get_last_frame()
+except Exception as exc:
+    printlog(exc,output_file=error_file)
+    printlog("initializing last frame to zeros",output_file=process_file)
+    last_frame = np.zeros((gridsize,gridsize,nsamps,nchans))
+    save_last_frame(last_frame)
 last_frame_init_idx = 0
 
-last_frame_slow = get_last_frame(slow=True)
+try:
+    last_frame_slow = get_last_frame(slow=True)
+except Exception as exc:
+    printlog(exc,output_file=error_file)
+    printlog("initializing slow last frame to zeros",output_file=process_file)
+    last_frame_slow = np.zeros((gridsize,gridsize,nsamps,nchans))
+    save_last_frame(last_frame_slow,slow=True)
 last_frame_slow_init_idx = 0
 """
 pre-computed psf values
@@ -1594,8 +1605,9 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     print(tdelays_frac,file=fout)
     print(full_boxcar_filter,file=fout)
     global jax_inuse
-    while jax_inuse[usedev]:
-        continue
+    if (slow or imgdiff):#realtime:
+        while jax_inuse[usedev]:
+            continue
     jax_inuse[usedev] = True
     print(str("slow" if slow else "") + " JAX DEVICE",usedev,"AVAILABLE",file=fout)
     
@@ -1689,6 +1701,20 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     else:
         TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff)
     
+    cands_found = np.nanmax(fullimg.image_tesseract_searched)>SNRthresh
+    """
+    if not (slow or imgdiff):
+        padby=(fullimg.image_tesseract_searched.shape[0]-fullimg.image_tesseract_searched.shape[1],0)
+        fullimg.image_tesseract_searched = np.pad(fullimg.image_tesseract_searched,((0,0),padby,(0,0),(0,0)),constant_values=np.nan)
+        TOAs = np.pad(TOAs,((0,0),padby,(0,0),(0,0)),constant_values=np.nan)
+    elif slow:
+        padby=(fullimg.image_tesseract.shape[1]-fullimg.image_tesseract_searched.shape[1],fullimg.image_tesseract.shape[0]-fullimg.image_tesseract.shape[1])
+        padby2 = (padby[0],0)
+        fullimg.image_tesseract_searched = np.pad(fullimg.image_tesseract_searched,((0,0),padby,(0,0),(0,0)),constant_values=np.nan)
+        TOAs = np.pad(TOAs,((0,0),padby,(0,0),(0,0)),constant_values=np.nan)
+    """
+
+
     #update noise
     if not slow and not imgdiff and total_noise is not None:
         global current_noise
@@ -1703,8 +1729,9 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
         save_last_frame(last_frame_slow,full=True,slow=True)
         printlog("Writing to last_frame_slow.npy",output_file=processfile)
 
-    if savesearch or np.nanmax(fullimg.image_tesseract_searched)>SNRthresh or fprtest:
-        if (not fprtest) and (not realtime):
+    srchtxtime = time.time()
+    if savesearch or cands_found or fprtest:
+        if (not fprtest):# and (not realtime):
             #save image
             f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (not slow and imgdiff) else "") + ".npy","wb")
             np.save(f,fullimg.image_tesseract_binned)
@@ -1718,46 +1745,63 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
 
         #save image OR if realtime, write to psrdada buffers
-        if realtime:
-            rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_KEY)
-            rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_KEY)
-            rtwrite(TOAs,key=NSFRB_TOADADA_KEY)
+        """
+        if False:#realtime:
+            printlog(">>>SHAPES>>>"+str(fullimg.image_tesseract_searched.shape) + str(fullimg.image_tesseract.shape),output_file=processfile)
+            if not (slow or imgdiff):
+                rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_KEY)
+                rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_KEY)
+                rtwrite(TOAs,key=NSFRB_TOADADA_KEY)
+            elif slow:
+                rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_SLOW_KEY)
+                rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_SLOW_KEY)
+                rtwrite(TOAs,key=NSFRB_TOADADA_SLOW_KEY)
+            #elif imgdiff:
+            #    rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_SLOW_KEY)
+            #    rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_SLOW_KEY)
+            #    rtwrite(TOAs,key=NSFRB_TOADADA_SLOW_KEY)
         else:
-            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_searched.npy","wb")
-            np.save(f,fullimg.image_tesseract_searched)
-            f.close()
+        """
+        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_searched.npy","wb")
+        np.save(f,fullimg.image_tesseract_searched)
+        f.close()
 
-            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_TOAs.npy","wb")
-            np.save(f,TOAs)
-            f.close()
+        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_TOAs.npy","wb")
+        np.save(f,TOAs)
+        f.close()
         
-            f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_input.npy","wb")
-            np.save(f,fullimg.image_tesseract)
-            f.close()
+        f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_input.npy","wb")
+        np.save(f,fullimg.image_tesseract)
+        f.close()
 
-            if fprtest:
-                f = open(cand_dir + "fpr_test.csv","a")
-                f.write("\n"+fullimg.img_id_isot + "," + str(np.nanmax(fullimg.image_tesseract_searched))) 
-                f.close()
-            elif fnrtest:
-                f = open(cand_dir + "fnr_test.csv","a")
-                f.write("\n"+fullimg.img_id_isot + "," + str(np.nanmax(fullimg.image_tesseract_searched)))
-                f.close()
+        if fprtest:
+            f = open(cand_dir + "fpr_test.csv","a")
+            f.write("\n"+fullimg.img_id_isot + "," + str(np.nanmax(fullimg.image_tesseract_searched))) 
+            f.close()
+        elif fnrtest:
+            f = open(cand_dir + "fnr_test.csv","a")
+            f.write("\n"+fullimg.img_id_isot + "," + str(np.nanmax(fullimg.image_tesseract_searched)))
+            f.close()
 
         #if the dask scheduler is set up, put the cand file name in the queue
         #if 'DASKPORT' in os.environ.keys() and QSETUP:
         #    QQUEUE.put("candidates_" + fullimg.img_id_isot + ".csv")
-
+    srchtxtime = time.time()-srchtxtime
+    fulltime=time.time()-timing1
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
-    printlog("done, total search time: " + str(np.around(time.time()-timing1,2)) + " s",output_file=processfile)
+    printlog("done, total search time: " + str(np.around(fulltime,2)) + " s",output_file=processfile)
     ftime = open(timelogfile,"a")
-    ftime.write("[search] " + str(time.time()-timing1)+"\n")
+    ftime.write("[search] " + str(fulltime)+"\n")
     ftime.close()
 
-    if np.nanmax(fullimg.image_tesseract_searched)>SNRthresh:
-        return fullimg.image_tesseract_searched,"candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + ".csv",slow,imgdiff,time.time()-timing1
+    ftime = open(srchtx_file,"a")
+    ftime.write(str(srchtxtime) + "\n")
+    ftime.close()
+
+    if cands_found:
+        return "candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + ".csv",slow,imgdiff,fulltime,srchtxtime
     else:
-        return fullimg.image_tesseract_searched,None,slow,imgdiff,time.time()-timing1
+        return None,slow,imgdiff,fulltime,srchtxtime
 
 
 

@@ -41,6 +41,44 @@ def send_candidate_slack(filename,filedir=final_cand_dir,error_file=error_file):
         printlog(e,output_file=error_file)
         return 1
 
+
+
+import websocket
+import asyncio
+from websockets.asyncio.client import connect
+from websockets.asyncio.server import serve
+import sys
+import json
+from nsfrb.config import frame_dir
+
+async def handler(websocket,filename):
+    event = {"content":filename}
+    #await websocket.send(json.dumps(event))
+    await websocket.send(json.dumps(event))
+    m = await websocket.recv()
+    print("success:",m)
+    await asyncio.sleep(0)
+    loop = asyncio.get_running_loop()
+    loop.stop()
+
+async def runserver(filename,port=9087):
+    async with serve(lambda websocket: handler(websocket,filename), "localhost", port) as server:
+        await server.serve_forever()
+        #server.close()
+        #await server.wait_closed()
+        print("done")
+    return
+
+def send_candidate_custom(filename,port=9087,filedir=final_cand_dir,error_file=error_file):
+    try:
+        asyncio.run(runserver(filename,port))
+    except Exception as exc:
+        print("done")
+    return
+
+
+
+
 #save image to fits file
 def numpy_to_fits(img,fname):
     hdu = fits.PrimaryHDU(img)

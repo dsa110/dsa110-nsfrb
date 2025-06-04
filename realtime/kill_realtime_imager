@@ -1,5 +1,6 @@
 #!/bin/bash
 
-
-psrdada -k caba -d 
+kill -9 $(pgrep -f run_realtime_imager)
+kill -9 $(pgrep -f benchmark_realtime)
+dada_db -k caba -d 
 

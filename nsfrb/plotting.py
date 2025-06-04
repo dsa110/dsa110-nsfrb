@@ -8,7 +8,8 @@ from dsamfs import utils as pu
 from astropy.time import Time
 from astropy import units as u
 from nsfrb.planning import nvss_cat,atnf_cat,find_fast_vis_label
-from nsfrb.config import tsamp_slow,tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS,fmin,fmax,tsamp_imgdiff
+from nsfrb.config import tsamp_slow,tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS,fmin,fmax,tsamp_imgdiff,T
+import time
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 fsize=45
@@ -35,6 +36,8 @@ import sys
 import csv
 import os
 from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,bad_antennas
+import dsautils.dsa_store as ds
+ETCD = ds.DsaStore()
 
 plotting_now = False
 
@@ -161,7 +164,7 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[],uv_diag=None,dec_obs=None,slow=False,imgdiff=False):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[],uv_diag=None,dec_obs=None,slow=False,imgdiff=False,timeseries_nondm=False):
     """
     Makes updated diagnostic plots for search system
     """
@@ -339,7 +342,10 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         plt.step(tsamp_use*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(len(timeseries)),where='post',linewidth=4,label=names[i])
         #ax.legend(ncols=1 + int(len(timeseries)//5),loc="upper right",fontsize=20)
     ax.set_xlim(0,tsamp_use*img.shape[2]/1000)
-    ax.set_title("De-dispersed Median Subtracted Timeseries")
+    if timeseries_nondm:
+        ax.set_title("Median Subtracted Timeseries")
+    else:
+        ax.set_title("De-dispersed Median Subtracted Timeseries")
     ax.set_ylim(ymin=0)
     printlog("timeseries plots done",output_file=cutterfile)
 
@@ -551,3 +557,136 @@ def make_image_from_vis(T_interval,cand_mjd,full_array=True,image_size=1001,gif=
 
 
         return all_imgs,all_mjds
+
+
+
+"""
+Grafana doesn't like nsfrb, so I made my own 
+"""
+def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"timestatusfile.txt"):
+    """
+    Pulls data from etcd in realtime and plots time for 
+    imaging, sending, searching data in binary form
+    """
+    search_time_all = np.zeros(showsamps)
+    search_txtime_all = np.zeros(showsamps)
+    interval=(T/1000/10)
+    time_levels = np.arange(17)*interval
+    packet_status_all = np.zeros(showsamps)
+    packet_status_levels = np.arange(17)
+
+
+    corr_rows = 2
+    corr_cols = 8
+    showsamps_corr = int(showsamps//4)
+    image_time_all = [np.zeros(showsamps_corr)]*16
+    tx_time_all = [np.zeros(showsamps_corr)]*16
+    
+    timelabel = "      "+ "".join(["  {:02.2f}  ".format((tsamp*i*9 + tsamp*5)/1000) for i in range(1 + int(showsamps//9))])
+    tickmarks = "______"+ "".join(["____|____" for i in range(int(showsamps//9))])
+    timelabel_corr = "      "+ "".join(["  {:02.2f}  ".format((tsamp*i*9 + tsamp*5)/1000) for i in range(int(showsamps_corr//9))]) + " "*6
+    tickmarks_corr = "______"+ "".join(["____|____" for i in range(int(showsamps_corr//9))]) + "_"*4
+    while True:
+        
+        ss=ETCD.get_dict("/mon/nsfrbsearchtiming")
+        search_time_all = np.concatenate([search_time_all[1:],[ss["search_time"]]])
+        search_txtime_all = np.concatenate([search_txtime_all[1:],[ss["search_tx_time"]]])
+        packet_status_all = np.concatenate([packet_status_all[1:],[ETCD.get_dict("/mon/nsfrbpackets")["dropped"]]])
+        for i in range(16):
+            dd = ETCD.get_dict("/mon/nsfrbtiming/"+str(i+1))
+            image_time_all[i] = np.concatenate([image_time_all[i][1:],[dd["image_time"]]])
+            tx_time_all[i] = np.concatenate([tx_time_all[i][1:],[dd["tx_time"]]])
+
+        #quantize search time
+        search_time_quantize = np.clip(np.array(search_time_all/interval,dtype=int),0,len(time_levels)-1)
+        f = open(plotfile_searchtime,"w")
+        f.write("Process Server Search Time (s)\n")
+        for lev_i in np.arange(len(time_levels),dtype=int)[::-1]:
+            p = np.array([" "]*len(search_time_all))
+            p[search_time_quantize==lev_i] = "*"
+            f.write(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "\n")
+        f.write(tickmarks + "\n")
+        f.write(timelabel + "\n")
+        f.write(" "*int(showsamps//3) + "Time Offset (s)\n")
+        f.write("-"*showsamps + "\n\n\n")
+
+        #quantize search time
+        search_time_quantize = np.clip(np.array(search_txtime_all/interval,dtype=int),0,len(time_levels)-1)
+        f.write("Process Server Cand Stream Time (s)\n")
+        for lev_i in np.arange(len(time_levels),dtype=int)[::-1]:
+            p = np.array([" "]*len(search_txtime_all))
+            p[search_time_quantize==lev_i] = "*"
+            f.write(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "\n")
+        f.write(tickmarks + "\n")
+        f.write(timelabel + "\n")
+        f.write(" "*int(showsamps//3) + "Time Offset (s)\n")
+        f.write("-"*showsamps + "\n\n\n")
+
+
+
+        #packet status
+        f.write("Process Server Dropped Packets (0-16)\n")
+        for lev_i in np.arange(len(packet_status_levels),dtype=int)[::-1]:
+            p = np.array([" "]*len(packet_status_all))
+            p[packet_status_all==lev_i] = "*"
+            f.write(str(" " if packet_status_levels[lev_i]<10 else "") + str(packet_status_levels[lev_i]) + "   " +  "|" + "".join(p) + "\n")
+        f.write(tickmarks + "\n")
+        f.write(timelabel + "\n")
+        f.write(" "*int(showsamps//3) + "Time Offset (s)\n")
+        f.write("-"*showsamps + "\n\n\n")
+
+        #quantize image time
+        f.write("Corr Node Imaging Time (s)\n")
+        for i in range(corr_rows):
+            f.write("".join([f"sb{i*corr_cols+j}" + " "*(showsamps_corr+5) for j in range(corr_cols)]) + "\n")
+            alllines = []
+            for j in range(corr_cols):
+                corridx = i*corr_cols + j
+                image_time_quantize = np.clip(np.array(image_time_all[corridx]/interval,dtype=int),0,len(time_levels)-1)
+                for lev_i in np.arange(len(time_levels),dtype=int)[::-1]:
+                    p = np.array([" "]*len(image_time_all[corridx]))
+                    p[image_time_quantize==lev_i] = "*"
+                    if j == 0:
+                        alllines.append(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p))
+                    else:
+                        alllines[len(time_levels)-lev_i-1] += str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p)
+            alllines.append("".join([tickmarks_corr]*corr_cols))
+            alllines.append("".join([timelabel_corr]*corr_cols))
+            alllines.append("".join([" "*int(showsamps_corr//3) + "Time Offset (s)      "]*corr_cols))
+            for l in alllines:
+                f.write(l + "\n")
+            f.write("\n")
+        f.write("-"*showsamps + "\n\n\n")
+
+        #quantize tx time
+        f.write("Corr Node TX Time (s)\n")
+        for i in range(corr_rows):
+            f.write("".join([f"sb{i*corr_cols+j}" + " "*(showsamps_corr+5) for j in range(corr_cols)]) + "\n")
+            alllines = []
+            for j in range(corr_cols):
+                corridx = i*corr_cols + j
+                tx_time_quantize = np.clip(np.array(tx_time_all[corridx]/interval,dtype=int),0,len(time_levels)-1)
+                for lev_i in np.arange(len(time_levels),dtype=int)[::-1]:
+                    p = np.array([" "]*len(tx_time_all[corridx]))
+                    p[tx_time_quantize==lev_i] = "*"
+                    if j == 0:
+                        alllines.append(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p))
+                    else:
+                        alllines[len(time_levels)-lev_i-1] += str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p)
+            alllines.append("".join([tickmarks_corr]*corr_cols))
+            alllines.append("".join([timelabel_corr]*corr_cols))
+            alllines.append("".join([" "*int(showsamps_corr//3) + "Time Offset (s)      "]*corr_cols))
+            for l in alllines:
+                f.write(l + "\n")
+            f.write("\n")
+
+
+        f.close()
+
+
+
+
+        #os.system("cat "+plotfile)
+        time.sleep(update_time)
+    return
+

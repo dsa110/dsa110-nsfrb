@@ -67,7 +67,7 @@ from nsfrb import imaging
 from nsfrb.config import tsamp as tsamp_ms
 import pickle as pkl
 
-from nsfrb.planning import read_nvss,read_RFC
+from nsfrb.planning import read_nvss,read_RFC,read_vlac
 from dsautils.coordinates import create_WCS,get_declination,get_elevation
 from astropy.coordinates import AltAz
 from nsfrb.planning import find_fast_vis_label
@@ -174,8 +174,11 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     badsoln = False
     try:
         #popt,pcov = np.polyfit(allfluxs[allresids<resid_th],allnvssfluxes[allresids<resid_th],1,full=False,cov=True,w=1/allresids[allresids<resid_th])
-        popt,pcov = np.polyfit(allfluxs,allnvssfluxes,1,full=False,cov=True,w=allnvssfluxes)
-        popterrs = np.sqrt([pcov[0,0],pcov[1,1]])
+        #popt,pcov = np.polyfit(allfluxs,allnvssfluxes,1,full=False,cov=True,w=np.sqrt(allnvssfluxes))
+        popt,pcov = curve_fit(lambda x,m: m*x,allfluxs,allnvssfluxes, sigma=1/allnvssfluxes)
+        print("fit result:",popt,pcov)
+        popt = np.array([popt[0],0])
+        popterrs = np.sqrt([pcov[0,0],0])#pcov[1,1]])
         pfunc = np.poly1d(popt)
         pfunc_down = np.poly1d(popt - popterrs)
         pfunc_up = np.poly1d(popt + popterrs)
@@ -252,22 +255,22 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     print(allnvssfluxes)
     plt.figure(figsize=(12,12))
     #plt.errorbar(allfluxs,allnvssfluxes,xerr=allfluxerrs,marker='o',markersize=10,linestyle='')
-    faxis = np.linspace(np.min(allfluxs)/10,np.max(allfluxs)*1.2,1000)
-
+    #faxis = np.linspace(np.min(allfluxs)/10,np.max(allfluxs)*1.2,1000)
+    faxis = np.logspace(np.log10(np.min(allfluxs)/10),np.log10(np.max(allfluxs)*10),1000)
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
         plt.plot(faxis,pfunc(faxis),color='red')
         plt.fill_between(faxis,pfunc_down(faxis),pfunc_up(faxis),color='red',alpha=0.5)
     plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
     plt.xlabel("Mean Pixel Value per Time Sample (arb. units)")
-    plt.ylabel("NVSS Flux (mJy)")
+    plt.ylabel("NVSS or VLAC Flux (mJy)")
     plt.title("Last Updated: " + Time.now().isot)
-    plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
-    plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
+    #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
+    #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
     if not badsoln and not np.isnan(Smin):
         plt.axhline(Smin,color='purple',linestyle='--')
         plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
-        plt.text(0.06,Smin,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour median): "+str(np.around(Smin))+" mJy",fontsize=15)
+        plt.text(0.6e-4,Smin/2,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
         print("Estimated sensitivity:",Smin,"mJy")
     #estimate and plot theoretical sensitivity
     SEFD=7000
@@ -278,12 +281,14 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((nsamps,UVW.shape[1],16,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(flagants) if outriggers else list(flagged_antennas) + list(flagants)), bmin, list(flagged_corrs) + list(flagcorrs), flag_channel_templates=[])
     Nbase = UVW.shape[1]
     BW = chanbw*nchans*1E6
-    print(N,BW,tsamp_ms)
+    print(Nbase,BW,tsamp_ms)
     NSFRBsens = 2*SEFD*1000/np.sqrt((2*Nbase)*BW*tsamp_ms*2/1000) #mJy
     print("Comparing to theoretical sensitivity:",NSFRBsens,"mJy")
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
-    plt.text(0.07,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
-    plt.ylim(NSFRBsens/2)
+    plt.text(0.6e-4,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    #plt.ylim(NSFRBsens/2)
+    plt.yscale("log")
+    plt.xscale("log")
 
     #plt.yscale("log")
     #plt.xscale("log")
@@ -594,7 +599,11 @@ def astrocal(args):
 
 
     # find brightest continuum sources at the current declination # dec 16 continuum sources
-    reftime = Time.now()#Time(args.UTCday + "T12:00:00",format='isot')
+    # find brightest continuum sources at the current declination # dec 16 continuum sources
+    if len(args.reftimeISOT) == 0:
+        reftime = Time.now()#Time(args.UTCday + "T12:00:00",format='isot')
+    else:
+        reftime = Time(args.reftimeISOT,format='isot')
     print("Reference time:",reftime.isot)
     allnames,allcoords,allRA_errs_mas,allDEC_errs_mas,allSfluxes,allCfluxes,allXfluxes,allUfluxes,allKfluxes = read_RFC()
     if args.search_dec == 180:
@@ -667,7 +676,7 @@ def astrocal(args):
     bright_fnames = []
     bright_offsets = []
     for i in range(len(bright_coords)):
-        timeax = Time(int(reftime.mjd) - np.linspace(0,24,24)[::-1]/24,format='mjd')
+        timeax = Time(int(reftime.mjd) - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
         DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
         name = str('RFC J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_coords[i].ra.hms.h),
                                                                RM=int(bright_coords[i].ra.hms.m),
@@ -1151,9 +1160,37 @@ def get_best_elev(reftime,timestep_hr = 1):
 
 def speccal(args):
     # find brightest continuum sources at the current declination # dec 16 continuum sources
-    reftime = Time.now()#Time(args.UTCday + "T12:00:00",format='isot')
+    if len(args.reftimeISOT) == 0:
+        reftime = Time.now()#Time(args.UTCday + "T12:00:00",format='isot')
+    else:
+        reftime = Time(args.reftimeISOT,format='isot')
     print("Reference time:",reftime.isot)
+    
+    """
+    if not args.vlac_only:
+        allnvsscoords,allnvssfluxes,allnvssms = read_nvss()
+    else:
+        allnvsscoords=[]
+        allnvssfluxes=[]
+
+    if not args.nvss_only:
+        allvlacoords,allvlafluxes = read_vlac()
+    else:
+        allvlacoords=[]
+        allvlafluxes=[]
+    allcatflags = np.concatenate([[True]*len(allnvssfluxes),[False]*len(allvlafluxes)])
+    allnvsscoords = SkyCoord(np.concatenate([allnvsscoords,allvlacoords]))
+    allnvssfluxes = np.concatenate([allnvssfluxes,allvlafluxes])
+    """
     allnvsscoords,allnvssfluxes,allnvssms = read_nvss()
+    fluxcondition = np.logical_and(allnvssfluxes>args.fluxmin,allnvssfluxes<args.fluxmax)
+    #allcatflags = allcatflags[fluxcondition]
+    allnvsscoords = allnvsscoords[fluxcondition]
+    allnvssfluxes = allnvssfluxes[fluxcondition]
+    print("Limited to flux between ",args.fluxmin,"-",args.fluxmax,"mJy")
+
+
+    #print(len(allnvsscoords),len(allnvssfluxes),len(allcatflags))
     if args.search_dec == 180:
         elev = get_best_elev(reftime)#get_elevation(reftime)
         search_dec = get_declination(elev).value
@@ -1169,10 +1206,11 @@ def speccal(args):
         ex_table =  []
     print("sources to exclude:",ex_table)
 
-    decrange= 0.5
+    decrange= args.decrange#0.5
     vis_nvsscoords = allnvsscoords[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
     vis_nvssfluxes = allnvssfluxes[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
-    vis_nvssms = allnvssms[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
+    #vis_nvssms = allnvssms[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
+    #vis_catflags = allcatflags[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
 
     #single nvss source
     if len(args.nvss)>0:
@@ -1191,7 +1229,8 @@ def speccal(args):
         idxs = np.array(idxs)
         bright_nvsscoords = vis_nvsscoords[idxs]
         bright_nvssfluxes = vis_nvssfluxes[idxs]
-        bright_nvssms = vis_nvssms[idxs]
+        #bright_nvssms = vis_nvssms[idxs]
+        #bright_catflags = vis_catflags[idxs]
         print("Running astrometric calibration pipeline with NVSS sources ",idxnames)
     else:
         #useidxs = np.argsort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
@@ -1202,7 +1241,9 @@ def speccal(args):
             return
         bright_nvsscoords = vis_nvsscoords[useidxs]
         bright_nvssfluxes = vis_nvssfluxes[useidxs]
-        bright_nvssms = vis_nvssms[useidxs]
+        #bright_nvssms = vis_nvssms[useidxs]
+        #bright_catflags = vis_catflags[useidxs]
+
         """
         fluxth = np.sort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
         bright_nvsscoords = vis_nvsscoords[vis_nvssfluxes>=fluxth]
@@ -1218,7 +1259,7 @@ def speccal(args):
     bright_fnames = []
     bright_offsets = []
     for i in range(len(bright_nvsscoords)):
-        timeax = Time(int(reftime.mjd) - np.linspace(0,24,24)[::-1]/24,format='mjd')
+        timeax = Time(int(reftime.mjd) - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
         DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
         name = str('NVSS J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_nvsscoords[i].ra.hms.h),
                                                                RM=int(bright_nvsscoords[i].ra.hms.m),
@@ -1674,5 +1715,12 @@ if __name__=="__main__":
     parser.add_argument('--ngulps',type=int,help='Number of gulps of 25 samples (3.25 s) to integrate, default=1',default=1)
     parser.add_argument('--timebin',type=int,help='Number of time samples to bin by, default=1',default=1)
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging,default=-2 for uniform weighting',default=-2)
+    #parser.add_argument('--vlac_only',action='store_true',help='Only use VLAC sources')
+    #parser.add_argument('--nvss_only',action='store_true',help='Only use NVSS sources')
+    parser.add_argument('--decrange',type=float,help='radius in degrees to search for sources around search dec, default=0.5',default=0.5)
+    parser.add_argument('--maxtime',type=float,help='max time in hours to look backwards for calibrator passes, default 24',default=24)
+    parser.add_argument('--reftimeISOT',type=str,help='reference time, default now',default='')
+    parser.add_argument('--fluxmin',type=float,help='minimum flux of sources for speccal in mJy',default=0)
+    parser.add_argument('--fluxmax',type=float,help='maximum flux of sources for speccal in mJy',default=np.inf)
     args = parser.parse_args()
     main(args)

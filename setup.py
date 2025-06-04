@@ -40,7 +40,12 @@ if not CORR_INSTALL:
             "candcuttertask_log.txt",
             "candcutter_error_log.txt",
             "inject_log.txt",
-            "time_log.txt"]
+            "time_log.txt",
+            "rttimes_log.txt",
+            "rttx_log.txt",
+            "srchtx_log.txt",
+            "candmem_log.txt",
+            "candtime_log.txt"]
     for i in range(len(logfiles)):
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)

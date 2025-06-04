@@ -1,10 +1,10 @@
 import numpy as np
 from nsfrb.config import nsamps as init_nsamps
-from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY
+from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,NSFRB_CANDDADA_SLOW_KEY,NSFRB_SRCHDADA_SLOW_KEY,NSFRB_TOADADA_SLOW_KEY,NSFRB_CANDDADA_IMGDIFF_KEY,NSFRB_SRCHDADA_IMGDIFF_KEY,NSFRB_TOADADA_IMGDIFF_KEY
 from realtime.rtreader import rtread_cand
 from nsfrb.planning import find_fast_vis_label
 from nsfrb import pipeline
-from dsaT4 import T4_manager as T4m
+#from dsaT4 import T4_manager as T4m
 from nsfrb.outputlogging import numpy_to_fits
 import os
 import jax
@@ -538,7 +538,7 @@ def read_candfile(fname):
     csvfile.close()
     return raw_cand_names,finalcands
 
-def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0,maxcands=np.inf):
+def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0,maxcands=np.inf,writeraw=False):
 
     t1 = time.time()
     printlog("Searching for candidates with S/N > " + str(SNRthresh) + "...",output_file=output_file)
@@ -592,16 +592,21 @@ def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widt
 
     
     #write raw candidates to csv
-    printlog("Writing to file " + fname,output_file=output_file)
-    csvfile = open(fname,"w")
-    wr = csv.writer(csvfile,delimiter=',')
-    wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "TOA", "SNR"])
-    finalcands = []
-    for i in range(len(candidxs)):
-        wr.writerow(np.concatenate([[i],np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
-        finalcands.append(np.concatenate([np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
-    csvfile.close()
-    printlog("Done",output_file=output_file)
+    if writeraw:
+        printlog("Writing to file " + fname,output_file=output_file)
+        csvfile = open(fname,"w")
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(["candname","RA index","DEC index","WIDTH index", "DM index", "TOA", "SNR"])
+        finalcands = []
+        for i in range(len(candidxs)):
+            wr.writerow(np.concatenate([[i],np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
+            finalcands.append(np.concatenate([np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
+        csvfile.close()
+        printlog("Done",output_file=output_file)
+    else:
+        finalcands = []
+        for i in range(len(candidxs)):
+            finalcands.append(np.concatenate([np.array(candidxs[i][:-1],dtype=int),[candidxs[i][-1]]]))
 
     return np.arange(len(candidxs)).astype(str),finalcands
 
@@ -629,10 +634,15 @@ def img_to_classifier_format(img,candname,output_dir):
 
 
 #main cand cutter task function
+import tracemalloc
+from nsfrb.config import candcutter_memory_file,candcutter_time_file
 def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     """
     Main task to obtain cutouts
     """
+    tracemalloc.start()
+    s1_ = tracemalloc.take_snapshot()
+    t1_ = time.time()
     #for each candidate get the isot and find the corresponding image
     slow = 'slow' in fname
     imgdiff = 'imgdiff' in fname
@@ -653,19 +663,39 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
     cand_isot = fname[fname.index("candidates_")+11:fname.index(suff + ".csv")]
 
     try:
+        """
         if args['realtime']:
-            image = rtread_cand(key=NSFRB_CANDDADA_KEY,gridsize_dec=img_shape[0],gridsize_ra=img_shape[1],nsamps=img_shape[2],nchans=img_shape[3])
-            searched_image = rtread_cand(key=NSFRB_SRCHDADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
-            TOAs = (rtread_cand(key=NSFRB_TOADADA_KEY,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])).astype(int)
+            if slow:
+                rtkey1 = NSFRB_CANDDADA_SLOW_KEY
+                rtkey2 = NSFRB_SRCHDADA_SLOW_KEY
+                rtkey3 = NSFRB_TOADADA_SLOW_KEY
+            elif imgdiff:
+                rtkey1 = NSFRB_CANDDADA_IMGDIFF_KEY
+                rtkey2 = NSFRB_SRCHDADA_IMGDIFF_KEY
+                rtkey3 = NSFRB_TOADADA_IMGDIFF_KEY
+            else:
+                rtkey1 = NSFRB_CANDDADA_KEY
+                rtkey2 = NSFRB_SRCHDADA_KEY
+                rtkey3 = NSFRB_TOADADA_KEY
+            image = rtread_cand(key=rtkey1,gridsize_dec=img_shape[0],gridsize_ra=img_shape[1],nsamps=img_shape[2],nchans=img_shape[3])
+            searched_image = rtread_cand(key=rtkey2,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
+            TOAs = (rtread_cand(key=rtkey3,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])).astype(int)
         else:
-            image = np.load(raw_cand_dir + cand_isot + suff + ".npy")
-            searched_image = np.load(raw_cand_dir + cand_isot + suff + "_searched.npy")
-            TOAs = np.load(raw_cand_dir + cand_isot + suff + "_TOAs.npy").astype(int)
+        """
+        image = np.load(raw_cand_dir + cand_isot + suff + ".npy")
+        searched_image = np.load(raw_cand_dir + cand_isot + suff + "_searched.npy")
+        TOAs = np.load(raw_cand_dir + cand_isot + suff + "_TOAs.npy").astype(int)
     except Exception as e:
         printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
         printlog(str(e),output_file=cutterfile)
+        os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*")
         return
+    
+    t1_end = time.time()-t1_
+    s1_end = (tracemalloc.take_snapshot().compare_to(s1_,'lineno'))[0].size_diff
 
+    s2_ = tracemalloc.take_snapshot()
+    t2_ = time.time()
     #pad searched image with zeros
     """
     searched_image = np.pad(searched_image,((0,0),
@@ -690,7 +720,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                     widthtrials,DM_trials_use,canddict,
                     raidx_offset=np.abs(image.shape[1]-searched_image.shape[1]),
                     decidx_offset=np.abs(image.shape[0]-searched_image.shape[0]),
-                    maxcands=args['maxcands'])
+                    maxcands=args['maxcands'],writeraw=args['writeraw'])
 
     #prune candidates with infinite signal-to-noise for clustering
     cands_noninf = []
@@ -723,7 +753,11 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         return
     """
         
+    t2_end = time.time()-t2_
+    s2_end = (tracemalloc.take_snapshot().compare_to(s2_,'lineno'))[0].size_diff
 
+    s3_ = tracemalloc.take_snapshot()
+    t3_ = time.time()
 
     """
     finalcands = []
@@ -829,6 +863,12 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         printlog("done, cut to " + str(len(finalcands)) + " candidates",output_file=cutterfile)
     
 
+    t3_end = time.time()-t3_
+    s3_end = (tracemalloc.take_snapshot().compare_to(s3_,'lineno'))[0].size_diff
+
+    s4_ = tracemalloc.take_snapshot()
+    t4_ = time.time()
+
 
     classify_flag = (args['classify'] or args['classify3D'])
     if args['classify']:
@@ -922,11 +962,18 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         finalcands = finalcands_new
         if len(finalcands) == 0:
             printlog("No remaining candidates, done",output_file=cutterfile)
+            os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*")
             return
         probabilities = probabilities[predictions==0]
         predictions = predictions[predictions==0]
         finalidxs = np.arange(len(finalcands),dtype=int)
 
+    t4_end = time.time()-t4_
+    s4_end = (tracemalloc.take_snapshot().compare_to(s4_,'lineno'))[0].size_diff
+
+
+    s5_ = tracemalloc.take_snapshot()
+    t5_ = time.time()
 
 
     #if its an injection write the highest SNR candidate to the injection tracker
@@ -1022,6 +1069,12 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
             os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname)
             os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/voltages")
             np.save(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/" + lastname + ".npy",subimg)
+    t5_end = time.time()-t5_
+    s5_end = (tracemalloc.take_snapshot().compare_to(s5_,'lineno'))[0].size_diff
+
+    s6_ = tracemalloc.take_snapshot()
+    t6_ = time.time()
+
 
     #send candidates to slack 
     if len(finalidxs) > 0:
@@ -1051,8 +1104,19 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
             sourceimg = sourceimg_all[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
-            if DM != 0 or not imgdiff:
-                printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc",output_file=cutterfile)
+            if (DM != 0 and not imgdiff):
+                printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc "+ str(sourceimg.shape),output_file=cutterfile)
+                """
+                sourceimg_dm = np.zeros_like(sourceimg)
+                for j in range(sourceimg_dm.shape[3]):
+                    shiftby = int(np.abs((4.15*DM*((1/(freq_axis[0]*1e-3))**2 - (1/(freq_axis[j]*1e-3))**2))/(tsamp_use)))
+                    printlog("freq "+str(freq_axis[j]) + ", shift:" + str(shiftby),output_file=cutterfile)
+                    sourceimg_dm[0,0,:,j] = np.pad(sourceimg[0,0,:,j],(0,shiftby))[-sourceimg.shape[2]:]
+                printlog("COMPLETED BRUTE FORCE DEDISP",output_file=cutterfile)
+
+                """
+                
+                
                 #freq_axis = np.linspace(fmin,fmax,nchans)
                 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp_use,nsamps,outputwraps=True,maxshift=0 if (slow or imgdiff) else maxshift)
 
@@ -1067,10 +1131,13 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
 
                 #now average the low and high shifts 
                 sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps,nchans] + [2])).sum(4))
+                
             else:
                 sourceimg_dm = sourceimg
-            timeseries.append(sourceimg_dm.mean((0,1,3)))
+            timeseries.append(np.nanmean(sourceimg_dm,(0,1,3)))
         
+            
+            """
             if not injection_flag:
                 #create json file
                 snr=canddict['snrs'][i]
@@ -1090,7 +1157,7 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
                 printlog(fl,output_file=cutterfile)
                 if args['trigger']:
                     T4m.submit_cand_nsfrb(fl, logfile=cutterfile)
-
+            """
 
         
         printlog("RIGHT BEFORE CANDPLOT",output_file=cutterfile)
@@ -1100,41 +1167,67 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/",show=False,s100=args['SNRthresh']/2,
-                                            injection=injection_flag,vmax=args['SNRthresh']+2,vmin=args['SNRthresh'],
+                                            injection=injection_flag,vmax=args['SNRthresh']*2,vmin=args['SNRthresh'],
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,dec_obs=dec_obs,slow=slow,imgdiff=imgdiff)
         printlog("done!",output_file=cutterfile)
 
         if args['toslack']:
-            printlog("sending plot to slack...",output_file=cutterfile)
-            send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
-            printlog("updating candplot server",output_file=cutterfile)
+            #printlog("sending plot to slack...",output_file=cutterfile)
+            #send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+            """
+            printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
+            
             if slow:
                 os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
             elif imgdiff:
                 os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
             else:
                 os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
-
+            
+            #notify
+            f = open(frame_dir + "lastcand_srvfile.txt","w")
+            f.write(candplot)
+            f.close()            
+            
+            #client_socket = socket.socket()
+            #client_socket.connect(("ws://localhost",9087))
+            #client_socket.send(candplot.encode())
+            #client_socket.close()
+            """
+            printlog("sending notification via x11...",output_file=cutterfile)
+            os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
+            os.system("echo " + str((2/3) if imgdiff else 1) + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
+            os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt") 
+            #os.system(os.environ["NSFRBDIR"] + "/scripts/run_x11_display.sh &")
             printlog("done!",output_file=cutterfile)
+    t6_end = time.time()-t6_
+    s6_end = (tracemalloc.take_snapshot().compare_to(s6_,'lineno'))[0].size_diff
     
+    s7_ = tracemalloc.take_snapshot()
+    t7_ = time.time()
+
+
     #cp fast visibilities
+    #if (not args['realtime']) and (not injection_flag):
     if not injection_flag:
         fastvislabel,fastvisoffset = find_fast_vis_label(cand_mjd)
-        printlog("saving candidate visibilities labeled" + str(fastvislabel),output_file=cutterfile)
-        printlog("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/",output_file=cutterfile)
-        os.system("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/")
+        if fastvislabel != -1:
+            printlog("saving candidate visibilities labeled" + str(fastvislabel),output_file=cutterfile)
+            printlog("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/",output_file=cutterfile)
+            os.system("cp " + vis_dir + "lxd110*/*" + str(fastvislabel) + "*.out " + final_cand_dir + "candidates/" + cand_isot + "/")
     #move fast visibilities, should be labelled with ISOT timestamp
     #if not injection_flag:
     #    os.system("mv " + vis_dir + "lxd110*/*" + cand_isot + "*.out " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + "/")
 
 
-    """
+    #os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*")
+    
     #once finished, move raw data to backup directory if there are remaining candidates, otherwise, delete (at some point, make this an scp to dsastorage)
-    if len(finalidxs) > 0:
-        os.system("mv " + raw_cand_dir + "*" + cand_isot + "* " + backup_cand_dir)
+    if (not injection_flag) and (len(finalidxs) > 0):
+        os.system("mv " + raw_cand_dir + "*" + cand_isot + "* " + final_cand_dir + "candidates/" + cand_isot + "/")
     else:
         os.system("rm " + raw_cand_dir + "*" + cand_isot + "*")
-    """
+    
     #send final candidates to T4 because they will be removed from h24 when it runs out of space
     if args['archive'] and len(finalidxs) > 0 and 'NSFRBT4' in os.environ.keys():
         #make a new directory for timestamp on T4
@@ -1171,6 +1264,17 @@ def candcutter_task(fname,uv_diag,dec_obs,img_shape,img_search_shape,args):
         os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/*.out user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
 
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
+    t7_end = time.time()-t7_
+    s7_end = (tracemalloc.take_snapshot().compare_to(s7_,'lineno'))[0].size_diff
+
+    fmem = open(candcutter_memory_file,"a")
+    fmem.write(str(s1_end) + " " + str(s2_end) + " " + str(s3_end) + " " + str(s4_end) + " " + str(s5_end) + " "+ str(s6_end)+ " "+ str(s7_end)+"\n")
+    fmem.close()
+
+    fmem = open(candcutter_time_file,"a")
+    fmem.write(str(t1_end) + " " + str(t2_end) + " " + str(t3_end) + " " + str(t4_end) + " " + str(t5_end) + " " + str(t6_end)+ " "+ str(t7_end)+"\n")
+    fmem.close()
+
     return
 
 

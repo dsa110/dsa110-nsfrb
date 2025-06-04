@@ -125,6 +125,10 @@ recover_file = cwd + "-injections/recoveries.csv"
 binary_file = cwd + "-logfiles/binary_log.txt"
 inject_log_file = cwd + "-logfiles/inject_log.txt"
 rtbench_file = cwd + "-logfiles/rttimes_log.txt"
+rttx_file = cwd + "-logfiles/rttx_log.txt"
+srchtx_file = cwd + "-logfiles/srchtx_log.txt"
+candcutter_memory_file = cwd + "-logfiles/candmem_log.txt"
+candcutter_time_file = cwd + "-logfiles/candtime_log.txt"
 
 import casatools as cc
 me = cc.measures()
@@ -165,9 +169,21 @@ NSFRB_PSRDADA_TESTKEYS = {0:0xcab0,
                           13:0xcabd,
                           14:0xcabe,
                           15:0xcabf}
+#main
 NSFRB_CANDDADA_KEY = 0xcada
 NSFRB_SRCHDADA_KEY = 0xcaea
 NSFRB_TOADADA_KEY = 0xcafa
+#slow
+NSFRB_CANDDADA_SLOW_KEY = 0xcadb
+NSFRB_SRCHDADA_SLOW_KEY = 0xcaeb
+NSFRB_TOADADA_SLOW_KEY = 0xcafb
+#imgdiff
+NSFRB_CANDDADA_IMGDIFF_KEY = 0xcadc
+NSFRB_SRCHDADA_IMGDIFF_KEY = 0xcaec
+NSFRB_TOADADA_IMGDIFF_KEY = 0xcafc
+
+
+
 
 NSFRB_PSRDADA_BYTES = 14899200
 NSFRB_CANDDADA_BYTES = 144961600

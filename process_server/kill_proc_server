@@ -1,8 +1,16 @@
 #!/bin/bash
 
-dada_db -k cada -d
-dada_db -k caea -d
-dada_db -k cafa -d
-
+#main
+#dada_db -k cada -d
+#dada_db -k caea -d
+#dada_db -k cafa -d
+#slow
+#dada_db -k cadb -d
+#dada_db -k caeb -d
+#dada_db -k cafb -d
+#imgdiff
+#dada_db -k cadc -d
+#dada_db -k caec -d
+#dada_db -k cafc -d
 kill -9 -"$(pgrep run_proc_server)"
 

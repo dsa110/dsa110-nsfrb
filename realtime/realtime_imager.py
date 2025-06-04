@@ -23,7 +23,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rtbench_file,nsamps,T
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
@@ -167,8 +167,8 @@ def main(args):
             else:
                 dat = np.concatenate([dat,dat_i])
             #printlog(dat.shape,output_file=logfile)
-        if args.testh23:
-            mjd = Time.now().mjd
+        #if args.testh23:
+        #    mjd = Time.now().mjd
 
         timage = time.time()
         
@@ -323,8 +323,8 @@ def main(args):
             np.save(img_dir + time_start_isot + "_rtimage.npy",dirty_img)
         if args.search:
             if args.testh23:
-                ttx = time.time()
                 for sbi in range(len(corrs)):
+                    ttx = time.time()
                     msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(sbi%len(args.multiport))])
             
                     #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10)
@@ -342,6 +342,9 @@ def main(args):
                 if timing_dict is None: timing_dict = dict()
                 timing_dict["tx_time"] = txtime
                 ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
+            ftime = open(rttx_file,"a")
+            ftime.write(str(txtime)+"\n")
+            ftime.close()
         if args.inject:
             inject_count += 1   
     return

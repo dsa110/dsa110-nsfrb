@@ -1,4 +1,5 @@
 import numpy as np
+from dask.distributed import Client
 import os
 import jax
 import socket
@@ -87,6 +88,10 @@ ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/candidates'
 QQUEUE = Queue()
 
+
+from dask.distributed import Client
+#client = Client('tcp://10.42.0.228:8786')
+
 def etcd_to_queue(etcd_dict,queue=QQUEUE):
     """
     This is a callback function that takes a candidate from etcd and adds it to the cand cutter queue
@@ -104,6 +109,9 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
 def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
+    #if len(args.daskaddress)>0:
+    #    client = Client(args.daskaddress)
+    #else:
     executor = ThreadPoolExecutor(args.maxProcesses)
     printlog("Starting CandCutter...",output_file=cutterfile)
     #if 'DASKPORT' in os.environ.keys() and QSETUP:
@@ -127,19 +135,22 @@ def main(args):
             img_shape = tuple(QQUEUE.get())
             img_search_shape = tuple(QQUEUE.get())
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
+            #if len(args.daskaddress)>0:
+            #client.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args))#,resources={'MEMORY':10e9})
+            #else:
             tasklist.append(executor.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args)))
-            counter += 1
-            if counter >= 3:
-                printlog("CLEANING UP CANDCUTTER TASKS...",output_file=cutterfile)
-                for t in tasklist:
-                    if not t.done():
-                        wait([t])
-                printlog("DONE",output_file=cutterfile)
-                tasklist = []
-                counter = 0
-                
             #printlog(future.result(),output_file=cutterfile)
             #fire_and_forget(QCLIENT.submit(cc.candcutter_task,fname,vars(args),workers=QWORKERS))
+            """
+            while len(tasklist)>=args.maxProcesses:
+                printlog("Waiting for " + str(len(tasklist)) + "cand tasks to finish:",output_file=cutterfile)
+                for t in tasklist:
+                    if t.done():
+                        printlog(tasklist.pop(),output_file=cutterfile)
+                
+                
+                time.sleep(args.sleep)
+            """
         else:
             #look for candidate files in raw cands dir
             rawfiles = glob.glob(raw_cand_dir + "candidates_*.csv")
@@ -152,14 +163,14 @@ def main(args):
                 fname = rawfiles[i]
                 printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
                 cc.candcutter_task(fname,None,None,vars(args))
-
+        """
         if args.sleep > 0:
             printlog("Sleeping for " + str(args.sleep/60) + " minutes",output_file=cutterfile)
             time.sleep(args.sleep)
             #if 'DASKPORT' in os.environ.keys() and QSETUP:
             #    printlog("Restarting Dask client...",output_file=cutterfile)
             #    #QCLIENT.restart_workers(QWORKERS)
-
+        """
     return 0
 
 if __name__=="__main__":
@@ -194,10 +205,12 @@ if __name__=="__main__":
     parser.add_argument('--useTOA',action='store_true',help='Include TOAs in clustering algorithm')
     parser.add_argument('--psfcluster',action='store_true',help='PSF-based spatial clustering')
     parser.add_argument('--clusteriters',type=int,help='Number of clustering iterations; minimum cluster size reduced on each iteration; default=1',default=1)
-    parser.add_argument('--realtime',action='store_true',help='Running in realtime system, pulls image data from PSRDADA buffer')
+    #parser.add_argument('--realtime',action='store_true',help='Running in realtime system, pulls image data from PSRDADA buffer')
     parser.add_argument('--maxcand',action='store_true',help='If set, takes only the maximum S/N candidate in each chunk after clustering; otherwise returns all candiddates above S/N threshold')
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     parser.add_argument('--avgcluster',action='store_true', help='Average parameters of each cluster; if not set, takes peak cluster member parameters')
+    parser.add_argument('--writeraw',action='store_true',help='Write raw candidates to a csv file')
+    #parser.add_argument('--daskaddress',type=str,help='tcp address of dask scheduler, default does not use scheduler',default="")
     args = parser.parse_args()
     main(args)
     """

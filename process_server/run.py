@@ -1,4 +1,5 @@
 import numpy as np
+from dask.distributed import Client
 import select
 import os
 import jax
@@ -192,7 +193,7 @@ class fullimg:
         #align if full
         if self.slow_is_full():
             stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i*self.bin_interval_slow:(i+1)*self.bin_interval_slow,:] for i in range(self.bin_slow)],self.slow_RA_cutoffs)
-            self.RA_axis = self.RA_axis[-min_gridsize:]
+            self.RA_axis = self.RA_axis[:min_gridsize]
             self.slow_RA_cutoff = self.shape[1] - min_gridsize
             self.image_tesseract = np.concatenate(stack,axis=2)
             self.shape = self.image_tesseract.shape
@@ -212,7 +213,7 @@ class fullimg:
         if self.imgdiff_is_full():
             printlog("STACKING IMAGES",output_file=processfile)
             stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i:(i+1),:] for i in range(self.imgdiffgulps)],self.slow_RA_cutoffs)
-            self.RA_axis = self.RA_axis[-min_gridsize:]
+            self.RA_axis = self.RA_axis[:min_gridsize]
             self.imgdiff_RA_cutoff = self.shape[1] - min_gridsize
             self.image_tesseract = np.concatenate(stack,axis=2)
             self.shape = self.image_tesseract.shape
@@ -381,15 +382,16 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
     """
     #if QSETUP and not (future.result()[1] is None):
     #    QQUEUE.put(future.result()[1])
-    slow = future.result()[2]
-    imgdiff = future.result()[3]
-    if etcd_enabled and not (future.result()[1] is None):
-        printlog("adding " + future.result()[1] + "to etcd queue",output_file=processfile)
+    fresult = future.result()
+    slow = fresult[1]
+    imgdiff = fresult[2]
+    if etcd_enabled and not (fresult[0] is None):
+        printlog("adding " + fresult[0] + "to etcd queue",output_file=processfile)
         if slow:
             ETCD.put_dict(
                     ETCDKEY,
                     {
-                        "candfile":future.result()[1],
+                        "candfile":fresult[0],
                         "uv_diag":slow_fullimg_dict[timestepisot].img_uv_diag,
                         "dec":slow_fullimg_dict[timestepisot].img_dec,
                         "img_shape":slow_fullimg_dict[timestepisot].image_tesseract.shape,
@@ -400,7 +402,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
             ETCD.put_dict(
                     ETCDKEY,
                     {
-                        "candfile":future.result()[1],
+                        "candfile":fresult[0],
                         "uv_diag":imgdiff_fullimg_dict[timestepisot].img_uv_diag,
                         "dec":imgdiff_fullimg_dict[timestepisot].img_dec,
                         "img_shape":imgdiff_fullimg_dict[timestepisot].image_tesseract.shape,
@@ -411,7 +413,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
             ETCD.put_dict(
                     ETCDKEY,
                     {
-                        "candfile":future.result()[1],
+                        "candfile":fresult[0],
                         "uv_diag":fullimg_dict[timestepisot].img_uv_diag,
                         "dec":fullimg_dict[timestepisot].img_dec,
                         "img_shape":fullimg_dict[timestepisot].image_tesseract.shape,
@@ -421,11 +423,12 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled)
     #timing_dict = ETCD.get_dict(ETCDKEY_SEARCHTIMING)
     #if timing_dict is None: timing_dict = dict()
     timing_dict = dict()
-    timing_dict["search_time"]=future.result()[-1]
+    timing_dict["search_time"]=fresult[-2]
+    timing_dict["search_tx_time"]=fresult[-1]
     ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
 
-    printlog(future.result()[0],output_file=processfile)
-    pl.binary_plot(future.result()[0],SNRthresh,timestepisot,RA_axis,DEC_axis)
+    #printlog(future.result()[0],output_file=processfile)
+    #pl.binary_plot(fullimg_dict[timestepisot].image_tesseract_searched,SNRthresh,timestepisot,RA_axis,DEC_axis)
     printlog("****Thread Completed****",output_file=processfile)
     printlog(future.result(),output_file=processfile)
     printlog("************************",output_file=processfile)
@@ -1064,8 +1067,14 @@ if __name__=="__main__":
     parser.add_argument('--imgdiffgulps',type=int,help='Number of gulps to search at a time with image differencing, default=' + str(config.ngulps_per_file),default=config.ngulps_per_file)
     parser.add_argument('--slow',action='store_true',help='Activate slow search pipeline, which bins data by 5 samples and re-searches')
     parser.add_argument('--imgdiff',action='store_true',help='Activate image differencing search pipeline, which bins data by 25 samples and searches 5-minute chunk at DM=0')
+    parser.add_argument('--daskaddress',type=str,help='tcp address of dask scheduler, default does not use scheduler',default="")
     args = parser.parse_args()
 
-
-    
+    """
+    if len(args.daskaddress)>0:
+        print("Connecting to dask scheduler "+args.daskaddress)
+        client = Client(args.daskaddress)
+        client.submit(main,args,pure=False) 
+    else:
+    """
     main(args)
