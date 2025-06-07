@@ -1,4 +1,5 @@
-from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,nsamps,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis
+from dsamfs import utils as pu
+from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis
 from nsfrb import plotting as pl
 from event import names
 import csv
@@ -99,8 +100,11 @@ def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=fin
 LOCK = Lock('update_json')
 from nsfrb.config import cutterfile
 from simulations_and_classifications import generate_PSF_images as scPSF
-def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag):
-    raw_cand_names,finalcands = d_future.result()
+def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF):
+    if len(args.daskaddress) > 0:
+        raw_cand_names,finalcands = d_future
+    else:
+        raw_cand_names,finalcands = d_future.result()
     if not (args.cluster and len(finalcands)>=args.mincluster):
         #cut by S/N if still too many
         if args.maxcand:
@@ -118,17 +122,20 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
 
         return finalcands,finalidxs
     
+    printlog("PRE-CLUSTERING THERE ARE " + str(len(finalcands)) + " CANDIDATES",output_file=cutterfile)
     finalidxs = np.arange(len(finalcands),dtype=int)
     useTOA=args.useTOA and len(finalcands[0])==6
     #start clustering
     printlog("clustering with HDBSCAN...",output_file=cutterfile)
     #clustering with hdbscan
+    """
     if args.psfcluster:
         PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*image.shape[0])+1,dec_obs,nsamps=nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
         PSF = PSF.mean((2,3))
         printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
     else:
         PSF = None
+    """
     for i in range(args.clusteriters):
         mincluster = int(np.max([args.mincluster//(i+1),2]))
 
@@ -149,6 +156,8 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
 
     finalidxs = np.arange(len(finalcands),dtype=int)
 
+    printlog("AFTER CLUSTERING THERE ARE " + str(len(finalidxs)) + " CANDIDATES",output_file=cutterfile)
+
     #cut by S/N if still too many
     if args.maxcand:
         printlog("Identifying max S/N candidate",output_file=cutterfile)
@@ -166,7 +175,10 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
 
 
 def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff):
-    finalcands,finalidxs = d_future.result()
+    if len(args.daskaddress) > 0:
+        finalcands,finalidxs = d_future
+    else:
+        finalcands,finalidxs = d_future.result()
     classify_flag = (args.classify or args.classify3D)
     useTOA=args.useTOA and len(finalcands[0])==6
     if not classify_flag:
@@ -271,7 +283,10 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
 
 from nsfrb.searching import maxshift
 def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D):
-    res = d_future.result()
+    if len(args.daskaddress) > 0:
+        res = d_future
+    else:
+        res = d_future.result()
     print("RIGHT HERE",res)
     if res is None:
         return
@@ -429,7 +444,11 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     return
 
 def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
-    res = d_future.result()
+    if len(args.daskaddress)>0:
+        res = d_future
+    else:
+        res = d_future.result()
+
     if res is None:
         return
     elif len(res) == 8:
@@ -486,8 +505,10 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
 def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
     if not args.archive or 'NSFRBT4' not in os.environ.keys():
         return None
-
-    res = d_future.result()
+    if len(args.daskaddress)>0:
+        res = d_future
+    else:
+        res = d_future.result()
     if res is None:
         return
     else:
@@ -524,7 +545,7 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     return
 
 
-def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,lock=LOCK):
+def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,lock=LOCK):
     """
     Modelled from dsa110-T3/dsaT3/T3_manager.submit_cand(); Given filename of trigger json,
     create DSACand and submit to scheduler for T3 processing
@@ -539,7 +560,7 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
                             cutterfile,0,args.maxcands,args.writeraw)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(2) clustering
-    d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3) classifying
     d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
@@ -554,18 +575,21 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
     d_archive = client.submit(archive_manage,d_trigger,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     if args.trigger:
-        d_cs = client.submit(run_createstructure_nsfrb, d_trigger, key=f"run_createstructure_nsfrb-{d.trigname}")#, lock=lock, priority=1)  # create directory structure
-        d_vc = client.submit(run_voltagecopy_nsfrb, d_cs, key=f"run_voltagecopy_nsfrb-{d.trigname}")#, lock=lock)  # copy voltages
-        d_h5 = client.submit(run_hdf5copy_nsfrb, d_cs, key=f"run_hdf5copy_nsfrb-{d.trigname}")#, lock=lock)  # copy hdf5
-        fut = client.submit(run_final_nsfrb, (d_h5, d_cs, d_vc), key=f"run_final_nsfrb-{d.trigname}")#, lock=lock)
+        d_cs = client.submit(run_createstructure_nsfrb, d_trigger, args.daskaddress, key=f"run_createstructure_nsfrb-{d.trigname}")#, lock=lock, priority=1)  # create directory structure
+        d_vc = client.submit(run_voltagecopy_nsfrb, d_cs, args.daskaddress, key=f"run_voltagecopy_nsfrb-{d.trigname}")#, lock=lock)  # copy voltages
+        d_h5 = client.submit(run_hdf5copy_nsfrb, d_cs, args.daskaddress, key=f"run_hdf5copy_nsfrb-{d.trigname}")#, lock=lock)  # copy hdf5
+        fut = client.submit(run_final_nsfrb, (d_h5, d_cs, d_vc), args.daskaddress, key=f"run_final_nsfrb-{d.trigname}")#, lock=lock)
         return fut
     return d_archive
 
 
-def run_createstructure_nsfrb(d_future, lock=None):
+def run_createstructure_nsfrb(d_future, daskaddress, lock=None):
     """ Use DSACand (after filplot) to decide on creating/copying files to candidate data area.
     """
-    res = d_future.result()
+    if len(daskaddress)>0:
+        res = d_future
+    else:
+        res = d_future.result()
     if res is None:
         return
     d = res[-1]
@@ -606,10 +630,13 @@ def run_burstfit(d, lock=None):
     return d
 
 
-def run_hdf5copy_nsfrb(d_future, lock=None):
+def run_hdf5copy_nsfrb(d_future, daskaddress, lock=None):
     """ Given DSACand (after filplot), copy hdf5 files
     """
-    res = d_future.result()
+    if len(daskaddress)>0:
+        res = d_future
+    else:
+        res = d_future.result()
     if res is None:
         return
     d = d_future
@@ -626,10 +653,13 @@ def run_hdf5copy_nsfrb(d_future, lock=None):
 
     return d
 
-def run_voltagecopy_nsfrb(d_future, lock=None):
+def run_voltagecopy_nsfrb(d_future, daskaddress, lock=None):
     """ Given DSACand (after filplot), copy voltage files.
     """
-    res = d_future.result()
+    if len(daskaddress)>0:
+        res = d_future
+    else:
+        res = d_future.result()
     if res is None:
         return
     d = d_future
@@ -757,13 +787,18 @@ def run_astrometry(ds, lock=None):
     return d
 
 
-def run_final_nsfrb(ds, lock=None):
+def run_final_nsfrb(ds, daskaddress, lock=None):
     """ Reduction task to handle all final tasks in graph.
     May also update etcd to notify of completion.
     """
 
 #    d, d_po, d_hb, d_il, d_as = ds
-    d, d_fm, d_vc = ds
+    
+    if len(daskaddress)>0:
+        d, d_fm, d_vc = ds
+    else:
+        d, d_fm, d_vc = [ds[i].result() for i in range(len(ds))]
+
     d.update(d_fm)
     d.update(d_vc)
 #    d.update(d_il)
@@ -843,7 +878,22 @@ def main(args):
         ETCD.add_watch(ETCDKEY, etcd_to_queue)
     tasklist=[]
     counter = 0
-    client = ThreadPoolExecutor(40)
+    if len(args.daskaddress)==0:
+        client = ThreadPoolExecutor(args.maxProcesses)
+    else:
+        client = Client(args.daskaddress)
+
+
+    #get system parameters at runtime
+    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+    printlog("System declination:" + str(pt_dec*180/np.pi),output_file=cutterfile)
+
+    if args.psfcluster:
+        PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*args.gridsize)+1,pt_dec*180/np.pi,nsamps=init_nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+        PSF = PSF.mean((2,3))
+        printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
+    else:
+        PSF = None
 
     while True:
         if not args.testtrigger:
@@ -853,6 +903,15 @@ def main(args):
             dec_obs = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
             img_shape = tuple(QQUEUE.get())
             img_search_shape = tuple(QQUEUE.get())
+            #assert(np.abs((dec_obs*np.pi/180) - pt_dec)<1e-2)
+            if np.abs((dec_obs*np.pi/180) - pt_dec)>1e-2:
+                pt_dec = (dec_obs*np.pi/180)
+                if args.psfcluster:
+                    PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*args.gridsize)+1,pt_dec*180/np.pi,nsamps=init_nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+                    PSF = PSF.mean((2,3))
+                    printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
+                else:
+                    PSF = None
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
         else:
             fname = raw_cand_dir + "candidates_" + Time.now().isot + ".csv"
@@ -920,9 +979,12 @@ def main(args):
         DEC_axis_2D = DEC_axis_2D[:,-searched_image.shape[1]:]
         nsamps = image.shape[2]
 
+        
+
+
         #submit task
         tasklist.append(submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
-                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client)) 
+                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF)) 
 
         #client.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args),resources={'MEMORY':10e9})
         if args.sleep > 0:
@@ -973,6 +1035,9 @@ if __name__=="__main__":
     parser.add_argument('--avgcluster',action='store_true', help='Average parameters of each cluster; if not set, takes peak cluster member parameters')
     parser.add_argument('--writeraw',action='store_true',help='Write raw candidates to a csv file')
     parser.add_argument('--testtrigger',action='store_true',help='Inject fake data to test T4')
+    parser.add_argument('--daskaddress',type=str,help='Address for dask scheduler',default="")
+    parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
+
     args = parser.parse_args()
     
     main(args)

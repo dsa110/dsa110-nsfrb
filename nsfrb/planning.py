@@ -1222,10 +1222,14 @@ def apertif_cat(mjd,dd,sep=2.0*u.deg,decstrip=False):
 
 
 
-def read_atnf(fl=table_dir + "ATNF_CATALOG.csv"):
+def read_atnf(fl=table_dir + "ATNF_CATALOG_FULL.csv"):
     names = []
     ras = []
     decs = []
+    Ps = []
+    DMs = []
+    Ws = []
+    fluxs = []
     with open(fl,"r") as csvfile:
         rdr = csv.reader(csvfile,delimiter=';')
         for row in rdr:
@@ -1237,16 +1241,42 @@ def read_atnf(fl=table_dir + "ATNF_CATALOG.csv"):
                 coord = SkyCoord(row[2]+row[3],unit=(u.hourangle,u.deg),frame='icrs')
                 ras.append(coord.ra)
                 decs.append(coord.dec)
+
+
+            if '*' in row[4]:
+                Ps.append(np.nan)
+            else:
+                Ps.append(float(row[4]))
+
+            if '*' in row[5]:
+                DMs.append(np.nan)
+            else:
+                DMs.append(float(row[5]))
+
+            if '*' in row[6]:
+                Ws.append(np.nan)
+            else:
+                Ws.append(float(row[6]))
+
+            if '*' in row[7]:
+                fluxs.append(np.nan)
+            else:
+                fluxs.append(float(row[7]))
+
     coords = SkyCoord(ra=ras,dec=decs,frame='icrs')
     names = np.array(names)
-    return coords,names
+    Ps = np.array(Ps)
+    DMs = np.array(DMs)
+    Ws = np.array(Ws)
+    fluxs = np.array(fluxs)
+    return coords,names,Ps,DMs,Ws,fluxs
 
 def atnf_cat(mjd,dd,sep=2.0*u.deg):
     ra = (get_ra(mjd,dd))*u.deg
     dec = dd*u.deg
 
     c = SkyCoord(ra,dec)
-    coords,names = read_atnf()
+    coords,names,Ps,DMs,Ws,fluxs = read_atnf()
     idx = np.arange(len(coords))
     
     d2d = c.separation(coords)
@@ -1254,7 +1284,11 @@ def atnf_cat(mjd,dd,sep=2.0*u.deg):
 
     c = coords[idxs]
     n = names[idxs]
-    return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)]
+    p = Ps[idxs]
+    dm = DMs[idxs]
+    w = Ws[idxs]
+    f = fluxs[idxs]
+    return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)],p,dm,w,f
 
 def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
     names = []

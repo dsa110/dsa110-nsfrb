@@ -5,9 +5,15 @@ import numpy as np
 """
 This file defines jit compiled functions to accelerate GPU compilation and computation.
 """
-
-
-
+from dsamfs import utils as pu
+from simulations_and_classifications import generate_PSF_images as scPSF
+from nsfrb.config import nsamps,gridsize
+"""PSF_dict = scPSF.make_PSF_dict()
+test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+PSF,default_PSF_params = scPSF.manage_PSF(PSF_dict,gridsize,pt_dec*180/np.pi,nsamps=nsamps)
+PSF_1 = jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[0])
+PSF_2 = jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[1])
+"""
 
 """
 matched filter + DM + SNR combined

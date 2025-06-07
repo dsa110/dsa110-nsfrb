@@ -266,7 +266,7 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     nvsspos,tmp,tmp = nvss_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
     ax.plot(nvsspos.ra.value,nvsspos.dec.value,'o',markerfacecolor='none',markeredgecolor='blue',markersize=20,markeredgewidth=4,label='NVSS Source')
     #pulsars
-    atnfpos,tmp = atnf_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
+    atnfpos,tmp,tmp,tmp,tmp,tmp = atnf_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
     ax.plot(atnfpos.ra.value,atnfpos.dec.value,'s',markerfacecolor='none',markeredgecolor='blue',markersize=20,markeredgewidth=4,label='ATNF Pulsar')
     ax.legend(loc='lower right',frameon=True,facecolor='lightgrey')
     ax.axvline(RA_axis[gridsize//2],color='grey')
@@ -570,6 +570,7 @@ def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"
     """
     search_time_all = np.zeros(showsamps)
     search_txtime_all = np.zeros(showsamps)
+    search_timouts_all = np.zeros(showsamps)
     interval=(T/1000/10)
     time_levels = np.arange(17)*interval
     packet_status_all = np.zeros(showsamps)
@@ -591,6 +592,7 @@ def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"
         ss=ETCD.get_dict("/mon/nsfrbsearchtiming")
         search_time_all = np.concatenate([search_time_all[1:],[ss["search_time"]]])
         search_txtime_all = np.concatenate([search_txtime_all[1:],[ss["search_tx_time"]]])
+        #search_timouts_all = np.concatenate([search_timouts_all[1:],[ss["search_completed"]]])
         packet_status_all = np.concatenate([packet_status_all[1:],[ETCD.get_dict("/mon/nsfrbpackets")["dropped"]]])
         for i in range(16):
             dd = ETCD.get_dict("/mon/nsfrbtiming/"+str(i+1))
@@ -608,7 +610,7 @@ def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"
             p2 = np.array([" "]*len(search_txtime_all))
             p2[search_txtime_quantize==lev_i] = "*"
 
-            f.write(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "  " + str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "\n")
+            f.write(str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p) + "  " + str("0" if time_levels[lev_i]<10 else "") + "{:.2f}".format(time_levels[lev_i]) + "|" + "".join(p2) + "\n")
         f.write(tickmarks + "  " + tickmarks + "\n")
         f.write(timelabel + "  " + timelabel + "\n")
         f.write(" "*int(showsamps//3) + "Time Offset (s)  " + " "*int(showsamps//3) + " "*int(showsamps//3) + "Time Offset (s)\n")
@@ -627,6 +629,18 @@ def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"
         f.write(timelabel + "\n")
         f.write(" "*int(showsamps//3) + "Time Offset (s)\n")
         f.write("-"*showsamps + "\n\n\n")
+        """
+        #search timouts
+        f.write("Process Server Search Completed (0=timeout, 1=success)\n")
+        for lev_i in [1,0]:#np.arange(len(packet_status_levels),dtype=int)[::-1]:
+            p = np.array([" "]*len(search_timouts_all))
+            p[search_timouts_all==lev_i] = "*"
+            f.write(str(" " if search_timouts_all[lev_i]<10 else "") + str(search_timouts_all[lev_i]) + "   " +  "|" + "".join(p) + "\n")
+        f.write(tickmarks + "\n")
+        f.write(timelabel + "\n")
+        f.write(" "*int(showsamps//3) + "Time Offset (s)\n")
+        f.write("-"*showsamps + "\n\n\n")
+        """
 
         #quantize image time
         f.write("Corr Node Imaging Time (s)\n")

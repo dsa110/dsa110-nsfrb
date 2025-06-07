@@ -127,6 +127,7 @@ inject_log_file = cwd + "-logfiles/inject_log.txt"
 rtbench_file = cwd + "-logfiles/rttimes_log.txt"
 rttx_file = cwd + "-logfiles/rttx_log.txt"
 srchtx_file = cwd + "-logfiles/srchtx_log.txt"
+srchtime_file = cwd + "-logfiles/srchtime_log.txt"
 candcutter_memory_file = cwd + "-logfiles/candmem_log.txt"
 candcutter_time_file = cwd + "-logfiles/candtime_log.txt"
 

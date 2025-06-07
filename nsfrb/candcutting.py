@@ -7,7 +7,6 @@ from nsfrb import pipeline
 #from dsaT4 import T4_manager as T4m
 from nsfrb.outputlogging import numpy_to_fits
 import os
-import jax
 import socket
 import time
 import matplotlib

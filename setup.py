@@ -44,6 +44,7 @@ if not CORR_INSTALL:
             "rttimes_log.txt",
             "rttx_log.txt",
             "srchtx_log.txt",
+            "srchtime_log.txt",
             "candmem_log.txt",
             "candtime_log.txt"]
     for i in range(len(logfiles)):

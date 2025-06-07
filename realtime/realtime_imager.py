@@ -102,7 +102,7 @@ def main(args):
     #verbose = args.verbose
 
     if args.inject:
-        inject_count = args.inject_interval
+        inject_count = args.inject_interval - args.inject_delay
 
 
     #printlog("Using multi-threaded imaging with " + str(args.maxProcesses) + "threads",output_file=logfile)
@@ -312,7 +312,9 @@ def main(args):
         ftime = open(rtbench_file,"a")
         ftime.write(str(rtime)+"\n")
         ftime.close()
-        if rtime>T:
+        if rtime>args.rttimeout:
+            
+            
             executor.shutdown()
             printlog("Realtime exceeded, shutting down imager",output_file=logfile)
             return 
@@ -391,6 +393,9 @@ if __name__=="__main__":
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
     parser.add_argument('-T','--testh23',action='store_true')
     parser.add_argument('--inject_interval',type=int,help='Number of gulps between injections',default=90)
+    parser.add_argument('--inject_delay',type=int,help='Number of gulps to delay injection',default=0)
+    parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
+
     args = parser.parse_args()
     main(args)
 

@@ -9,7 +9,7 @@ from dsacalib import constants as ct
 from dsacalib.fringestopping import calc_uvw
 import numba
 
-from nsfrb.imaging import get_ra,get_RA_cutoff,stack_images
+from nsfrb.imaging import get_ra,get_RA_cutoff,stack_images,briggs_weighting
 from matplotlib.patches import Ellipse
 from nsfrb.config import *
 import numpy as np
@@ -76,9 +76,9 @@ from nsfrb.config import tsamp as tsamp_ms
 from nsfrb.config import IMAGE_SIZE,bmin,flagged_antennas,bad_antennas,pixperFWHM,NUM_CHANNELS
 import json
 
-def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json",image_flux=False):
+def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json",image_flux=False,exactposition=False):
     print("Initializing table " + astrocal_table)
-    arraykey = str('outriggers' if outriggers else 'core') + str("_image" if image_flux else "")
+    arraykey = str('outriggers' if outriggers else 'core') + str("_image" if image_flux else "") + str("_exact" if exactposition else "")
     #read current table
     if len(glob.glob(astrocal_table))>0:
         f = open(astrocal_table,"r")
@@ -94,17 +94,19 @@ def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json
     f.close()
     return
 
-def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0):
+def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0,gridsize=IMAGE_SIZE,robust=-2,exactposition=False):
     """
     This function updates the flux calibration table with the most
     recent NVSS observations.
     """
     #read current table
     if init:
-        init_table(outriggers,speccal_table,image_flux=image_flux)
+        init_table(outriggers,speccal_table,image_flux=image_flux,exactposition=exactposition)
     f = open(speccal_table,"r")
-    arraykey = str('outriggers' if outriggers else 'core') + str("_image" if image_flux else "")
+    arraykey = str('outriggers' if outriggers else 'core') + str("_image" if image_flux else "") + str("_exact" if exactposition else "")
     tab = json.load(f)
+    if arraykey not in tab.keys():
+        tab[arraykey] = dict()
     f.close()
 
     #read sources to exclude
@@ -207,9 +209,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             noisef = open(noise_dir + "noise_301x301.pkl","rb")
             stat_noise = pkl.load(noisef)[0][1]
             noisef.close()
-            Smin = (stat_noise[1]/nchans)*popt[0] + popt[1]
-            Smin_uperr = ((stat_noise[1]/nchans)*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
-            Smin_loerr = Smin - ((stat_noise[1]/nchans)*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
+            Smin = (stat_noise[1]/np.sqrt(nchans))*popt[0] + popt[1]
+            Smin_uperr = ((stat_noise[1]/np.sqrt(nchans))*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
+            Smin_loerr = Smin - ((stat_noise[1]/np.sqrt(nchans))*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
             if len(target)>0:
                 target_table[arraykey + "_Smin"] = Smin
                 target_table[arraykey + "_Smin_uperr"] = Smin_uperr
@@ -268,9 +270,10 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
     if not badsoln and not np.isnan(Smin):
-        plt.axhline(Smin,color='purple',linestyle='--')
-        plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
-        plt.text(0.6e-4,Smin/2,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
+        plt.axvline(stat_noise[1]/np.sqrt(nchans),color='purple',linestyle='--')
+        #plt.axhline(Smin,color='purple',linestyle='--')
+        #plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
+        plt.text(stat_noise[1]/np.sqrt(nchans),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
         print("Estimated sensitivity:",Smin,"mJy")
     #estimate and plot theoretical sensitivity
     SEFD=7000
@@ -279,7 +282,13 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
     bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
     tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((nsamps,UVW.shape[1],16,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(flagants) if outriggers else list(flagged_antennas) + list(flagants)), bmin, list(flagged_corrs) + list(flagcorrs), flag_channel_templates=[])
-    Nbase = UVW.shape[1]
+    uv_diag=np.max(np.sqrt(UVW[0,:,1]**2 + UVW[0,:,1]**2))
+    pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
+    bweights_all = briggs_weighting(UVW[0,:,1]/lambdaref, UVW[0,:,0]/lambdaref, gridsize, robust=robust,pixel_resolution=pixel_resolution)
+    print("Weights:",bweights_all,bweights_all.shape)
+    Nbase = np.nansum(bweights_all)/np.max(bweights_all)
+    print("True number of baselines:",UVW.shape[1])
+    print("Eff. number of baselines:",Nbase)
     BW = chanbw*nchans*1E6
     print(Nbase,BW,tsamp_ms)
     NSFRBsens = 2*SEFD*1000/np.sqrt((2*Nbase)*BW*tsamp_ms*2/1000) #mJy
@@ -293,9 +302,58 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.yscale("log")
     #plt.xscale("log")
     plt.colorbar(label="Linear Fit Residual")
-    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + "speccal.png")
+    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal.png")
     plt.close()
     
+    plt.figure(figsize=(12,12))
+    if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
+        plt.plot(pfunc(faxis),pfunc(faxis),color='red')
+        plt.fill_between(pfunc(faxis),pfunc_down(faxis),pfunc_up(faxis),color='red',alpha=0.5)
+    plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
+    plt.xlabel("Calibrated Flux (mJy)")
+    plt.ylabel("NVSS or VLAC Flux (mJy)")
+    plt.title("Last Updated: " + Time.now().isot)
+    #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
+    #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
+
+    if not badsoln and not np.isnan(Smin):
+        plt.axvline(pfunc(stat_noise[1]/np.sqrt(nchans)),color='purple',linestyle='--')
+        #plt.axhline(Smin,color='purple',linestyle='--')
+        #plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
+        plt.text(pfunc(stat_noise[1]/np.sqrt(nchans)),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
+    plt.axhline(NSFRBsens,color='blue',linestyle='--')
+    plt.text(pfunc(0.6e-4),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    #plt.ylim(NSFRBsens/2)
+    plt.yscale("log")
+    plt.xscale("log")
+
+    #plt.yscale("log")
+    #plt.xscale("log")
+    plt.colorbar(label="Linear Fit Residual")
+    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibrated.png")
+    plt.close()
+
+    plt.figure(figsize=(12,12))
+    if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
+        plt.plot(pfunc(faxis)/Smin,pfunc(faxis)/NSFRBsens,color='red')
+        plt.fill_between(pfunc(faxis)/Smin,pfunc_down(faxis)/NSFRBsens,pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
+    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
+    plt.xlabel("Measured S/N")
+    plt.ylabel("Predicted S/N")
+    plt.title("Last Updated: " + Time.now().isot)
+    #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
+    #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
+
+    if not badsoln and not np.isnan(Smin):
+        plt.axvline(1,color='purple',linestyle='--')
+    plt.axhline(1,color='blue',linestyle='--')
+    plt.yscale("log")
+    plt.xscale("log")
+
+    plt.colorbar(label="Linear Fit Residual")
+    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibratedSNR.png")
+    plt.close()
+
     return
 
 def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,bright_gulpoffsets,bright_gulpoffset_times,outriggers,astrocal_table=table_dir + "/NSFRB_astrocal.json",init=False,resid_th=np.inf,exclude_table=table_dir + "/NSFRB_excludecal.json",target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5):
@@ -309,6 +367,8 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
     f = open(astrocal_table,"r")
     arraykey = str('outriggers' if outriggers else 'core')
     tab = json.load(f)
+    if arraykey not in tab.keys():
+        tab[arraykey] = dict()
     f.close()
 
     #read sources to exclude
@@ -1533,10 +1593,15 @@ def speccal(args):
         astrocaltable_f = open(table_dir + "NSFRB_astrocal.json","rb")
         astrocaltable = json.load(astrocaltable_f)
         astrocaltable_f.close()
-        if 'core_RA_offset_deg' in astrocaltable.keys() and 'core_DEC_offset_deg' in astrocaltable.keys():
+
+        if (not outriggers) and 'core_RA_offset_deg' in astrocaltable.keys() and 'core_DEC_offset_deg' in astrocaltable.keys():
             print("applying best astrometric correction:",astrocaltable['core_RA_offset_deg'],astrocaltable['core_DEC_offset_deg'])
             ra_grid_2D -= astrocaltable['core_RA_offset_deg']
             dec_grid_2D -= astrocaltable['core_DEC_offset_deg']
+        elif ( outriggers) and 'outriggers_RA_offset_deg' in astrocaltable.keys() and 'outriggers_DEC_offset_deg' in astrocaltable.keys():
+            print("applying best astrometric correction:",astrocaltable['outriggers_RA_offset_deg'],astrocaltable['outriggers_DEC_offset_deg'])
+            ra_grid_2D -= astrocaltable['outriggers_RA_offset_deg']
+            dec_grid_2D -= astrocaltable['outriggers_DEC_offset_deg']
         #if 'core_RA_error_deg' in astrocaltable.keys() and 'core_DEC_error_deg' in astrocaltable.keys():
             #buff = int(np.ceil(3*(astrocaltable['core_RA_error_deg'] + astrocaltable['core_DEC_error_deg'])/2)/np.abs(dec_grid_2D[1,0]-dec_grid_2D[0,0]))
             #print("new buffer:",buff)
@@ -1554,11 +1619,22 @@ def speccal(args):
             stacked_img = np.concatenate(input_imgs,axis=2)
             print("aligned images, new shape:",stacked_img.shape)
             input_img = np.nanmean(stacked_img,(2,3))
-            peakpix = np.unravel_index(np.argmax(input_img),input_img.shape)
+            if args.exactposition:
+                print("using exact position")
+                peakpix = np.unravel_index(np.argmin(bright_nvsscoords[bright_idx].separation(SkyCoord(input_ra_grid_2D*u.deg,
+                                                                                           input_dec_grid_2D*u.deg,frame='icrs'))),input_ra_grid_2D.shape)
+            else:
+                peakpix = np.unravel_index(np.argmax(input_img),input_img.shape)
             bright_pixcoord = SkyCoord(input_ra_grid_2D[peakpix[0],peakpix[1]]*u.deg,input_dec_grid_2D[peakpix[0],peakpix[1]]*u.deg,frame='icrs')
         else:
             input_img = np.nanmean(full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:],(2,3))
-            peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
+            input_ra_grid_2D = ra_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]
+            input_dec_grid_2D = dec_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]
+            if args.exactposition:
+                peakpix = np.unravel_index(np.argmin(bright_nvsscoords[bright_idx].separation(SkyCoord(input_ra_grid_2D*u.deg,
+                                                                                           input_dec_grid_2D*u.deg,frame='icrs'))),input_ra_grid_2D.shape)
+            else:
+                peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
             bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
             bright_pixcoord = SkyCoord(ra_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
         """
@@ -1596,7 +1672,7 @@ def speccal(args):
               dec_grid_2D[bbox[0],bbox[2]]],color='red')
         plt.scatter(bright_pixcoord.ra.to(u.deg).value,bright_pixcoord.dec.to(u.deg).value,marker='o',s=1000,edgecolors='green',linewidth=4,facecolors="none",alpha=0.8)
         plt.gca().invert_xaxis()
-        plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"speccal_refimage.png")
+        plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+str("exact_" if args.exactposition else "") + "speccal_refimage.png")
         plt.close()
             
         #get dynamic spectrum
@@ -1646,12 +1722,12 @@ def speccal(args):
         plt.ylabel("Frequency (GHz)")
         plt.subplots_adjust(hspace=0,wspace=0)
         plt.suptitle("real",fontsize=25)
-        plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+ "image_speccal.png")
+        plt.savefig(img_dir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+ str("exact_" if args.exactposition else "") + "image_speccal.png")
 
         plt.close()
 
 
-    update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin)
+    update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition)
     return
 
 
@@ -1665,7 +1741,7 @@ def main(args):
             astrocal(args)
     if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
         if args.update_only:
-            update_speccal_table([],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
+            update_speccal_table([],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust)
         else:
             speccal(args)
     return
@@ -1721,5 +1797,6 @@ if __name__=="__main__":
     parser.add_argument('--fluxmin',type=float,help='minimum flux of sources for speccal in mJy',default=0)
     parser.add_argument('--fluxmax',type=float,help='maximum flux of sources for speccal in mJy',default=np.inf)
     parser.add_argument('--randomsources',action='store_true',help='Select random set of calibrators near the specified declination instead of taking the brightest')
+    parser.add_argument('--exactposition',action='store_true',help='Set to measure flux at pixel closest to NVSS position instead of peak pixel')
     args = parser.parse_args()
     main(args)
