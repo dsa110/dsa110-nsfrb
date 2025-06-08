@@ -423,7 +423,12 @@ def main(args):
                 else:
                     plt.close()
                 if args.toslack:
-                    outputlogging.send_candidate_slack("nsfrb_"+str(fnum)+"_periodicity_search" + tstamp + ".png",filedir=str(args.path if len(args.path)>0 else img_dir) + "/")
+                    #outputlogging.send_candidate_slack("nsfrb_"+str(fnum)+"_periodicity_search" + tstamp + ".png",filedir=str(args.path if len(args.path)>0 else img_dir) + "/")
+                    print("sending notification via x11...")
+                    os.system("cp " + str(args.path if len(args.path)>0 else img_dir) + "/" + "nsfrb_"+str(fnum)+"_periodicity_search" + tstamp + ".png" + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
+                    os.system("echo 1 > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
+                    os.system("echo " + "nsfrb_"+str(fnum)+"_periodicity_search" + tstamp + ".png" + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
+                    print("done!")
     print("Full time:",time.time()-t__)
     return 0
 

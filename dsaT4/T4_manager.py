@@ -18,7 +18,7 @@ import numpy as np
 from astropy.time import Time
 from nsfrb.config import tsamp,baseband_tsamp,tsamp_slow,tsamp_imgdiff
 from nsfrb.config import nsamps as init_nsamps
-from nsfrb.outputlogging import printlog
+from nsfrb.outputlogging import printlog,send_candidate_pushover
 from nsfrb import candcutting
 from event import event
 from dsaT4 import data_manager
@@ -281,7 +281,7 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
         finalidxs = np.arange(len(finalcands),dtype=int)
     return finalcands,finalidxs,predictions,probabilities
 
-from nsfrb.searching import maxshift
+from nsfrb.searching import maxshift,maxshift_slow
 def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D):
     if len(args.daskaddress) > 0:
         res = d_future
@@ -383,29 +383,41 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
 
         # dedisperse to each unique dm candidate
         timeseries = []
-        sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[0 if (slow or imgdiff) else maxshift]+[image.shape[3]])),image],axis=2)
+        #sourceimg_all = np.concatenate([np.zeros(tuple(list(image.shape[:2])+[0 if (slow or imgdiff) else maxshift]+[image.shape[3]])),image],axis=2)
         for i in range(len(finalidxs)):
             print(i)
             DM = DM_trials_use[int(canddict['dm_idxs'][i])]
 
-            sourceimg = sourceimg_all[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
+            sourceimg = image[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
             if (DM != 0 and not imgdiff):
                 printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc "+ str(sourceimg.shape),output_file=cutterfile)
-                corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp_use,nsamps,outputwraps=True,maxshift=0 if (slow or imgdiff) else maxshift)
 
-                printlog("corr shifts shape:" + str(corr_shifts_all_append.shape),output_file=cutterfile)
+                tshift =np.array(np.abs((4.15)*DM*((1/np.nanmin(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
+                sourceimg_dm = np.zeros_like(sourceimg)
+                for j in range(len(freq_axis)):
+                    sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(0,tshift[j])),mode='constant')[:,:,-sourceimg.shape[2]:]
+                """
+
+
+                if slow: 
+                    maxshift_use = maxshift_slow
+                else: 
+                    maxshift_use = maxshift 
+                corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp_use,nsamps,outputwraps=True,maxshift=maxshift_use)#0 if (slow or imgdiff) else maxshift)
+
+                printlog("corr shifts shape:" + str(corr_shifts_all_no_append.shape),output_file=cutterfile)
 
                 DM_idx = 0#list(DM_trials).index(DM)
                 printlog("PRE-DM SHAPE:"+str(sourceimg.shape),output_file=cutterfile)
-                sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,:,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
+                sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,:,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_no_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_no_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
                 printlog("POST-DM SHAPE:"+str(sourceimg_dm.shape),output_file=cutterfile)
                 #zero out anywhere that was wrapped
                 #sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
 
                 #now average the low and high shifts 
                 sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps,nchans] + [2])).sum(4))
-
+                """
             else:
                 sourceimg_dm = sourceimg
             timeseries.append(np.nanmean(sourceimg_dm,(0,1,3)))
@@ -476,13 +488,16 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
     candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/",show=False,s100=args.SNRthresh/2,
-                                            injection=injection_flag,vmax=args.SNRthresh+2,vmin=args.SNRthresh,
+                                            injection=injection_flag,vmax=np.nanmax(searched_image),vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff)
 
     if args.toslack:
         #printlog("sending plot to slack...",output_file=cutterfile)
         #send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+        printlog("sending plot to pushover...",output_file=cutterfile)
+        send_candidate_pushover(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+        printlog("done!",output_file=cutterfile)
         printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
 
         if slow:

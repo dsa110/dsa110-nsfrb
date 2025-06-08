@@ -41,7 +41,24 @@ def send_candidate_slack(filename,filedir=final_cand_dir,error_file=error_file):
         printlog(e,output_file=error_file)
         return 1
 
+#slack alternative: pushover
+import requests
+import os
+def send_candidate_pushover(filename,filedir=final_cand_dir,error_file=error_file):
+    try:
+        r = requests.post("https://api.pushover.net/1/messages.json", data = {
+            "token": os.environ["PSHOVR_TOKEN_DSA"],
+            "user": os.environ["PSHOVR_GROUP_DSA"],
+            "message": filename[:-4]
+            },
 
+        files = {
+            "attachment": (filename, open(filedir + filename, "rb"), "image/jpeg")
+            })
+        return 0
+    except Exception as e:
+        printlog(e,output_file=error_file)
+        return 1
 
 import websocket
 import asyncio

@@ -265,6 +265,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
     plt.xlabel("Mean Pixel Value per Time Sample (arb. units)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
+    plt.ylim(1,1e4)
     plt.title("Last Updated: " + Time.now().isot)
     #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
@@ -298,11 +299,12 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(NSFRBsens/2)
     plt.yscale("log")
     plt.xscale("log")
-
+    plt.ylim(1,1e4)
     #plt.yscale("log")
     #plt.xscale("log")
     plt.colorbar(label="Linear Fit Residual")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal.png")
+    print("here")
     plt.close()
     
     plt.figure(figsize=(12,12))
@@ -326,7 +328,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(NSFRBsens/2)
     plt.yscale("log")
     plt.xscale("log")
-
+    plt.ylim(1,1e4)
     #plt.yscale("log")
     #plt.xscale("log")
     plt.colorbar(label="Linear Fit Residual")
@@ -349,7 +351,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     plt.axhline(1,color='blue',linestyle='--')
     plt.yscale("log")
     plt.xscale("log")
-
+    plt.ylim(1/NSFRBsens,1e4/NSFRBsens)
     plt.colorbar(label="Linear Fit Residual")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibratedSNR.png")
     plt.close()
@@ -1741,7 +1743,7 @@ def main(args):
             astrocal(args)
     if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
         if args.update_only:
-            update_speccal_table([],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust)
+            update_speccal_table([],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition)
         else:
             speccal(args)
     return

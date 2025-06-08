@@ -127,15 +127,17 @@ def pulsarobs(args):
     
     expectedSNRs = S1400s*(Ps/(Ws*1e-3))*(Ws/tsamp_ms)/NSFRBsens
     
+    """
     #select pulsars in dec range detectable above 3sigma
     if args.search_dec == 180:
         elev = get_best_elev(reftime)#get_elevation(reftime)
         search_dec = get_declination(elev).value
     else:
         search_dec = args.search_dec
-
+    
     decrange = args.decrange#1.5
-    condition = np.logical_and(np.abs(coords.dec.value-search_dec) <decrange,expectedSNRs>args.SNRmin)
+    """
+    condition = expectedSNRs>args.SNRmin #np.logical_and(np.abs(coords.dec.value-search_dec) <decrange,expectedSNRs>args.SNRmin)
     if np.sum(condition) == 0:
         print("No available test pulsars")
         return
@@ -165,11 +167,11 @@ def pulsarobs(args):
     else:
             bright_nvsscoords = vis_nvsscoords
             bright_nvssnames = vis_nvssnames
-            print("Running flux calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest pulsars at dec=" + str(search_dec) + ":")
+            print("Running flux calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest pulsars:")
 
 
 
-    #find the files within the timestamp
+    #find the files within the timestamp with matching dec
     besttime = []
     bright_fnames = []
     bright_offsets = []
@@ -192,7 +194,7 @@ def pulsarobs(args):
         antpos = secvis.transform_to(AltAz)
         besttime.append(timeax[np.argmax(antpos.alt.value)])
         ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
-        if ffvl[0] != -1 and int(ffvl[-1])==int(search_dec):
+        if ffvl[0] != -1 and np.abs(bright_nvsscoords[i].dec.value-ffvl[-1]) <args.decrange:#int(ffvl[-1])==int(search_dec):
             print(bright_nvssnames[i])
             print(besttime[-1].isot)
             print(ffvl)
