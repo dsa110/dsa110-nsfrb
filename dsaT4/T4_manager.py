@@ -1,13 +1,21 @@
 from dsamfs import utils as pu
-from nsfrb.config import tsamp,tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis
+import glob
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+from nsfrb import periodicity
+from nsfrb.flagging import flag_vis
+from nsfrb.planning import find_fast_vis_label
+from nsfrb.config import tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis,freq_axis_fullres,vis_dir,raw_cand_dir,bad_antennas,flagged_antennas,lambdaref,pixperFWHM
+from nsfrb.config import tsamp as tsamp_ms
 from nsfrb import plotting as pl
+from nsfrb import pipeline
 from event import names
 import csv
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
 from nsfrb.classifying_with_time import classify_images_3D
 from concurrent.futures import ThreadPoolExecutor
-from nsfrb.imaging import uv_to_pix
-from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,DM_trials_slow,gen_boxcar_filter,default_PSF
+from nsfrb.imaging import uv_to_pix,single_pix_image
+from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,DM_trials_slow,gen_boxcar_filter,default_PSF,noise_update_all
 import argparse
 from dsautils import dsa_store
 from nsfrb import candcutting as cc
@@ -16,9 +24,9 @@ import os
 import sys
 import numpy as np
 from astropy.time import Time
-from nsfrb.config import tsamp,baseband_tsamp,tsamp_slow,tsamp_imgdiff
+from nsfrb.config import baseband_tsamp,tsamp_slow,tsamp_imgdiff
 from nsfrb.config import nsamps as init_nsamps
-from nsfrb.outputlogging import printlog,send_candidate_pushover
+from nsfrb.outputlogging import printlog,send_candidate_pushover,send_candidate_slack
 from nsfrb import candcutting
 from event import event
 from dsaT4 import data_manager
@@ -61,7 +69,7 @@ OUTPUT_PATH = os.environ["DSA110DIR"] + "operations/T4/"
 #IP_GUANO = '3.13.26.235'
 
 final_cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/final_cands/candidates/"
-def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir,slow=False,imgdiff=False):
+def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,P=-1,final_cand_dir=final_cand_dir,slow=False,imgdiff=False):
     """
     Takes the following arguments and saves to a json file in the specified cand dir
     cand_isot: str
@@ -78,7 +86,7 @@ def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=fin
     elif imgdiff:
         ibox = int(np.ceil(width*tsamp_imgdiff/baseband_tsamp))
     else:
-        ibox = int(np.ceil(width*tsamp/baseband_tsamp))
+        ibox = int(np.ceil(width*tsamp_ms/baseband_tsamp))
     f = open(final_cand_dir + "/" + trigname + ".json","w")
     json.dump({"mjds":mjds,
                "isot":cand_isot,
@@ -91,7 +99,9 @@ def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,final_cand_dir=fin
                "specnum":-1,
                "ra":ra,
                "dec":dec,
-               "trigname":trigname},f)
+               "trigname":trigname,
+               "period":P
+               },f)
     f.close()
 
     return final_cand_dir + "/" + trigname + ".json"
@@ -174,11 +184,192 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
     return finalcands,finalidxs
 
 
+def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use):
+    tsamp_use = tsamp_ms
+    if len(args.daskaddress) > 0:
+        ret = d_future
+    else:
+        ret = d_future.result()
+
+    if len(ret)==4:
+        finalcands,finalidxs,predictions,probabilities = ret
+        classify_flag = True
+    elif len(ret)==2:
+        finalcands,finalidxs = ret
+        classify_flag = False
+    else:
+        return None
+
+    if not args.FFA:
+        if classify_flag:
+            return finalcands,finalidxs,dict(),predictions,probabilities 
+        else:
+            return finalcands,finalidxs,dict()
+
+    printlog("FFA START",output_file=cutterfile)
+
+    #get path
+    if args.GP:
+        gppaths = glob.glob(vis_dir + "/GP_observations_*")
+        gpisots_ = np.sort([gppaths[i][-23:] for i in range(len(gppaths))])
+        gptimes = []
+        for i in range(len(gpisots_)):
+            try:
+                gptimes.append(Time(gpisots_[i],format='isot'))
+            except:
+                printlog("Skipping " + gpisots_[i],output_file=cutterfile)
+        obstime = Time(cand_isot,format='isot')
+        printlog(gptimes,output_file=cutterfile)
+        for i in range(len(gptimes)):
+            if obstime<gptimes[i]:
+                break
+        printlog("HERE " + gptimes[i-1].isot + " " + obstime.isot,output_file=cutterfile) 
+        fpath = vis_dir + "/GP_observations_" + gptimes[i-1].isot + "/"
+    else:
+        fpath = ""
+    printlog(fpath,output_file=cutterfile)
+
+
+    #find the data file
+    printlog("HERE",output_file=cutterfile)
+    printlog("candisot:" + cand_isot,output_file=cutterfile)
+    printlog("path:" + fpath,output_file=cutterfile)
+    fnum,offset,dec = find_fast_vis_label(Time(cand_isot,format='isot').mjd,return_dec=True,path=fpath)
+    printlog("FFVL OUTPUT:" + str((fnum,offset,dec)),output_file=cutterfile)
+    if offset == -1:
+        if classify_flag:
+            return finalcands,finalidxs,dict(),predictions,probabilities
+        else:
+            return finalcands,finalidxs,dict()
+    candgulp = int(offset//25)
+    ngulps = args.FFAgulps
+    mingulp = max([0,candgulp-(ngulps//2)])
+    maxgulp = min([90,mingulp + ngulps])
+    ngulps = maxgulp-mingulp
+    printlog("periodicity searching gulps " + str(mingulp) + "-" + str(maxgulp) + " from file " + str(fnum),output_file=cutterfile)
+    gulpsize = 25
+    if args.GP:
+        fname = fpath + "/nsfrb_sb00_" + str(fnum) +".out"
+    else:
+        fname = vis_dir + "/lxd110h03/nsfrb_sb00_" + str(fnum) +".out"
+    printlog(fname,output_file=cutterfile)
+    nchan_per_node=nchans_per_node = 8
+    sb,mjd,dec = pipeline.read_raw_vis(fname,nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
+    printlog("file params:" + str((sb,mjd,dec)),output_file=cutterfile)
+
+    #target
+    printlog(finalcands,output_file=cutterfile)
+    printlog(finalidxs,output_file=cutterfile)
+    target_ras = RA_axis_2D[np.array([int(finalcands[j][1]) for j in finalidxs],dtype=int),np.array([int(finalcands[j][0]) for j in finalidxs],dtype=int)]
+    target_decs = DEC_axis_2D[np.array([int(finalcands[j][1]) for j in finalidxs],dtype=int),np.array([int(finalcands[j][0]) for j in finalidxs],dtype=int)]
+    printlog(target_ras,output_file=cutterfile)
+    printlog(target_decs,output_file=cutterfile)
+    target_coords = SkyCoord(ra=target_ras*u.deg,
+                            dec=target_decs*u.deg,frame='icrs')
+    target_dms = DM_trials_use[np.array([int(finalcands[j][3]) for j in finalidxs],dtype=int)]
+
+
+    sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    nbin = args.FFAbin
+    image_size = image.shape[0]
+    printlog("target coords:" + str(target_coords),output_file=cutterfile)
+
+
+    #image
+    
+    alldspec = np.zeros((len(finalcands),gulpsize*ngulps//nbin,(1 if args.FFAbinchans else nchan_per_node)*nchans))
+    allpix_all = [[]]*len(finalcands)
+    printlog("start imaging..." , output_file=cutterfile)
+    for j in range(nchans):
+        printlog("sb " + str(j),output_file=cutterfile)
+        if args.GP:
+            fname = fpath + "/nsfrb_sb"+sbs[j]+"_" + str(fnum) +".out"
+        else:
+            fname = vis_dir + "/lxd110"+corrs[j]+"/nsfrb_sb"+sbs[j]+"_" + str(fnum) +".out"
+        dat_all,sb,mjd,dec = pipeline.read_raw_vis(fname,gulp=mingulp,nsamps=gulpsize*ngulps,nchan=nchan_per_node,headersize=16,get_header=False)
+
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        pt_dec = dec*np.pi/180.
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+        outriggers=False
+        dat_all, bname, blen, UVW, antenna_order = flag_vis(dat_all, bname, blen, UVW, antenna_order,
+                                                    bad_antennas,
+                                                    bmin=20,flagged_corrs=[],flag_channel_templates=[],
+                                                    flagged_chans=[],flagged_baseline_idxs=[])
+        U = UVW[0,:,1]
+        V = UVW[0,:,0]
+        W = UVW[0,:,2]
+        nchans = 16
+        fobs = (np.reshape(freq_axis_fullres,(nchans*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))*1e-3
+
+        if j == 0:
+            uv_diag=np.max(np.sqrt(U**2 + V**2))
+            pixel_resolution = (lambdaref / uv_diag) / pixperFWHM
+        
+        for i in range(len(target_coords)):
+            target_coord = target_coords[i]
+            ret = single_pix_image(dat_all,U,V,fobs,j,dec,mjd,ngulps,nbin,target_coord,tsamp_use,pixel_resolution,pixperFWHM,uv_diag,nchans_per_node=8,allpix=allpix_all[i],DM=target_dms[i])
+            if args.FFAbinchans:
+                alldspec[i,:,j] = np.nanmean(ret[0],1)
+            else:
+                alldspec[i,:,j*nchans_per_node:(j+1)*nchans_per_node] = ret[0]
+            allpix_all[i] = ret[1]
+        del dat_all
+        printlog("sb done",output_file=cutterfile)
+
+    #for i in range(len(target_coords)):
+    #    np.save(raw_cand_dir + "/single_pix_" + cand_isot + "_" + str(i) + ".npy",alldspec[i,:,:])
+    printlog("done creating single pix dynamic spectra",output_file=cutterfile)
+
+    printlog("starting periodicity search...",output_file=cutterfile)
+    trial_periods = np.array(args.periods)
+    trial_periods = trial_periods[trial_periods<alldspec.shape[1]]
+    finalPcands = []
+    finalPidxs = []
+    #get the current noise map from file
+    prev_noise_,prev_noise_N = noise_update_all(None,image_size,image_size,DM_trials_use,widthtrials,readonly=True) #noise.get_noise_dict(gridsize,gridsize)
+    prev_noise = prev_noise_[0,0]/np.sqrt(nbin)
+    finalpcands = dict()
+    for i in range(len(target_coords)):
+        dspec = alldspec[i,:,:]
+        timeseries = np.nanmean((dspec - np.nanmedian(dspec,axis=0)),1)
+        timeseries /= prev_noise #np.nanstd(timeseries)
+        snrs = periodicity.ffa_slow(timeseries,trial_periods)
+        printlog(snrs,output_file=cutterfile)
+        if np.max(snrs)>args.FFASNRthresh:
+            peakidx = np.unravel_index(np.argmax(snrs),snrs.shape)
+            printlog("found candidate pulse period P=" + str(trial_periods[peakidx[0]]*tsamp_use*nbin/1000) + " s",output_file=cutterfile) 
+            trial_p_fine = np.linspace(trial_periods[max([peakidx[0]-1,0])],trial_periods[min([peakidx[0]+1,len(trial_periods)-1])],10)
+            resids = periodicity.ffa_timing(timeseries,trial_p_fine,trial_periods[peakidx[0]])
+            minresid = np.unravel_index(np.argmin(resids),resids.shape)
+            printlog("refined pulse period P=" + str(trial_p_fine[minresid[0]]*tsamp_use*nbin/1000) + " s",output_file=cutterfile)
+            #finalPcands.append(list(finalcands[i]) + [trial_p_fine[minresid[0]]*tsamp_use*nbin/1000])
+            #finalPidxs.append(finalidxs[i])
+            finalpcands[i] = dict()
+            finalpcands[i]["snrs"] = snrs
+            finalpcands[i]["resids"] = resids
+            finalpcands[i]["initP_samps"] = trial_periods[peakidx[0]]
+            finalpcands[i]["initP_secs"] = trial_periods[peakidx[0]]*tsamp_use*nbin/1000
+            finalpcands[i]["fineP_samps"] = trial_p_fine[minresid[0]]
+            finalpcands[i]["fineP_secs"] = trial_p_fine[minresid[0]]*tsamp_use*nbin/1000
+            finalpcands[i]["timeseries"] = timeseries
+            finalpcands[i]["taxis"] = np.arange(len(timeseries))
+            finalpcands[i]["trial_p_cand_secs"] = trial_p_fine*tsamp_use*nbin/1000
+            printlog("written to dict",output_file=cutterfile)
+        else:
+            printlog("none found",output_file=cutterfile)
+    if classify_flag:
+        return finalcands,finalidxs,finalpcands,predictions,probabilities
+    else:
+        return finalcands,finalidxs,finalpcands
+
 def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff):
     if len(args.daskaddress) > 0:
         finalcands,finalidxs = d_future
     else:
         finalcands,finalidxs = d_future.result()
+    printlog("CLASSIFY STARTED",output_file=cutterfile)
     classify_flag = (args.classify or args.classify3D)
     useTOA=args.useTOA and len(finalcands[0])==6
     if not classify_flag:
@@ -290,11 +481,11 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     print("RIGHT HERE",res)
     if res is None:
         return
-    elif len(res) == 4:
-        finalcands,finalidxs,predictions,probabilities = res
+    elif len(res) == 5:
+        finalcands,finalidxs,finalpcands,predictions,probabilities = res
         classify_flag = True
-    elif len(res) == 2:
-        finalcands,finalidxs = res
+    elif len(res) == 3:
+        finalcands,finalidxs,finalpcands = res
         classify_flag = False
     else:
         return
@@ -329,6 +520,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     wr = csv.writer(csvfile,delimiter=',')
     hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
     if useTOA: hdr += ["TOA"]
+    if args.FFA: hdr += ["Period_s"]
     hdr += ["SNR"]
     if classify_flag: hdr += ["PROB"]
     wr.writerow(hdr)
@@ -338,9 +530,15 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
             lastname = names.increment_name(cand_mjd,lastname=lastname)
         sys.stdout = sysstdout
         if classify_flag:
-            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
+            if args.FFA:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),["" if j not in finalpcands.keys() else finalpcands[j]["fineP_secs"]],[finalcands[j][-1]],[probabilities[j]]]))
+            else:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
         else:
-            wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
+            if args.FFA:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),["" if j not in finalpcands.keys() else finalpcands[j]["fineP_secs"]],[finalcands[j][-1]]]))
+            else:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
         allcandnames.append(prefix + lastname)
     csvfile.close()
 
@@ -443,8 +641,13 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                     cand_mjd = Time(Time(cand_isot,format='isot').mjd + (canddict['TOAs'][i]*(tsamp_use)/1000/86400),format='mjd').mjd
                 else:
                     cand_mjd = Time(cand_isot,format='isot').mjd
-                print("ALMOST ALMOST DONE")
-                fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
+                print("ALMOST ALMOST DONE",finalpcands)
+                if args.FFA and (i in finalpcands.keys()):
+                    P = float(finalpcands[i]["fineP_secs"])
+                else:
+                    P =-1
+                print("RIGHT HERE:",finalpcands,i,P)
+                fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
 
                 printlog(fl,output_file=cutterfile)
     
@@ -463,25 +666,44 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
 
     if res is None:
         return
-    elif len(res) == 8:
-        finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
-        classify_flag = True
-        #injection_flag = True
-    elif len(res) == 7:
-        finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,timeseries = res
-        classify_flag = True
-        #injection_flag = False
-    elif len(res) == 6:
-        finalcands,finalidxs,canddict,allcandnames,timeseries,jsonfname = res
-        classify_flag = False
-        #injection_flag = True
-    elif len(res) == 5:
-        finalcands,finalidxs,canddict,allcandnames,timeseries = res
-        classify_flag = False
-        #injection_flag = False
+    if not args.FFA:
+        if len(res) == 8:
+            finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
+            classify_flag = True
+            #injection_flag = True
+        elif len(res) == 7:
+            finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,timeseries = res
+            classify_flag = True
+            #injection_flag = False
+        elif len(res) == 6:
+            finalcands,finalidxs,canddict,allcandnames,timeseries,jsonfname = res
+            classify_flag = False
+            #injection_flag = True
+        elif len(res) == 5:
+            finalcands,finalidxs,canddict,allcandnames,timeseries = res
+            classify_flag = False
+            #injection_flag = False
+        else:
+            return
     else:
-        return
-
+        if len(res) == 9:
+            finalcands,finalidxs,finalpcands,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
+            classify_flag = True
+            #injection_flag = True
+        elif len(res) == 8:
+            finalcands,finalidxs,finalpcands,predictions,probabilities,canddict,allcandnames,timeseries = res
+            classify_flag = True
+            #injection_flag = False
+        elif len(res) == 7:
+            finalcands,finalidxs,finalpcands,canddict,allcandnames,timeseries,jsonfname = res
+            classify_flag = False
+            #injection_flag = True
+        elif len(res) == 6:
+            finalcands,finalidxs,finalpcands,canddict,allcandnames,timeseries = res
+            classify_flag = False
+            #injection_flag = False
+        else:
+            return
     printlog("Creating candplot...",output_file=cutterfile)
     print(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
     print(canddict,image,RA_axis,DEC_axis)
@@ -490,13 +712,13 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
                                             output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/",show=False,s100=args.SNRthresh/2,
                                             injection=injection_flag,vmax=np.nanmax(searched_image),vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
-                                            dec_obs=dec_obs,slow=slow,imgdiff=imgdiff)
+                                            dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=finalpcands)
 
     if args.toslack:
-        #printlog("sending plot to slack...",output_file=cutterfile)
-        #send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
-        printlog("sending plot to pushover...",output_file=cutterfile)
-        send_candidate_pushover(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+        printlog("sending plot to slack...",output_file=cutterfile)
+        send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+        #printlog("sending plot to pushover...",output_file=cutterfile)
+        #send_candidate_pushover(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
         printlog("done!",output_file=cutterfile)
         printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
 
@@ -580,8 +802,11 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
     #(3) classifying
     d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
+    #(3.5) fast folding
+    d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use)
+
     #(4) writing csvs and jsons for remaining cands (might not be any remaining cands)
-    d_write = client.submit(writecands_manage,d_classify,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_write = client.submit(writecands_manage,d_ffa,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(5) sending alerts (slack, triggers, etc)
     d_trigger = client.submit(sendtrigger_manage,d_write,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
@@ -596,7 +821,6 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
         fut = client.submit(run_final_nsfrb, (d_h5, d_cs, d_vc), args.daskaddress, key=f"run_final_nsfrb-{d.trigname}")#, lock=lock)
         return fut
     return d_archive
-
 
 def run_createstructure_nsfrb(d_future, daskaddress, lock=None):
     """ Use DSACand (after filplot) to decide on creating/copying files to candidate data area.
@@ -929,7 +1153,8 @@ def main(args):
                     PSF = None
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
         else:
-            fname = raw_cand_dir + "candidates_" + Time.now().isot + ".csv"
+            cand_isot = "2025-06-10T12:05:00.000"#Time(Time.now().mjd - (50/60/24),format='mjd').isot
+            fname = raw_cand_dir + "candidates_" + cand_isot + ".csv"
             uv_diag = 500
             dec_obs = 71.6
             img_shape = (301,301)
@@ -949,7 +1174,7 @@ def main(args):
             printlog("IMGDIFF CANDCUTTING",output_file=cutterfile)
         else:
             suff = ""
-            tsamp_use = tsamp
+            tsamp_use = tsamp_ms
             DM_trials_use = DM_trials
         cand_isot = fname[fname.index("candidates_")+11:fname.index(suff + ".csv")]
         
@@ -1010,7 +1235,7 @@ def main(args):
                 res = tasklist[i].result()
                 print(res)
             printlog("Sleeping for " + str(60/60) + " minutes",output_file=cutterfile)
-            time.sleep(60)
+            time.sleep(600)
 
     return 0
 
@@ -1052,7 +1277,13 @@ if __name__=="__main__":
     parser.add_argument('--testtrigger',action='store_true',help='Inject fake data to test T4')
     parser.add_argument('--daskaddress',type=str,help='Address for dask scheduler',default="")
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
-
+    parser.add_argument('--GP',action='store_true',help='notifies T4 manager that data from the galactic plane survey is being searched')
+    parser.add_argument('--periods',nargs='+',type=int,help='periods (in samples) to search',default=[5,10,15,30,45])
+    parser.add_argument('--FFA',action='store_true',help='run fast-folding periodicity search on any single pulse candidates')
+    parser.add_argument('--FFAgulps',type=int,help='Number of gulps for ffa search',default=1)
+    parser.add_argument('--FFAbin',type=int,help='Downsampling factor for ffa search',default=1)
+    parser.add_argument('--FFASNRthresh',type=float,help='S/N threshold for periodicity search',default=3)
+    parser.add_argument('--FFAbinchans',action='store_true',help='Average over all channels in each sub-band for periodicity search')
     args = parser.parse_args()
     
     main(args)

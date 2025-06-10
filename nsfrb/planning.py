@@ -1436,7 +1436,8 @@ def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path='',return_dec=False):
             #print((mjd-mjd)*86400/60, (tsamp*nsamps*90/1000/60))
             found=1
             break
-        elif i == 0 and mjd < mjd_f: return -1, -1, -1
+        elif i == 0 and mjd < mjd_f and return_dec: return -1, -1, -1
+        elif i == 0 and mjd < mjd_f and not return_dec: return -1, -1 
     if found == 1:
         if return_dec:
             return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp)),dec_f
@@ -1444,6 +1445,6 @@ def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path='',return_dec=False):
             return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp))
     else:
         if return_dec:
-            return -1,-1,-1,-1
-        else:
             return -1,-1,-1
+        else:
+            return -1,-1

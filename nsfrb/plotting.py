@@ -164,7 +164,7 @@ def plot_dirty_images(dirty_images, save_to_pdf=False, pdf_filename='dirty_image
         plt.show()
 
 
-def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[],uv_diag=None,dec_obs=None,slow=False,imgdiff=False,timeseries_nondm=False):
+def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,output_dir,show=True,vmax=1000,vmin=0,s100=100,injection=False,searched_image=None,timeseries=[],uv_diag=None,dec_obs=None,slow=False,imgdiff=False,timeseries_nondm=False,pcanddict=dict()):
     """
     Makes updated diagnostic plots for search system
     """
@@ -203,14 +203,17 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
             i += 1
     csvfile.close()
     """
-    fig=plt.figure(figsize=(40,40*((2/3) if imgdiff else 1)))
+    plot_period = np.argmax(snrs) in pcanddict.keys()
+    fig=plt.figure(figsize=(40,40*((2/3) if imgdiff else 1) + (15 if plot_period else 0)))
     if injection:
         fig.patch.set_facecolor('red')
     elif slow:
         fig.patch.set_facecolor('lightblue')
     elif imgdiff:
         fig.patch.set_facecolor('palegreen')
-    gs = fig.add_gridspec((2 if imgdiff else 3),2)
+    nrows = (2 if imgdiff else 3) + (1 if plot_period else 0)
+    ncols = 2
+    gs = fig.add_gridspec(nrows,ncols)
     ax = fig.add_subplot(gs[0,0])#plt.subplot(3,2,1)
 
     #ax.imshow((img.mean((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
@@ -250,29 +253,29 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
                     dec_grid_2D_cut[decs[canddict['predicts']==0],ras[canddict['predicts']==0]].flatten(),
                     c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,
                     s=3000,#*snrs[canddict['predicts']==0]/s100,
-                    vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')
+                    vmin=vmin,vmax=vmin*2,linewidths=4,edgecolors='limegreen')
             c=ax.scatter(ra_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
                     dec_grid_2D_cut[decs[canddict['predicts']==1],ras[canddict['predicts']==1]].flatten(),
                     c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,
                     s=3000,#*snrs[canddict['predicts']==1]/s100,
-                    vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')
+                    vmin=vmin,vmax=vmin*2,linewidths=4,edgecolors='violet')
         else:
             c=ax.scatter(ra_grid_2D_cut[decs,ras].flatten(),
                     dec_grid_2D_cut[decs,ras].flatten(),c=snrs,marker='o',cmap='jet',alpha=0.5,
                     s=3000,#*snrs/s100,
-                    vmin=vmin,vmax=vmax)
+                    vmin=vmin,vmax=vmin*2)
     else:
         if 'predicts' in canddict.keys():
             c=ax.scatter(RA_axis[ras][canddict['predicts']==0],DEC_axis[decs][canddict['predicts']==0],c=snrs[canddict['predicts']==0],marker='o',cmap='jet',alpha=0.5,
                     s=3000,#100*snrs[canddict['predicts']==0]/s100,
-                    vmin=vmin,vmax=vmax,linewidths=4,edgecolors='limegreen')
+                    vmin=vmin,vmax=vmin*2,linewidths=4,edgecolors='limegreen')
             c=ax.scatter(RA_axis[ras][canddict['predicts']==1],DEC_axis[decs][canddict['predicts']==1],c=snrs[canddict['predicts']==1],marker='o',cmap='jet',alpha=0.5,
                     s=3000,#100*snrs[canddict['predicts']==1]/s100,
-                    vmin=vmin,vmax=vmax,linewidths=4,edgecolors='violet')
+                    vmin=vmin,vmax=vmin*2,linewidths=4,edgecolors='violet')
         else:
             c=ax.scatter(RA_axis[ras],DEC_axis[decs],c=snrs,marker='o',cmap='jet',alpha=0.5,
                     s=3000,#100*snrs/s100,
-                    vmin=vmin,vmax=vmax)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
+                    vmin=vmin,vmax=vmin*2)#(snrs-np.nanmin(snrs))/(2*np.nanmax(snrs)-np.nanmin(snrs)))
     plt.colorbar(mappable=c,ax=ax,label='S/N')
     #nvss sources
     nvsspos,tmp,tmp = nvss_cat(Time(isot,format='isot').mjd,DEC_axis[len(DEC_axis)//2],sep=np.abs(np.max(DEC_axis)-np.min(DEC_axis))*u.deg)
@@ -375,6 +378,46 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Frequency (MHz)")
         printlog("dynamic spectrum done",output_file=cutterfile)
+
+
+
+    #show periodogram for highest S/N burst
+    if plot_period:
+        ax = fig.add_subplot(gs[3,1])
+        printlog("FROM PLOTTING, PERIODOGRAM",output_file)
+        showcand = np.argmax(snrs)
+        timeseries = pcanddict[showcand]["timeseries"]
+        initP = pcanddict[showcand]["initP_secs"]
+        initPsamps = pcanddict[showcand]["initP_samps"]
+        taxis = pcanddict[showcand]["taxis"]
+        fineP = pcanddict[showcand]["fineP_secs"]
+        resids = pcanddict[showcand]["resids"]
+        trial_p_fine = pcanddict[showcand]["trial_p_cand_secs"]
+        alphas = np.clip(timeseries/(np.nanmax(timeseries)/2 - np.nanmin(timeseries)),0.05,1)
+        msizes = timeseries/(np.nanmax(timeseries)/2 - np.nanmin(timeseries))
+
+        taxis = np.arange(len(timeseries))
+        c=ax.imshow(resids,aspect='auto',extent=(0,1,np.nanmin(trial_p_fine),np.nanmax(trial_p_fine)),origin='lower',cmap='plasma')
+        ax.axhline(fineP,color='red',linewidth=4)
+        #.axvline(minresid[1]/trial_periods[peakidx[0]],color='red',linewidth=4)
+        ax.set_title("Timing Residuals\nFine-timing Estimate: " + str(np.around(fineP,2)) + "s")
+        plt.colorbar(mappable=c,ax=ax,label='Residuals (samples)')
+        ax.set_xlabel("Phase")
+        ax.set_ylabel("Trial Period (s)")
+        printlog("DONE1",output_file)
+
+        ax = fig.add_subplot(gs[3,0])
+        ax.scatter((taxis%initPsamps)/initPsamps,(initP)*(taxis//initPsamps),alpha=alphas,s=msizes*1000)
+        ax.set_ylabel("Time (s)")
+        ax.set_xlabel("Phase")
+        ax.set_title("Periodogram\nInitial Period Estimate: " + str(np.around(initP,2))+ "s")
+        printlog("DONE2",output_file)
+
+
+
+
+
+
     t = "NSFRB " + isot
     if injection and not slow and not imgdiff: t = t + " (injection)"
     elif slow: t = t + " (slow)"

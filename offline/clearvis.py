@@ -69,6 +69,7 @@ def main(args):
 
     while True:
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.waittime)
+        rawcutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.cand_waittime)
         print(
             f"Removing operation files last modified prior to "
             f"{cutoff.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
@@ -82,9 +83,9 @@ def main(args):
             modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
             # modtime is timezone naive, so we set it to utc
             # lxc managed containers are all using utc
-            modtime = modtime.replace(tzinfo=cutoff.tzinfo)
-            if modtime < cutoff:
-                print(modtime,cutoff)
+            modtime = modtime.replace(tzinfo=rawcutoff.tzinfo)
+            if modtime < rawcutoff:
+                print(modtime,rawcutoff)
                 print(f'Removing {file}')
 
                 try:
@@ -228,6 +229,7 @@ if __name__=="__main__":
     parser.add_argument('--clearcal',action='store_true',default=False,help='Clear calibration data dirs (NVSS*, RFC*)')
     parser.add_argument('--clearcal_waittime',type=float,help='Time between clearing calibrator visibilities in days, default 1',default=1.0)
     parser.add_argument('--backup_waittime',type=float,help='Maximum time in days before candidate is deleted or backed up to dsastorage,default 14',default=14.0)
+    parser.add_argument('--cand_waittime',type=float,help='Time between clearing raw cands in days, default 1',default=1.0)
     args = parser.parse_args()
 
     main(args)

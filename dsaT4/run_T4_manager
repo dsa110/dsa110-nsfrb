@@ -1,3 +1,3 @@
 #!/bin/bash
 echo "realtime candcutter active"
-python T4_manager.py --subimgpix 301 --SNRthresh 6 --useTOA --psfpercentile 70 --maxcands 10  --cluster --avgcluster --psfcluster --classify3D --clusteriters 2 --maxcand --model_weights3D "/dataz/dsa110/nsfrb/dsa110-nsfrb-training/NN_train/enhanced3dcnn_weights_final3.pth" --classcut --toslack --maxProcesses 5  # --daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D
+python T4_manager.py --subimgpix 301 --SNRthresh 6 --useTOA --psfpercentile 70 --maxcands 10  --cluster --avgcluster --psfcluster --classify3D --clusteriters 2 --maxcand --model_weights3D "/dataz/dsa110/nsfrb/dsa110-nsfrb-training/NN_train/enhanced3dcnn_weights_final3.pth" --classcut --maxProcesses 5 --FFA --toslack --periods 10 20 30 40 50 60 70 80 90 --GP --FFAbin 5 --FFAgulps 45 --FFAbinchans # --daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D

@@ -40,9 +40,10 @@ subdirs_to_clear = [
 def main(args):
     
 
+    GPflag = ('GP' in args.planname) or (len(args.planname)==0)
     if args.populate:
-        GP_obs_vis_dir = vis_dir + "GP_observations_" + args.planisot + "/"
-        GP_vis_file = vis_dir + "GP_observations_" + args.planisot + "/vis_files.csv"
+        GP_obs_vis_dir = vis_dir + str("GP_" if GPflag else "") + "observations_" + args.planisot + "/"
+        GP_vis_file = vis_dir + str("GP_" if GPflag else "") + "observations_" + args.planisot + "/vis_files.csv"
         with open(GP_vis_file,"w") as csvfile:
             #for subdir, pattern in subdirs_to_clear:
             #files = np.sort(glob.glob(os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/" + subdir + "/" + pattern))
@@ -67,7 +68,7 @@ def main(args):
 
     else: 
         #read json file
-        jsonfname = plan_dir + str(args.planname) + "/GP_observing_plan_" + args.planisot + ".json"
+        jsonfname = plan_dir + str(args.planname) + "/" + str("GP_" if GPflag else "") + "observing_plan_" + args.planisot + ".json"
         with open(jsonfname,"r") as jsonfile:
             plan_metadata = json.load(jsonfile)
         if args.planname != "" and 'planname' not in plan_metadata.keys():
@@ -78,7 +79,7 @@ def main(args):
             plan_metadata['fast_vis_labels'] = []
 
         #get first mjd from csv
-        csvfname =  plan_dir + str(args.planname) + "/GP_observing_plan_" + args.planisot + ".csv"
+        csvfname =  plan_dir + str(args.planname) + "/" + str("GP_" if GPflag else "") + "observing_plan_" + args.planisot + ".csv"
         with open(csvfname,"r") as csvfile:
             rdr = csv.reader(csvfile,delimiter=',')
             for row in rdr:
@@ -93,8 +94,8 @@ def main(args):
                 f"{end_time.strftime('%Y-%m-%dT%H:%M:%S')} UTC")
 
         #make directory
-        GP_obs_vis_dir = vis_dir + "GP_observations_" + args.planisot + "/"
-        GP_vis_file = vis_dir + "GP_observations_" + args.planisot + "/vis_files.csv"
+        GP_obs_vis_dir = vis_dir + str("GP_" if GPflag else "") + "observations_" + args.planisot + "/"
+        GP_vis_file = vis_dir + str("GP_" if GPflag else "") + "observations_" + args.planisot + "/vis_files.csv"
         plan_metadata['fast_vis_dir'] = GP_obs_vis_dir
         if len(glob.glob(GP_obs_vis_dir))==0:
             os.system("mkdir " + GP_obs_vis_dir)

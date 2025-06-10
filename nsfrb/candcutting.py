@@ -632,6 +632,8 @@ def img_to_classifier_format(img,candname,output_dir):
 
 
 
+
+
 #main cand cutter task function
 import tracemalloc
 from nsfrb.config import candcutter_memory_file,candcutter_time_file

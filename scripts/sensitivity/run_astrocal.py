@@ -67,7 +67,7 @@ from nsfrb import imaging
 from nsfrb.config import tsamp as tsamp_ms
 import pickle as pkl
 
-from nsfrb.planning import read_nvss,read_RFC,read_vlac
+from nsfrb.planning import read_nvss,read_RFC,read_vlac,read_atnf
 from dsautils.coordinates import create_WCS,get_declination,get_elevation
 from astropy.coordinates import AltAz
 from nsfrb.planning import find_fast_vis_label
@@ -1245,10 +1245,21 @@ def speccal(args):
     allnvssfluxes = np.concatenate([allnvssfluxes,allvlafluxes])
     """
     allnvsscoords,allnvssfluxes,allnvssms = read_nvss()
+    allpsr = np.array([False]*len(allnvsscoords))
+    allpsrnames = np.array([""]*len(allnvsscoords))
+
+    if args.includepulsars:
+        psrcoords,psrnames,psrPs,psrDMs,psrWs,psrfluxs = read_atnf()
+        allnvsscoords = SkyCoord(ra=np.concatenate([allnvsscoords.ra.value,psrcoords.ra.value])*u.deg,dec=np.concatenate([allnvsscoords.dec.value,psrcoords.dec.value])*u.deg,frame='icrs')
+        allnvssfluxes = np.concatenate([allnvssfluxes,psrfluxs])
+        allpsr = np.concatenate([allpsr,np.array([True]*len(psrcoords))])
+        allpsrnames = np.concatenate([allpsrnames,psrnames])
     fluxcondition = np.logical_and(allnvssfluxes>args.fluxmin,allnvssfluxes<args.fluxmax)
     #allcatflags = allcatflags[fluxcondition]
     allnvsscoords = allnvsscoords[fluxcondition]
     allnvssfluxes = allnvssfluxes[fluxcondition]
+    allpsr = allpsr[fluxcondition]
+    allpsrnames = allpsrnames[fluxcondition]
     print("Limited to flux between ",args.fluxmin,"-",args.fluxmax,"mJy")
 
 
@@ -1273,7 +1284,13 @@ def speccal(args):
     vis_nvssfluxes = allnvssfluxes[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
     #vis_nvssms = allnvssms[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
     #vis_catflags = allcatflags[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
+    vispsr = allpsr[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
+    vispsrnames = allpsrnames[np.abs(allnvsscoords.dec.value-search_dec) <decrange]
 
+    if len(vis_nvsscoords)==0:
+        print("no more sources to calibrate")
+        update_speccal_table([],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition)
+        return
     #single nvss source
     if len(args.nvss)>0:
         idxs = []
@@ -1291,16 +1308,20 @@ def speccal(args):
         idxs = np.array(idxs)
         bright_nvsscoords = vis_nvsscoords[idxs]
         bright_nvssfluxes = vis_nvssfluxes[idxs]
+        brightpsr = vispsr[idxs]
+        brightpsrnames = vispsrnames[idxs]
         #bright_nvssms = vis_nvssms[idxs]
         #bright_catflags = vis_catflags[idxs]
         print("Running astrometric calibration pipeline with NVSS sources ",idxnames)
     else:
 
         if args.randomsources:
-            print("radnomly selecting " + str(args.numsources_NVSS) + " sources for flux calibration")
-            useidxs = np.random.choice(np.arange(len(vis_nvsscoords),dtype=int),args.numsources_NVSS,replace=False)
+            print("randomly selecting " + str(min([len(vis_nvsscoords),args.numsources_NVSS])) + " sources for flux calibration")
+            useidxs = np.random.choice(np.arange(len(vis_nvsscoords),dtype=int),min([len(vis_nvsscoords),args.numsources_NVSS]),replace=False)
             bright_nvsscoords = vis_nvsscoords[useidxs]
             bright_nvssfluxes = vis_nvssfluxes[useidxs]
+            brightpsr = vispsr[useidxs]
+            brightpsrnames = vispsrnames[useidxs]
         else:
             #useidxs = np.argsort(vis_nvssfluxes)[max([0,len(vis_nvssfluxes)-(args.numsources_NVSS+args.minsrc_NVSS)]):max([0,len(vis_nvssfluxes)-args.minsrc_NVSS])]
             if args.minsrc_NVSS < len(vis_nvssfluxes):
@@ -1310,6 +1331,8 @@ def speccal(args):
                 return
             bright_nvsscoords = vis_nvsscoords[useidxs]
             bright_nvssfluxes = vis_nvssfluxes[useidxs]
+            brightpsr = vispsr[useidxs]
+            brightpsrnames = vispsrnames[useidxs]
             print("Running flux calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest NVSS sources at dec=" + str(search_dec) + ":")
 
 
@@ -1321,7 +1344,10 @@ def speccal(args):
     for i in range(len(bright_nvsscoords)):
         timeax = Time(int(reftime.mjd) - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
         DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
-        name = str('NVSS J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_nvsscoords[i].ra.hms.h),
+        if brightpsr[i]:
+            name = "PSR " + brightpsrnames[i]
+        else:
+            name = str('NVSS J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_nvsscoords[i].ra.hms.h),
                                                                RM=int(bright_nvsscoords[i].ra.hms.m),
                                                                RS=int(bright_nvsscoords[i].ra.hms.s)) +
                            str("+" if bright_nvsscoords[i].dec>=0 else "-") +
@@ -1800,5 +1826,6 @@ if __name__=="__main__":
     parser.add_argument('--fluxmax',type=float,help='maximum flux of sources for speccal in mJy',default=np.inf)
     parser.add_argument('--randomsources',action='store_true',help='Select random set of calibrators near the specified declination instead of taking the brightest')
     parser.add_argument('--exactposition',action='store_true',help='Set to measure flux at pixel closest to NVSS position instead of peak pixel')
+    parser.add_argument('--includepulsars',action='store_true',help='Include ATNF pulsars as faint continuum sources')
     args = parser.parse_args()
     main(args)
