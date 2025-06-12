@@ -95,7 +95,7 @@ def main(args):
                     shutil.rmtree(file)
 
         cand_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=args.backup_waittime)
-        canddirs = list(glob.glob(str(cand_dir) + "/candidates/*")) + list(glob.glob(str(cand_dir) + "/injections/*"))
+        canddirs = list(glob.glob(str(cand_dir) + "/candidates/*")) + list(glob.glob(str(cand_dir) + "/injections/*")) + list(glob.glob(str(cand_dir) + "/completeness/*"))
         keepcands = []
         with open(str(cand_dir) + "/cands_for_followup_isot.csv","r") as csvfile:
             rdr = csv.reader(csvfile)

@@ -30,7 +30,8 @@ from nsfrb.outputlogging import printlog,send_candidate_pushover,send_candidate_
 from nsfrb import candcutting
 from event import event
 from dsaT4 import data_manager
-from dask.distributed import Client, Lock
+from dask.distributed import Client#, Lock
+from threading import Lock
 from copy import deepcopy
 from itertools import chain
 from pathlib import Path
@@ -107,7 +108,7 @@ def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,P=-1,final_cand_di
     return final_cand_dir + "/" + trigname + ".json"
 
 
-LOCK = Lock('update_json')
+#LOCK = Lock('update_json')
 from nsfrb.config import cutterfile
 from simulations_and_classifications import generate_PSF_images as scPSF
 def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF):
@@ -183,13 +184,18 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
     
     return finalcands,finalidxs
 
-
-def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use):
+#ffa_semaphore = False
+def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock):
+    #global ffa_semaphore
     tsamp_use = tsamp_ms
     if len(args.daskaddress) > 0:
         ret = d_future
     else:
         ret = d_future.result()
+    #while ffa_semaphore:
+    #    time.sleep(1)
+    #ffa_semaphore = True
+    #printlog("SEMAPHORE ACQUIRED",output_file=cutterfile)
 
     if len(ret)==4:
         finalcands,finalidxs,predictions,probabilities = ret
@@ -198,9 +204,11 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
         finalcands,finalidxs = ret
         classify_flag = False
     else:
+        #ffa_semaphore = False
         return None
 
-    if not args.FFA:
+    if (not args.FFA) or args.completeness:
+        #ffa_semaphore = False
         if classify_flag:
             return finalcands,finalidxs,dict(),predictions,probabilities 
         else:
@@ -237,6 +245,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     fnum,offset,dec = find_fast_vis_label(Time(cand_isot,format='isot').mjd,return_dec=True,path=fpath)
     printlog("FFVL OUTPUT:" + str((fnum,offset,dec)),output_file=cutterfile)
     if offset == -1:
+        #ffa_semaphore = False
         if classify_flag:
             return finalcands,finalidxs,dict(),predictions,probabilities
         else:
@@ -277,7 +286,8 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
 
 
     #image
-    
+    ffalock.acquire()
+    printlog("MUTEX ACQUIRED",output_file=cutterfile)    
     alldspec = np.zeros((len(finalcands),gulpsize*ngulps//nbin,(1 if args.FFAbinchans else nchan_per_node)*nchans))
     allpix_all = [[]]*len(finalcands)
     printlog("start imaging..." , output_file=cutterfile)
@@ -287,8 +297,15 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
             fname = fpath + "/nsfrb_sb"+sbs[j]+"_" + str(fnum) +".out"
         else:
             fname = vis_dir + "/lxd110"+corrs[j]+"/nsfrb_sb"+sbs[j]+"_" + str(fnum) +".out"
-        dat_all,sb,mjd,dec = pipeline.read_raw_vis(fname,gulp=mingulp,nsamps=gulpsize*ngulps,nchan=nchan_per_node,headersize=16,get_header=False)
-
+        try:
+            dat_all,sb,mjd,dec = pipeline.read_raw_vis(fname,gulp=mingulp,nsamps=gulpsize*ngulps,nchan=nchan_per_node,headersize=16,get_header=False)
+        except Exception as exc:
+            printlog(fname + " not found: " + str(exc),output_file=cutterfile)
+            if args.FFAbinchans:
+                alldspec[:,:,j] = np.nan
+            else:
+                alldspec[:,:,j*nchans_per_node:(j+1)*nchans_per_node] = np.nan
+            continue
         test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
         pt_dec = dec*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
@@ -318,10 +335,10 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
         del dat_all
         printlog("sb done",output_file=cutterfile)
 
-    #for i in range(len(target_coords)):
-    #    np.save(raw_cand_dir + "/single_pix_" + cand_isot + "_" + str(i) + ".npy",alldspec[i,:,:])
+    for i in range(len(target_coords)):
+        np.save(raw_cand_dir + "/single_pix_" + cand_isot + "_" + str(i) + ".npy",alldspec[i,:,:])
     printlog("done creating single pix dynamic spectra",output_file=cutterfile)
-
+    ffalock.release()
     printlog("starting periodicity search...",output_file=cutterfile)
     trial_periods = np.array(args.periods)
     trial_periods = trial_periods[trial_periods<alldspec.shape[1]]
@@ -359,6 +376,8 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
             printlog("written to dict",output_file=cutterfile)
         else:
             printlog("none found",output_file=cutterfile)
+    #ffa_semaphore = False
+    #ffalock.release()
     if classify_flag:
         return finalcands,finalidxs,finalpcands,predictions,probabilities
     else:
@@ -503,7 +522,13 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
 
     print("done updating recoveries")
     #make final directory for candidates
-    os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff)
+    dirlabel = "candidates"
+    if injection_flag:
+        dirlabel = "injections"
+    elif args.completeness:
+        dirlabel = "completeness"
+
+    os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff)
 
     #write final candidates to csv
     prefix = "NSFRB"
@@ -516,11 +541,11 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
 
     #lastname =      #once we have etcd, change to 'names.get_lastname()'
     allcandnames = []
-    csvfile = open(final_cand_dir+ str("injections" if injection_flag else "candidates")  + "/" + cand_isot + suff + "/final_candidates_" + cand_isot + ".csv","w")
+    csvfile = open(final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
     hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
     if useTOA: hdr += ["TOA"]
-    if args.FFA: hdr += ["Period_s"]
+    if (args.FFA and not args.completeness): hdr += ["Period_s"]
     hdr += ["SNR"]
     if classify_flag: hdr += ["PROB"]
     wr.writerow(hdr)
@@ -530,12 +555,12 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
             lastname = names.increment_name(cand_mjd,lastname=lastname)
         sys.stdout = sysstdout
         if classify_flag:
-            if args.FFA:
+            if (args.FFA and not args.completeness): #args.FFA:
                 wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),["" if j not in finalpcands.keys() else finalpcands[j]["fineP_secs"]],[finalcands[j][-1]],[probabilities[j]]]))
             else:
                 wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
         else:
-            if args.FFA:
+            if (args.FFA and not args.completeness): #args.FFA:
                 wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),["" if j not in finalpcands.keys() else finalpcands[j]["fineP_secs"]],[finalcands[j][-1]]]))
             else:
                 wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
@@ -557,8 +582,8 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
 
         lastname = allcandnames[j]
         #make folder for each candidate
-        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname)
-        os.system("mkdir "+ final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/voltages")
+        os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname)
+        os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname + "/voltages")
 
     if len(finalidxs) > 0:
         #make diagnostic plot
@@ -642,12 +667,12 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                 else:
                     cand_mjd = Time(cand_isot,format='isot').mjd
                 print("ALMOST ALMOST DONE",finalpcands)
-                if args.FFA and (i in finalpcands.keys()):
+                if (args.FFA and not args.completeness) and (i in finalpcands.keys()):
                     P = float(finalpcands[i]["fineP_secs"])
                 else:
                     P =-1
                 print("RIGHT HERE:",finalpcands,i,P)
-                fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
+                fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
 
                 printlog(fl,output_file=cutterfile)
     
@@ -666,7 +691,8 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
 
     if res is None:
         return
-    if not args.FFA:
+    """
+    if (not args.FFA) or args.completeness:
         if len(res) == 8:
             finalcands,finalidxs,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
             classify_flag = True
@@ -685,51 +711,61 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
             #injection_flag = False
         else:
             return
+        finalpcands = dict()
     else:
-        if len(res) == 9:
-            finalcands,finalidxs,finalpcands,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
-            classify_flag = True
-            #injection_flag = True
-        elif len(res) == 8:
-            finalcands,finalidxs,finalpcands,predictions,probabilities,canddict,allcandnames,timeseries = res
-            classify_flag = True
-            #injection_flag = False
-        elif len(res) == 7:
-            finalcands,finalidxs,finalpcands,canddict,allcandnames,timeseries,jsonfname = res
-            classify_flag = False
-            #injection_flag = True
-        elif len(res) == 6:
-            finalcands,finalidxs,finalpcands,canddict,allcandnames,timeseries = res
-            classify_flag = False
-            #injection_flag = False
-        else:
-            return
+    """
+    if len(res) == 9:
+        finalcands,finalidxs,finalpcands,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
+        classify_flag = True
+        #injection_flag = True
+    elif len(res) == 8:
+        finalcands,finalidxs,finalpcands,predictions,probabilities,canddict,allcandnames,timeseries = res
+        classify_flag = True
+        #injection_flag = False
+    elif len(res) == 7:
+        finalcands,finalidxs,finalpcands,canddict,allcandnames,timeseries,jsonfname = res
+        classify_flag = False
+        #injection_flag = True
+    elif len(res) == 6:
+        finalcands,finalidxs,finalpcands,canddict,allcandnames,timeseries = res
+        classify_flag = False
+        #injection_flag = False
+    else:
+        return
+    
+    dirlabel = "candidates"
+    if injection_flag:
+        dirlabel = "injections"
+    elif args.completeness:
+        dirlabel = "completeness"
+
+
     printlog("Creating candplot...",output_file=cutterfile)
-    print(final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+    print(final_cand_dir + dirlabel + "/" + cand_isot + suff + "/")
     print(canddict,image,RA_axis,DEC_axis)
     candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/",show=False,s100=args.SNRthresh/2,
+                                            output_dir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",show=False,s100=args.SNRthresh/2,
                                             injection=injection_flag,vmax=np.nanmax(searched_image),vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=finalpcands)
 
     if args.toslack:
         printlog("sending plot to slack...",output_file=cutterfile)
-        send_candidate_slack(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+        send_candidate_slack(candplot,filedir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/")
         #printlog("sending plot to pushover...",output_file=cutterfile)
         #send_candidate_pushover(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
         printlog("done!",output_file=cutterfile)
         printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
 
         if slow:
-            os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
+            os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
         elif imgdiff:
-            os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
+            os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
         else:
-            os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
+            os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
         printlog("sending notification via x11...",output_file=cutterfile)
-        os.system("cp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + candplot + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
+        os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
         os.system("echo " + str((2/3) if imgdiff else 1) + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
         os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
         printlog("done!",output_file=cutterfile)
@@ -740,7 +776,7 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
         return list(res) + [candplot]
 
 def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
-    if not args.archive or 'NSFRBT4' not in os.environ.keys():
+    if args.completeness or (not args.archive) or 'NSFRBT4' not in os.environ.keys():
         return None
     if len(args.daskaddress)>0:
         res = d_future
@@ -782,7 +818,7 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     return
 
 
-def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,lock=LOCK):
+def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock):
     """
     Modelled from dsa110-T3/dsaT3/T3_manager.submit_cand(); Given filename of trigger json,
     create DSACand and submit to scheduler for T3 processing
@@ -794,7 +830,7 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
     d_sort = client.submit(cc.sort_cands,fname,searched_image,TOAs,args.SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials_use,canddict,
                             np.abs(image.shape[1]-searched_image.shape[1]),
                             np.abs(image.shape[0]-searched_image.shape[0]),
-                            cutterfile,0,args.maxcands,args.writeraw)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+                            cutterfile,0,args.maxcands,args.writeraw,args.completeness,False,args.completeness,args.searchradius)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(2) clustering
     d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
@@ -803,7 +839,7 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
     d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3.5) fast folding
-    d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use)
+    d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock)
 
     #(4) writing csvs and jsons for remaining cands (might not be any remaining cands)
     d_write = client.submit(writecands_manage,d_ffa,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
@@ -1110,12 +1146,14 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
 from realtime.rtreader import rtread_cand
 from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,NSFRB_CANDDADA_SLOW_KEY,NSFRB_SRCHDADA_SLOW_KEY,NSFRB_TOADADA_SLOW_KEY,NSFRB_CANDDADA_IMGDIFF_KEY,NSFRB_SRCHDADA_IMGDIFF_KEY,NSFRB_TOADADA_IMGDIFF_KEY
 def main(args):
-    sys.stderr = open(error_file,"w")
+    ffalock_ = Lock()
+    #sys.stderr = open(error_file,"w")
     printlog("Starting T4 Manager (realtime candcutter)...",output_file=cutterfile)
     printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
     if not args.testtrigger:
         ETCD.add_watch(ETCDKEY, etcd_to_queue)
     tasklist=[]
+    tasktimes=[]
     counter = 0
     if len(args.daskaddress)==0:
         client = ThreadPoolExecutor(args.maxProcesses)
@@ -1212,6 +1250,8 @@ def main(args):
             TOAs = np.zeros((301,301,25,16),dtype=int)
         cand_mjd = Time(cand_isot,format='isot').mjd
         injection_flag,postinjection_flag = cc.is_injection(cand_isot)
+        injection_flag = injection_flag and (not args.completeness)
+        postinjection_flag = postinjection_flag and (not args.completeness)
         RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,pixperFWHM=pixperFWHM)
         RA_axis = RA_axis[-searched_image.shape[1]:]
         RA_axis_2D,DEC_axis_2D,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,two_dim=True,pixperFWHM=pixperFWHM)
@@ -1223,8 +1263,19 @@ def main(args):
 
 
         #submit task
+        #tasktimes.append(time.time())
         tasklist.append(submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
-                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF)) 
+                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_)) 
+        """
+        poplist = []
+        for ti in range(len(tasklist)):
+            if (not tasklist[ti].done()) and (time.time()-tasktimes[ti] >= (args.tasktimeout*60)):
+                r = tasklist[ti].result()
+                poplist.append(ti)
+        for p in poplist:
+            tasklist.pop(p)
+            tasktimes.pop(p)
+        """
 
         #client.submit(cc.candcutter_task,fname,uv_diag,dec,img_shape,img_search_shape,vars(args),resources={'MEMORY':10e9})
         if args.sleep > 0:
@@ -1283,7 +1334,10 @@ if __name__=="__main__":
     parser.add_argument('--FFAgulps',type=int,help='Number of gulps for ffa search',default=1)
     parser.add_argument('--FFAbin',type=int,help='Downsampling factor for ffa search',default=1)
     parser.add_argument('--FFASNRthresh',type=float,help='S/N threshold for periodicity search',default=3)
+    parser.add_argument('--tasktimeout',type=float,help='Max time to allow task to run in background before forcing to foreground,default=1 minute',default=1)
     parser.add_argument('--FFAbinchans',action='store_true',help='Average over all channels in each sub-band for periodicity search')
+    parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
+    parser.add_argument('--searchradius',type=float,help='Max search radius in degrees within which to include candidates,default=inf',default=np.inf)
     args = parser.parse_args()
     
     main(args)

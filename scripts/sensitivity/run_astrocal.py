@@ -1,3 +1,4 @@
+import time
 import argparse
 from dsamfs import fringestopping
 import os
@@ -94,7 +95,7 @@ def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json
     f.close()
     return
 
-def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0,gridsize=IMAGE_SIZE,robust=-2,exactposition=False):
+def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0,gridsize=IMAGE_SIZE,robust=-2,exactposition=False,ngulps=1,completeness_perc=90):
     """
     This function updates the flux calibration table with the most
     recent NVSS observations.
@@ -133,16 +134,25 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["nvss_ra"] = bright_nvsscoords[i].ra.value
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["nvss_dec"] = bright_nvsscoords[i].dec.value
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["dir"] = vis_dir + bright_nvssnames[i].replace(" ","") + "/"
+        tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["resid"] = bright_resid[i]
         if len(glob.glob(tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["dir"]+"nsfrb_sb00_"+str(bright_fnames[i])+".out"))>0:
             tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["mjd"] = pipeline.read_raw_vis(tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["dir"]+"nsfrb_sb00_"+str(bright_fnames[i])+".out",get_header=True)[1]
+        if brightdetected is not None:
+            tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["complete_detected"] = int(brightdetected[i])
         #tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["RMS_fit_residual"] = bright_resid[i]
+    print("updating speccal table")
+    f = open(speccal_table,"w")
+    json.dump(tab,f)
+    f.close()
 
     print("Sources in table:",tab[arraykey].keys())
     #update calibration curve
     allfluxs = []
     allfluxerrs = []
     allnvssfluxes = []
-    #allresids = []
+    allsrcnames = []
+    alldets = []
+    allresids = []
     if len(target)>0:
         target_coord = SkyCoord(target,unit=(u.hourangle,u.deg),frame='icrs')
         target_obstime = Time(targetMJD,format='mjd')
@@ -155,17 +165,29 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
                     allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
                     allfluxerrs.append(tab[arraykey][k][kk]['meas_flux_error'])
                     allnvssfluxes.append(tab[arraykey][k][kk]['flux_mJy'])
-                    #allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
+                    allresids.append(tab[arraykey][k][kk]['resid'])
+                    if 'complete_detected' in tab[arraykey][k][kk].keys():
+                        alldets.append(tab[arraykey][k][kk]['complete_detected'])
+                    else:
+                        alldets.append(-1)
                 elif len(target)==0:
                     allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
                     allfluxerrs.append(tab[arraykey][k][kk]['meas_flux_error'])
                     allnvssfluxes.append(tab[arraykey][k][kk]['flux_mJy'])
-                    #allresids.append(tab[arraykey][k][kk]['RMS_fit_residual'])
+                    if 'complete_detected' in tab[arraykey][k][kk].keys():
+                        alldets.append(tab[arraykey][k][kk]['complete_detected'])
+                    else:
+                        alldets.append(-1)
+                    allresids.append(tab[arraykey][k][kk]['resid'])
+                allsrcnames.append(str(k))
+    allsrcnames = np.array(allsrcnames)
     allfluxs = np.array(allfluxs)
     allfluxerrs = np.array(allfluxerrs)
     allnvssfluxes = np.array(allnvssfluxes)
-    #allresids = np.array(allresids)
-    
+    alldets = np.array(alldets,dtype=int)
+    allresids = np.array(allresids)
+    uniquesrcnames = np.unique(allsrcnames)
+
     #print(allfluxs,allresids)
     if len(allfluxs)<2:
         f = open(speccal_table,"w")
@@ -173,19 +195,44 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         f.close()
         print("No remaining sources for spec cal")
         return
+
+    #completeness limit
+    comp_tot,comp_bins =np.histogram(np.log10(allnvssfluxes[alldets!=-1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes[alldets!=-1]))))
+    comp_det,comp_bins = np.histogram(np.log10(allnvssfluxes[alldets==1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes[alldets!=-1]))))
+    comp_frac = comp_det/comp_tot
+    comp_frac[comp_tot==0] = 0
+    comp_bins = (comp_bins[:-1] + (comp_bins[1]-comp_bins[0])/2)
+    comp_limit = 10**comp_bins[np.argmin(np.abs(comp_frac-(completeness_perc/100)))]
+    print("Completeness flux limit:",comp_limit,"mJy")
+    if len(target)>0:
+        target_table = dict()
+        target_table['completeness_limit_mjy'] = comp_limit
+    else:
+        tab[arraykey + "_completeness_limit_mjy"] = comp_limit 
+
     badsoln = False
     try:
         #popt,pcov = np.polyfit(allfluxs[allresids<resid_th],allnvssfluxes[allresids<resid_th],1,full=False,cov=True,w=1/allresids[allresids<resid_th])
         #popt,pcov = np.polyfit(allfluxs,allnvssfluxes,1,full=False,cov=True,w=np.sqrt(allnvssfluxes))
-        popt,pcov = curve_fit(lambda x,m: m*x,allfluxs,allnvssfluxes, sigma=1/allnvssfluxes)
-        print("fit result:",popt,pcov)
-        popt = np.array([popt[0],0])
-        popterrs = np.sqrt([pcov[0,0],0])#pcov[1,1]])
+
+        popt_fit,pcov_fit = curve_fit(lambda x,m: m*x,allfluxs,allnvssfluxes, sigma=1/allnvssfluxes)
+        popt = np.array([np.nanmax(allnvssfluxes)/allfluxs[np.nanargmax(allnvssfluxes)],0])
+        popterrs = np.array([max([(np.nanmax(allnvssfluxes)/allfluxs[np.nanargmax(allnvssfluxes)]) - (np.nanmax(allnvssfluxes)/(allfluxs[np.nanargmax(allnvssfluxes)]+allfluxerrs[np.nanargmax(allnvssfluxes)])),(np.nanmax(allnvssfluxes)/(allfluxs[np.nanargmax(allnvssfluxes)]-allfluxerrs[np.nanargmax(allnvssfluxes)])) - (np.nanmax(allnvssfluxes)/allfluxs[np.nanargmax(allnvssfluxes)])]),0])
+        print("fit result:",popt_fit,pcov_fit)
+        print("brightest source result:",popt,popterrs)
+        popt_fit = np.array([popt_fit[0],0])
+        popterrs_fit = np.sqrt([pcov_fit[0,0],0])#pcov[1,1]])
         pfunc = np.poly1d(popt)
         pfunc_down = np.poly1d(popt - popterrs)
         pfunc_up = np.poly1d(popt + popterrs)
+        
+        pfunc_fit = np.poly1d(popt_fit)
+        pfunc_down_fit = np.poly1d(popt_fit - popterrs_fit)
+        pfunc_up_fit = np.poly1d(popt_fit + popterrs_fit)
+        
+        
         if len(target)>0:
-            target_table = dict()
+            #target_table = dict()
             target_table['target'] = target
             target_table['ra'] = target_coord.ra.value
             target_table['dec'] = target_coord.dec.value
@@ -202,7 +249,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             tab[arraykey + "_int_error"] = float(popterrs[1])
         
             print("Updated flux conversion fit: FLUX = (",popt[1],"+-",popterrs[1],") + (",popt[0],"+-",popterrs[0],")MEAS_FLUX") 
-        allresids = np.abs((allnvssfluxes - pfunc(allfluxs))/allnvssfluxes)
+        #allresids = np.abs((allnvssfluxes - pfunc(allfluxs))/allnvssfluxes)
 
         #estimate Smin from noise level
         try:
@@ -258,11 +305,19 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     plt.figure(figsize=(12,12))
     #plt.errorbar(allfluxs,allnvssfluxes,xerr=allfluxerrs,marker='o',markersize=10,linestyle='')
     #faxis = np.linspace(np.min(allfluxs)/10,np.max(allfluxs)*1.2,1000)
-    faxis = np.logspace(np.log10(np.min(allfluxs)/10),np.log10(np.max(allfluxs)*10),1000)
+    faxis = np.logspace(-4,np.log10(np.max(allfluxs)*10),1000)
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
         plt.plot(faxis,pfunc(faxis),color='red')
         plt.fill_between(faxis,pfunc_down(faxis),pfunc_up(faxis),color='red',alpha=0.5)
+    
+        plt.plot(faxis,pfunc_fit(faxis),color='grey')
+        plt.fill_between(faxis,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
     plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
+    for i in range(len(uniquesrcnames)):
+        plt.errorbar(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]]),allnvssfluxes[allsrcnames==uniquesrcnames[i]][0],#pfunc(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]])),
+                xerr=np.nanstd(allfluxs[allsrcnames==uniquesrcnames[i]])/np.sqrt(np.sum(allsrcnames==uniquesrcnames[i])),
+                #yerr=pfunc(np.nanstd(allfluxs[allsrcnames==uniquesrcnames[i]])/np.sqrt(np.sum(allsrcnames==uniquesrcnames[i]))),
+                marker='',color='red',capsize=20,markersize=20,alpha=0.5)
     plt.xlabel("Mean Pixel Value per Time Sample (arb. units)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
     plt.ylim(1,1e4)
@@ -302,7 +357,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     plt.ylim(1,1e4)
     #plt.yscale("log")
     #plt.xscale("log")
-    plt.colorbar(label="Linear Fit Residual")
+    plt.colorbar(label="Normalized Flux Offset from Noise Floor")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal.png")
     print("here")
     plt.close()
@@ -311,6 +366,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
         plt.plot(pfunc(faxis),pfunc(faxis),color='red')
         plt.fill_between(pfunc(faxis),pfunc_down(faxis),pfunc_up(faxis),color='red',alpha=0.5)
+        plt.plot(pfunc(faxis),pfunc_fit(faxis),color='grey')
+        plt.fill_between(pfunc(faxis),pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
+
     plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
     plt.xlabel("Calibrated Flux (mJy)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
@@ -331,7 +389,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     plt.ylim(1,1e4)
     #plt.yscale("log")
     #plt.xscale("log")
-    plt.colorbar(label="Linear Fit Residual")
+    plt.colorbar(label="Normalized Flux Offset from Noise Floor")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibrated.png")
     plt.close()
 
@@ -339,6 +397,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
         plt.plot(pfunc(faxis)/Smin,pfunc(faxis)/NSFRBsens,color='red')
         plt.fill_between(pfunc(faxis)/Smin,pfunc_down(faxis)/NSFRBsens,pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
+        plt.plot(pfunc_fit(faxis)/Smin,pfunc_fit(faxis)/NSFRBsens,color='grey')
+        plt.fill_between(pfunc_fit(faxis)/Smin,pfunc_down_fit(faxis)/NSFRBsens,pfunc_up_fit(faxis)/NSFRBsens,color='grey',alpha=0.5)
+
     plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
     plt.xlabel("Measured S/N")
     plt.ylabel("Predicted S/N")
@@ -352,9 +413,23 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     plt.yscale("log")
     plt.xscale("log")
     plt.ylim(1/NSFRBsens,1e4/NSFRBsens)
-    plt.colorbar(label="Linear Fit Residual")
+    plt.colorbar(label="Normalized Flux Offset from Noise Floor")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibratedSNR.png")
     plt.close()
+
+
+    #completeness plot
+    plt.figure(figsize=(12,12))
+    plt.hist(np.log10(allnvssfluxes[alldets!=-1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes))),alpha=0.5,color='grey')
+    plt.hist(np.log10(allnvssfluxes[alldets==1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes))),alpha=0.5)
+    plt.xlabel(r'log$_{10}$(NVSS FLUX/1 mJy)')
+    plt.ylabel("Sources")
+    plt.axvline(np.log10(comp_limit),color='red')
+    plt.text(np.log10(comp_limit),1,"Completeness Limit:\n"+str(np.around(comp_limit,2)) + "mJy")
+    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_completeness.png")
+    plt.close()
+
+
 
     return
 
@@ -1289,7 +1364,7 @@ def speccal(args):
 
     if len(vis_nvsscoords)==0:
         print("no more sources to calibrate")
-        update_speccal_table([],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition)
+        update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
         return
     #single nvss source
     if len(args.nvss)>0:
@@ -1413,6 +1488,26 @@ def speccal(args):
     bmin=args.bmin
     full_img = np.zeros((image_size,image_size,int(gulpsize/args.timebin),16*nchan_per_node),dtype=float)
     savestuff = True
+    if args.completeness:
+        completeness_searchdict = dict()
+    
+    
+    
+    
+    if args.checknumsources:
+        cnt = 0
+        print("-"*20)
+        print("Source list:")
+        for bright_idx in range(len(bright_fnames)):
+            if bright_fnames[bright_idx] != -1:
+                print(bright_nvssnames[bright_idx])
+                cnt += 1
+
+        print(str(cnt) + " sources with good passes for potential calibration")
+        return 
+    
+    
+    
     for bright_idx in range(len(bright_fnames)):
         if bright_fnames[bright_idx] == -1:
             bright_poserrs.append(-1)
@@ -1430,21 +1525,30 @@ def speccal(args):
 
         print("Reading data for "+ bright_nvssnames[bright_idx])
         fnum = int(bright_fnames[bright_idx])
-        gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
-        if len(gulps)<args.ngulps:
-            gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
-            gulps = np.unique(gulps)
-        ngulps = len(gulps)
-        if ngulps>1:
-            #get RA cutoffs for each gulp
-            racutoffs = []
-            for g in range(ngulps):
-                racutoffs.append(get_RA_cutoff(bright_nvsscoords[bright_idx].dec.value,usefit=True,asint=True,offset_s=g*tsamp_ms*gulpsize/1000))
-            print("RA CUTOFFS:",racutoffs)
+        if not args.singlesample:
+            gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
+            if len(gulps)<args.ngulps:
+                gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
+                gulps = np.unique(gulps)
+            ngulps = len(gulps)
+            if ngulps>1:
+                #get RA cutoffs for each gulp
+                racutoffs = []
+                for g in range(ngulps):
+                    racutoffs.append(get_RA_cutoff(bright_nvsscoords[bright_idx].dec.value,usefit=True,asint=True,offset_s=g*tsamp_ms*gulpsize/1000))
+                print("RA CUTOFFS:",racutoffs)
+            else:
+                racutoffs = [0]
         else:
-            racutoffs = [0]
-
+            gulps = [bright_offsets[bright_idx]//gulpsize]
+            ngulps = 1
         print(bright_idx,fnum,gulps)
+        if args.completeness:
+            if fnum not in completeness_searchdict.keys():
+                completeness_searchdict[fnum] = []
+            if gulps[0] not in completeness_searchdict[fnum]:
+                completeness_searchdict[fnum].append(gulps[0])
+        
         g=0
         buff = args.buff_speccal
         min_gridsize = image_size
@@ -1651,11 +1755,17 @@ def speccal(args):
                 print("using exact position")
                 peakpix = np.unravel_index(np.argmin(bright_nvsscoords[bright_idx].separation(SkyCoord(input_ra_grid_2D*u.deg,
                                                                                            input_dec_grid_2D*u.deg,frame='icrs'))),input_ra_grid_2D.shape)
+            
             else:
                 peakpix = np.unravel_index(np.argmax(input_img),input_img.shape)
+            #use difference from median as detection/on source measure
+            bright_resid.append((input_img[peakpix[0],peakpix[1]] - np.nanmedian(input_img))/np.nanstd(input_img))
             bright_pixcoord = SkyCoord(input_ra_grid_2D[peakpix[0],peakpix[1]]*u.deg,input_dec_grid_2D[peakpix[0],peakpix[1]]*u.deg,frame='icrs')
         else:
-            input_img = np.nanmean(full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:],(2,3))
+            if args.singlesample:
+                input_img = np.nanmean(full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],0,:],2)
+            else:
+                input_img = np.nanmean(full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:],(2,3))
             input_ra_grid_2D = ra_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]
             input_dec_grid_2D = dec_grid_2D[bbox[0]:bbox[1],bbox[2]:bbox[3]]
             if args.exactposition:
@@ -1663,6 +1773,8 @@ def speccal(args):
                                                                                            input_dec_grid_2D*u.deg,frame='icrs'))),input_ra_grid_2D.shape)
             else:
                 peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
+            #use difference from median as detection/on source measure
+            bright_resid.append((input_img[peakpix[0],peakpix[1]] - np.nanmedian(input_img))/np.nanstd(input_img))
             bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
             bright_pixcoord = SkyCoord(ra_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
         """
@@ -1684,7 +1796,10 @@ def speccal(args):
         if ngulps>1:
             plt.scatter(input_ra_grid_2D.flatten(),input_dec_grid_2D.flatten(),c=input_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)
         else:
-            plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img,(2,3)).flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+            if args.singlesample:
+                plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img[:,:,0,:],2).flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+            else:
+                plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img,(2,3)).flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_nvsscoords[bright_idx].ra.to(u.deg).value,bright_nvsscoords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
         plt.xlim(bright_nvsscoords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
         plt.ylim(bright_nvsscoords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))
@@ -1714,8 +1829,12 @@ def speccal(args):
                 bright_dynspec = full_img[bbox[0]:bbox[1],bbox[2]:bbox[3],:,:].mean((0,1))
             else:
                 bright_dynspec = full_img[bright_pixel[0],bright_pixel[1],:,:]
-        bright_measfluxs.append(np.nanmean(bright_dynspec))
-        bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
+        if args.singlesample:
+            bright_measfluxs.append(np.nanmean(bright_dynspec[0,:]))
+            bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1)))
+        else:
+            bright_measfluxs.append(np.nanmean(bright_dynspec))
+            bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
         if bright_measfluxs[-1]<0:
             bright_measfluxs[-1] = -1
             bright_measfluxerrs[-1] = -1
@@ -1754,8 +1873,70 @@ def speccal(args):
 
         plt.close()
 
+    if args.completeness:
+        brightdetected = np.zeros(len(bright_measfluxs),dtype=bool)
 
-    update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition)
+        astrocaltable_f = open(table_dir + "NSFRB_astrocal.json","rb")
+        astrocaltable = json.load(astrocaltable_f)
+        astrocaltable_f.close()
+        if 'core_RA_offset_deg' in astrocaltable.keys() and 'core_DEC_offset_deg' in astrocaltable.keys():
+            print("applying best astrometric correction:",astrocaltable['core_RA_offset_deg'],astrocaltable['core_DEC_offset_deg'])
+            racorr = astrocaltable['core_RA_offset_deg']
+            deccorr = astrocaltable['core_DEC_offset_deg']
+        else:
+            racorr = deccorr = 0
+        print("running completeness search")
+        print(completeness_searchdict)
+        for k in completeness_searchdict.keys():
+            print(k)
+            sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110h03/nsfrb_sb00_" + str(k) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
+            for g in completeness_searchdict[k]:
+                print("--",g)
+                if not args.completenessskipsearch:
+                    print("python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _" + str(k) + " --verbose --offline --num_gulps 1 --gulp_offset " + str(g) + " --num_time_samples 25 --sb --nchans_per_node 8 --gridsize " + str(args.image_size) + " --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --robust -2 --bmin 20 --maxProcesses 32 --port 8080 --multiimage --stagger_multisend 0 --multisend --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --briggs --search")
+                
+                    #run search pipeline
+                    os.system("python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py _" + str(k) + " --verbose --offline --num_gulps 1 --gulp_offset " + str(g) + " --num_time_samples 25 --sb --nchans_per_node 8 --gridsize " + str(args.image_size) + " --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --robust -2 --bmin 20 --maxProcesses 32 --port 8080 --multiimage --stagger_multisend 0 --multisend --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --briggs --search")
+
+                    #wait for post-processing
+                    print("waiting for post-processing")
+                    time.sleep(120)
+    
+                #collect results
+                cdirs = glob.glob(final_cand_dir + "/completeness/*")
+                for cd in cdirs:
+                    print(cd,os.path.basename(cd))
+                    if Time(os.path.basename(cd),format='isot').mjd - mjd >= 0 and Time(os.path.basename(cd),format='isot').mjd - mjd < (5*60/86400):
+                        break
+                if Time(os.path.basename(cd),format='isot').mjd - mjd >= (5*60/86400) or Time(os.path.basename(cd),format='isot').mjd - mjd < 0:
+                    print("no cands found")
+                else:    
+                    print("results dir:",cd)
+                    allcandjsons = glob.glob(cd + "/NSFRB*/*json")
+                    allcandras = []
+                    allcanddecs = []
+                    for jd in allcandjsons:
+                        f = open(jd,"r")
+                        jdinfo = json.load(f)
+                        f.close()
+                        allcandras.append(jdinfo['ra'] - racorr)
+                        allcanddecs.append(jdinfo['dec'] - deccorr)
+                    allcandcoords = SkyCoord(ra=np.array(allcandras)*u.deg,dec=np.array(allcanddecs)*u.deg,frame='icrs')
+
+                    #see which cands are detected
+                    print("X-match results:")
+                    print(allcandcoords)
+                    idx_match, d2d_match, d3d_match = bright_nvsscoords.match_to_catalog_sky(allcandcoords)
+                    print(d2d_match)
+                    matched = d2d_match.to(u.arcmin).value<args.completenessxmatch
+                    print("cross match finds " + str(np.sum(matched)) + " sources are recovered from " + str(k))
+                    brightdetected[matched] = True
+
+        print("Total: " + str(np.sum(brightdetected)) + "/" + str(len(brightdetected)) + " NVSS sources recovered via completeness test")
+    else:
+        brightdetected = None
+
+    update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
     return
 
 
@@ -1769,7 +1950,7 @@ def main(args):
             astrocal(args)
     if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
         if args.update_only:
-            update_speccal_table([],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition)
+            update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
         else:
             speccal(args)
     return
@@ -1815,6 +1996,7 @@ if __name__=="__main__":
     parser.add_argument('--target_decrange',type=float,help='Dec range in degrees within which sources should be included in astrometric and flux cal,default=0.5',default=0.5)
     parser.add_argument('--boxmean',action='store_true',help='When --image_flux is set, takes the mean flux within --buff pixels of the NVSS coordinate instead of the peak pixel flux')
     parser.add_argument('--ngulps',type=int,help='Number of gulps of 25 samples (3.25 s) to integrate, default=1',default=1)
+    parser.add_argument('--singlesample',action='store_true',help='Use only one time sample for imaging')
     parser.add_argument('--timebin',type=int,help='Number of time samples to bin by, default=1',default=1)
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging,default=-2 for uniform weighting',default=-2)
     #parser.add_argument('--vlac_only',action='store_true',help='Only use VLAC sources')
@@ -1827,5 +2009,9 @@ if __name__=="__main__":
     parser.add_argument('--randomsources',action='store_true',help='Select random set of calibrators near the specified declination instead of taking the brightest')
     parser.add_argument('--exactposition',action='store_true',help='Set to measure flux at pixel closest to NVSS position instead of peak pixel')
     parser.add_argument('--includepulsars',action='store_true',help='Include ATNF pulsars as faint continuum sources')
+    parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
+    parser.add_argument('--completenessxmatch',type=float,help='separation in arcmin to accept candidate as corresponding to NVSS source, default 10',default=10)
+    parser.add_argument('--checknumsources',action='store_true',help='return after checking the number of sources actually included in a potential calibration')
+    parser.add_argument('--completenessskipsearch',action='store_true',help='Skip search component of completeness test because its already been done')
     args = parser.parse_args()
     main(args)

@@ -537,7 +537,7 @@ def read_candfile(fname):
     csvfile.close()
     return raw_cand_names,finalcands
 
-def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0,maxcands=np.inf,writeraw=False):
+def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials,canddict,raidx_offset=0,decidx_offset=0,output_file=cutterfile,dm_offset=0,maxcands=np.inf,writeraw=False,dm0_only=False,dm0_ex=False,w1_only=False,searchradius=np.inf):
 
     t1 = time.time()
     printlog("Searching for candidates with S/N > " + str(SNRthresh) + "...",output_file=output_file)
@@ -552,10 +552,46 @@ def sort_cands(fname,image_tesseract_binned,TOAs,SNRthresh,RA_axis,DEC_axis,widt
         printlog("Limiting to max " + str(maxcands) + " candidates",output_file=output_file)
         candsnrs = image_tesseract_binned[canddec_idxs,candra_idxs,candwid_idxs,canddm_idxs]
         idxs = np.argsort(candsnrs)[-maxcands:]
+        
+
         canddec_idxs = canddec_idxs[idxs]
         candra_idxs = candra_idxs[idxs]
         candwid_idxs = candwid_idxs[idxs]
         canddm_idxs = canddm_idxs[idxs]
+    if dm0_only:
+        printlog("Keeping only DM=0 candidates",output_file=output_file)
+        idxs = np.arange(len(canddm_idxs))[canddm_idxs==0]
+        canddec_idxs = canddec_idxs[idxs]
+        candra_idxs = candra_idxs[idxs]
+        candwid_idxs = candwid_idxs[idxs]
+        canddm_idxs = canddm_idxs[idxs]
+    elif dm0_ex:
+        printlog("Removing DM=0 candidates",output_file=output_file)
+        idxs = np.arange(len(canddm_idxs))[canddm_idxs>0]
+        canddec_idxs = canddec_idxs[idxs]
+        candra_idxs = candra_idxs[idxs]
+        candwid_idxs = candwid_idxs[idxs]
+        canddm_idxs = canddm_idxs[idxs]
+
+    if w1_only:
+        printlog("Keeping only width=1 sample candidates",output_file=output_file)
+        idxs = np.arange(len(candwid_idxs))[candwid_idxs==0]
+        canddec_idxs = canddec_idxs[idxs]
+        candra_idxs = candra_idxs[idxs]
+        candwid_idxs = candwid_idxs[idxs]
+        canddm_idxs = canddm_idxs[idxs]
+
+    if ~np.isinf(searchradius):
+        printlog("limiting to candidates w/in " + str(searchradius) + "degrees of center",output_file=output_file)
+        ra_cntr = RA_axis[int(len(RA_axis)//2)]
+        dec_cntr = DEC_axis[int(len(DEC_axis)//2)]
+        idxs = np.arange(len(candra_idxs))[np.logical_and(np.abs(RA_axis[candra_idxs.astype(int)]-ra_cntr)<searchradius,np.abs(DEC_axis[canddec_idxs.astype(int)]-dec_cntr)<searchradius)]
+        canddec_idxs = canddec_idxs[idxs]
+        candra_idxs = candra_idxs[idxs]
+        candwid_idxs = candwid_idxs[idxs]
+        canddm_idxs = canddm_idxs[idxs]
+
+
     printlog(fname + " CANDS::::",output_file=output_file)
     printlog(canddec_idxs,output_file=output_file)
     printlog(candra_idxs,output_file=output_file)

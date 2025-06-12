@@ -1492,7 +1492,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
                    multithreading=False,nrows=1,ncols=1,space_filter=True,
-                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False,imgdiff=False,attach=dict()):
+                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False,imgdiff=False,attach=dict(),completeness=False):
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
     a list of candidates' DM, pulse width, RA, declination, and time of arrival(?)
@@ -1723,8 +1723,9 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     jax_inuse[usedev] = True
     print(str("slow" if slow else "") + " JAX DEVICE",usedev,"AVAILABLE",file=fout)
     
-    if append_frame:
-        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+    if completeness:
+        if append_frame:
+            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_completeness(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
                                                                  #(default_PSF_gpu_0 if usedev==0 else default_PSF_gpu_1),
                                                                  jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
                                                                  #(corr_shifts_all_gpu_0 if usedev==0 else corr_shifts_all_gpu_1),
@@ -1735,15 +1736,15 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                                                  jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[usedev]),
                                                                  jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
                                                                  prev_noise_N,noiseth)
-    elif imgdiff:
-        outtup = jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+        elif imgdiff:
+            outtup = jax_funcs.img_diff_jit_no_append_completeness(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
                                                                  jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
                                                                  jax.device_put(np.array(full_boxcar_filter_imgdiff,dtype=np.float16),jax.devices()[usedev]),
                                                                  jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
                                                                  prev_noise_N,noiseth)
-    else:
-
-        outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+        else:
+    
+            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
                                                                  #(jax_funcs.PSF_1 if usedev==0 else jax_funcs.PSF_2),#
                                                                  jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
                                                                  jax.device_put(corr_shifts_all,jax.devices()[usedev]),
@@ -1751,6 +1752,38 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                                                                  jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[usedev]),
                                                                  jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
                                                                  prev_noise_N,noiseth)
+    else:
+        if append_frame:
+            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+                                                                 #(default_PSF_gpu_0 if usedev==0 else default_PSF_gpu_1),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
+                                                                 #(corr_shifts_all_gpu_0 if usedev==0 else corr_shifts_all_gpu_1),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[usedev]),
+                                                                 #(tdelays_frac_gpu_0 if usedev==0 else tdelays_frac_gpu_1),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[usedev]),
+                                                                 #(full_boxcar_filter_gpu_0 if usedev==0 else full_boxcar_filter_gpu_1),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
+                                                                 prev_noise_N,noiseth)
+        elif imgdiff:
+            outtup = jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(full_boxcar_filter_imgdiff,dtype=np.float16),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
+                                                                 prev_noise_N,noiseth)
+        else:
+
+            outtup = jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(image_tesseract_filtered_cut,dtype=np.float32),jax.devices()[usedev]),
+                                                                 #(jax_funcs.PSF_1 if usedev==0 else jax_funcs.PSF_2),#
+                                                                 jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[usedev]),
+                                                                 jax.device_put(corr_shifts_all,jax.devices()[usedev]),
+                                                                 jax.device_put(tdelays_frac,jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(full_boxcar_filter,dtype=np.float16),jax.devices()[usedev]),
+                                                                 jax.device_put(np.array(prev_noise[:,0],dtype=noise_data_type),jax.devices()[usedev]),
+                                                                 prev_noise_N,noiseth)
+            
+            
+            
     image_tesseract_binned,total_noise,TOAs = np.array(outtup[0]),np.array(outtup[1])[:,np.newaxis].repeat(len(DM_trials),1),np.array(outtup[2])
     
     for k in attach.keys():
@@ -1799,7 +1832,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
 #CONTEXTSETUP = False
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False):
+def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False):
     timing1 = time.time()
     #global CONTEXTSETUP
     #if not QSETUP and not CONTEXTSETUP:
@@ -1889,10 +1922,10 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
     #print("starting process " + str(img_id) + "...")
     if cuda:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,attach=attach) 
+        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,attach=attach,completeness=completeness) 
 
     else:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff)
+        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,completeness=completeness)
     
     cands_found = np.nanmax(fullimg.image_tesseract_searched)>SNRthresh
     if cuda and (attach_fullimg_slow is not None):

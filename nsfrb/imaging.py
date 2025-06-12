@@ -646,7 +646,7 @@ def single_pix_image(dat_all,U,V,fobs,sb,dec,mjd,ngulps,nbin,target_coord,tsamp_
         
                 #beam/image
                 dspec[(gulp*gulpsize//nbin) + ii,jj] = np.real(np.nansum(ifftshift(vis_grid)*np.exp(1j*2*np.pi*(1/image_size)*(((target_pix[1]+(image_size//2))*yidxs) + ((target_pix[0]+(image_size//2))*xidxs)))))/(image_size*image_size)
-
+        dspec[(gulp*gulpsize//nbin):((gulp+1)*gulpsize//nbin),:] -= np.nanmedian(dspec[(gulp*gulpsize//nbin):((gulp+1)*gulpsize//nbin),:],0)
     if DM>0:
         final_dspec = np.zeros_like(dspec)
 
