@@ -93,6 +93,21 @@ def realtime_image_task(dat, tidx, U_wavs, V_wavs, i_indices_all, j_indices_all,
                                             clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)/(1 if PB_all is None else PB_all[:,:,np.newaxis])
     return outimage,tidx
 
+def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port):
+    """
+    task to send data to the process server; this is only required for testing, the 
+    real implementation will only send data for one corr node in the foreground process
+    """
+    ttx = time.time()
+    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=5,keepalive_time=10,port=port)
+
+    txtime = time.time()-ttx
+    timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
+    if timing_dict is None: timing_dict = dict()
+    timing_dict["tx_time"] = txtime
+    ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
+    return txtime
+
 from scipy.stats import multivariate_normal
 from scipy.stats import multivariate_normal
 from scipy.optimize import curve_fit
@@ -179,6 +194,7 @@ def main(args):
     print(U_wavs.shape)
     
     #read and reshape into np array (25 times x 4656 baselines x 8 chans x 2 pols, complex)
+    gulp_counter = 0
     while True:
         dat = None
         while (dat is None) or dat.shape[0]<args.num_time_samples:
@@ -186,7 +202,13 @@ def main(args):
             #if args.testh23:
             #    dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_TESTKEYS[args.sb],nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
             #else:
-            dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
+            if gulp_counter == 0:
+                dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
+            else:
+                dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
+            mjd += (gulp_counter*T/1000/86400)
+            gulp_counter += 1
+            print(mjd)
             #printlog(str((mjd,sb,Dec)),output_file=logfile)
             assert(sb==args.sb)
             print(Dec,pt_dec*180/np.pi)
@@ -356,7 +378,11 @@ def main(args):
             np.save(img_dir + time_start_isot + "_rtimage.npy",dirty_img)
         if args.search:
             if args.testh23:
+                tasklist = []
                 for sbi in range(len(corrs)):
+                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))]))
+                    #time.sleep(T/1000/32)
+                    """
                     ttx = time.time()
                     msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(sbi%len(args.multiport))])
             
@@ -367,6 +393,9 @@ def main(args):
                     if timing_dict is None: timing_dict = dict()
                     timing_dict["tx_time"] = txtime
                     ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
+                    """
+                wait(tasklist)
+                txtime = tasklist[-1].result()
             else:
                 ttx = time.time()
                 msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(args.sb%len(args.multiport))])

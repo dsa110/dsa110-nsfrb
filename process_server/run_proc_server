@@ -1,5 +1,5 @@
 #!/bin/bash
-rt="false"
+rt="true"
 completeness="false"
 #run this script to open server, attach to a dask worker, and receive 32x32x25x16 image data
 #dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 10 --name process_server_WRKR > $PWD/.process_server_WRKR_log.txt 2>&1 &

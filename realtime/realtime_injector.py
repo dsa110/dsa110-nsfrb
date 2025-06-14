@@ -198,7 +198,7 @@ if __name__=="__main__":
     parser.add_argument('--gauss_field',action='store_true',help='Illuminate a gaussian source')
     parser.add_argument('--point_field',action='store_true',help='Illuminate a point source')
     parser.add_argument('--gridsize',type=int,help='Expected length in pixels for each sub-band image, SHOULD ALWAYS BE ODD, default='+str(IMAGE_SIZE),default=IMAGE_SIZE)
-    parser.add_argument('--waittime',type=int,help='Time between injections, default 5 minutes',default=5)
+    parser.add_argument('--waittime',type=float,help='Time between injections, default 5 minutes',default=5)
     parser.add_argument('--snr_min_inject',type=float,help='Minimum injection S/N, default 1e7',default=1e7)
     parser.add_argument('--snr_max_inject',type=float,help='Maximum injection S/N, default 1e8',default=1e8)
     parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')

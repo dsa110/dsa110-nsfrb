@@ -46,7 +46,8 @@ if not CORR_INSTALL:
             "srchtx_log.txt",
             "srchtime_log.txt",
             "candmem_log.txt",
-            "candtime_log.txt"]
+            "candtime_log.txt",
+            "srchstartstoptime_log.txt"]
     for i in range(len(logfiles)):
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)

@@ -69,7 +69,7 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff,sslogfile
 
 """
 NSFRB modules
@@ -376,7 +376,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
 fullimg_dict = dict()
 slow_fullimg_dict =dict()
 imgdiff_fullimg_dict=dict()
-def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,dask_enabled):
+def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,dask_enabled,thash):
     """
     This function prints the result once a thread finishes processing an image
     """
@@ -444,6 +444,9 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
         del imgdiff_fullimg_dict[timestepisot]
     else:
         del fullimg_dict[timestepisot]
+    f = open(sslogfile,"a")
+    f.write("[stop] [" + thash +"] " + str(time.time()))
+    f.close()
     return
 
 def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_slow,RA_axis_slow,timestepisot_imgdiff,RA_axis_imgdiff,DEC_axis,etcd_enabled,dask_enabled):
@@ -646,7 +649,6 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     This task sets up the given socket to accept connections, reads
     data when a client connects, and submits a search task
     """
-
     socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
     if img_id_isot not in fullimg_dict.keys():
@@ -658,7 +660,13 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     #if the image is complete, start the search
     printlog(socksuffix+"corrstatus:",output_file=processfile,end='')
     printlog(fullimg_dict[img_id_isot].corrstatus,output_file=processfile)
+
     if fullimg_dict[img_id_isot].is_full(): #fullimg_array[idx].is_full():
+        f = open(sslogfile,"a")
+        thash = hex(random.getrandbits(32))
+        f.write("[start] [" + thash + "] " + str(time.time()))
+        f.close()
+        
         #submit a search task to the process pool
         printlog(socksuffix+"Submitting new task for image " + str(img_id_isot),output_file=processfile)
         RA_axis_idx = copy.deepcopy(fullimg_dict[img_id_isot].RA_axis) #copy.deepcopy(fullimg_array[idx].RA_axis)
@@ -733,7 +741,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                                                                             str(kd) if imgdiffsearch_now else None,
                                                                                             RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:] if imgdiffsearch_now else None,
                                                                                             DEC_axis_idx,
-                                                                                            etcd_enabled,dask_enabled))
+                                                                                            etcd_enabled,dask_enabled,thash))
             return [stask]
 
 
@@ -748,7 +756,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness)
-        stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled))
+        stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash))
 
         #task_list.append(stask)
         if slowsearch_now:
@@ -766,7 +774,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness)
                     
-            sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled))
+            sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
             #task_list.append(sstask)
         
         if imgdiffsearch_now:
@@ -784,7 +792,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness)
 
-            ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled))
+            ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
             #task_list.append(sstask)
 
         if slowsearch_now and not imgdiffsearch_now: return [stask,sstask]
@@ -1221,7 +1229,7 @@ def main(args):
                 else:
                     packet_dict["dropped"] += 1
             ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
-            wait(multiport_task_list)
+            #wait(multiport_task_list)
 
             #check if any have finished
             #donetasks = []

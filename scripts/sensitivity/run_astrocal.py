@@ -95,7 +95,7 @@ def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json
     f.close()
     return
 
-def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0,gridsize=IMAGE_SIZE,robust=-2,exactposition=False,ngulps=1,completeness_perc=90):
+def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0,gridsize=IMAGE_SIZE,robust=-2,exactposition=False,ngulps=1,completeness_perc=90,completeness=False):
     """
     This function updates the flux calibration table with the most
     recent NVSS observations.
@@ -200,18 +200,19 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         return
 
     #completeness limit
-    comp_tot,comp_bins =np.histogram(np.log10(allnvssfluxes[alldets!=-1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes[alldets!=-1]))))
-    comp_det,comp_bins = np.histogram(np.log10(allnvssfluxes[alldets==1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes[alldets!=-1]))))
-    comp_frac = comp_det/comp_tot
-    comp_frac[comp_tot==0] = 0
-    comp_bins = (comp_bins[:-1] + (comp_bins[1]-comp_bins[0])/2)
-    comp_limit = 10**comp_bins[np.argmin(np.abs(comp_frac-(completeness_perc/100)))]
-    print("Completeness flux limit:",comp_limit,"mJy")
-    if len(target)>0:
-        target_table = dict()
-        target_table['completeness_limit_mjy'] = comp_limit
-    else:
-        tab[arraykey + "_completeness_limit_mjy"] = comp_limit 
+    if completeness and len(alldets)>0:
+        comp_tot,comp_bins =np.histogram(np.log10(allnvssfluxes[alldets!=-1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes[alldets!=-1]))))
+        comp_det,comp_bins = np.histogram(np.log10(allnvssfluxes[alldets==1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes[alldets!=-1]))))
+        comp_frac = comp_det/comp_tot
+        comp_frac[comp_tot==0] = 0
+        comp_bins = (comp_bins[:-1] + (comp_bins[1]-comp_bins[0])/2)
+        comp_limit = 10**comp_bins[np.argmin(np.abs(comp_frac-(completeness_perc/100)))]
+        print("Completeness flux limit:",comp_limit,"mJy")
+        if len(target)>0:
+            target_table = dict()
+            target_table['completeness_limit_mjy'] = comp_limit
+        else:
+            tab[arraykey + "_completeness_limit_mjy"] = comp_limit 
 
     badsoln = False
     try:
@@ -422,15 +423,16 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
 
 
     #completeness plot
-    plt.figure(figsize=(12,12))
-    plt.hist(np.log10(allnvssfluxes[alldets!=-1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes))),alpha=0.5,color='grey')
-    plt.hist(np.log10(allnvssfluxes[alldets==1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes))),alpha=0.5)
-    plt.xlabel(r'log$_{10}$(NVSS FLUX/1 mJy)')
-    plt.ylabel("Sources")
-    plt.axvline(np.log10(comp_limit),color='red')
-    plt.text(np.log10(comp_limit),1,"Completeness Limit:\n"+str(np.around(comp_limit,2)) + "mJy")
-    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_completeness.png")
-    plt.close()
+    if completeness and len(alldets)>0:
+        plt.figure(figsize=(12,12))
+        plt.hist(np.log10(allnvssfluxes[alldets!=-1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes))),alpha=0.5,color='grey')
+        plt.hist(np.log10(allnvssfluxes[alldets==1]),np.linspace(-1,np.log10(np.nanmax(allnvssfluxes))),alpha=0.5)
+        plt.xlabel(r'log$_{10}$(NVSS FLUX/1 mJy)')
+        plt.ylabel("Sources")
+        plt.axvline(np.log10(comp_limit),color='red')
+        plt.text(np.log10(comp_limit),1,"Completeness Limit:\n"+str(np.around(comp_limit,2)) + "mJy")
+        plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_completeness.png")
+        plt.close()
 
 
 
@@ -1296,7 +1298,7 @@ def astrocal(args):
         plt.savefig(img_dir+bright_names[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
         plt.close()
 
-    if args.no_update:
+    if not args.no_update:
         update_astrocal_table(bright_names,bright_coords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,bright_gulpoffsets,bright_gulpoffset_times,outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=exclude_table,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
     return
 
@@ -1386,7 +1388,7 @@ def speccal(args):
     if len(vis_nvsscoords)==0:
         print("no more sources to calibrate")
         if not args.no_update:
-            update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
+            update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
         return
     #single nvss source
     if len(args.nvss)>0:
@@ -1981,7 +1983,7 @@ def speccal(args):
         brightdetected = None
 
     if not args.no_update:
-        update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
+        update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
     return
 
 
@@ -1995,7 +1997,7 @@ def main(args):
             astrocal(args)
     if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
         if args.update_only:
-            update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
+            update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
         else:
             speccal(args)
     return
