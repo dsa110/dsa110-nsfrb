@@ -113,7 +113,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #read sources to exclude
     if len(exclude_table) > 0:
         f = open(exclude_table,"r")
-        ex_table = json.load(f)['NVSS_exclude']
+        fullex_table = json.load(f)
+        ex_table = fullex_table['NVSS_exclude']
+        ex_times = fullex_table['NVSS_MJD']
         f.close()
     else:
         ex_table =  []
@@ -158,7 +160,8 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         target_obstime = Time(targetMJD,format='mjd')
     for k in tab[arraykey].keys():
         for kk in tab[arraykey][k].keys():
-            if str(k) not in ex_table:
+            if (str(k) not in ex_table) or (str(k) in ex_table and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))):
+                
                 #if a target is given, check that sources are within range
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["nvss_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
                     print("Including ",k)
@@ -312,7 +315,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     
         plt.plot(faxis,pfunc_fit(faxis),color='grey')
         plt.fill_between(faxis,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
-    plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
+    plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90))
     for i in range(len(uniquesrcnames)):
         plt.errorbar(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]]),allnvssfluxes[allsrcnames==uniquesrcnames[i]][0],#pfunc(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]])),
                 xerr=np.nanstd(allfluxs[allsrcnames==uniquesrcnames[i]])/np.sqrt(np.sum(allsrcnames==uniquesrcnames[i])),
@@ -369,7 +372,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.plot(pfunc(faxis),pfunc_fit(faxis),color='grey')
         plt.fill_between(pfunc(faxis),pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
 
-    plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
+    plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90))
     plt.xlabel("Calibrated Flux (mJy)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
     plt.title("Last Updated: " + Time.now().isot)
@@ -400,7 +403,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.plot(pfunc_fit(faxis)/Smin,pfunc_fit(faxis)/NSFRBsens,color='grey')
         plt.fill_between(pfunc_fit(faxis)/Smin,pfunc_down_fit(faxis)/NSFRBsens,pfunc_up_fit(faxis)/NSFRBsens,color='grey',alpha=0.5)
 
-    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.4,vmin=0,vmax=np.nanpercentile(allresids,90))
+    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90))
     plt.xlabel("Measured S/N")
     plt.ylabel("Predicted S/N")
     plt.title("Last Updated: " + Time.now().isot)
@@ -451,7 +454,9 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
     #read sources to exclude
     if len(exclude_table) > 0:
         f = open(exclude_table,"r")
-        ex_table = json.load(f)['RFC_exclude']
+        fullex_table = json.load(f)
+        ex_table = fullex_table['RFC_exclude']
+        ex_times = fullex_table['RFC_MJD']
         f.close()
     else:
         ex_table =  []
@@ -496,7 +501,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         target_obstime = Time(targetMJD,format='mjd')
     for k in tab[arraykey].keys():
         for kk in tab[arraykey][k].keys():
-            if str(k) not in ex_table and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
+            if ((str(k) not in ex_table) or (str(k) in ex_table and 'mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))) and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
                     allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
@@ -750,12 +755,15 @@ def astrocal(args):
         search_dec = args.search_dec
 
     #read sources to exclude
-    exclude_table = table_dir + "/NSFRB_excludecal.json"
+    exclude_table = str("" if args.includeall else table_dir + "/NSFRB_excludecal.json")
     if len(exclude_table) > 0:
         f = open(exclude_table,"r")
-        ex_table = json.load(f)['RFC_exclude']
+        fullex_table = json.load(f)
+        ex_table = fullex_table['RFC_exclude']
+        ex_times = fullex_table['RFC_MJD']
         f.close()
     else:
+        print("Including all sources")
         ex_table =  []
     print("sources to exclude:",ex_table)
 
@@ -825,7 +833,7 @@ def astrocal(args):
 
         bright_names.append(name)
 
-        if name in ex_table:
+        if name in ex_table and (ex_times[list(ex_table).index(name)]==-1):
             besttime.append(-1)
             print("Excluding " + name)
             print("")
@@ -846,8 +854,17 @@ def astrocal(args):
         secvis = SkyCoord(bright_coords[i],location=DSA,obstime=timeax)
 
         antpos = secvis.transform_to(AltAz)
-        besttime.append(timeax[np.argmax(antpos.alt.value)])
+        besttime.append(timeax[np.argmax(antpos.alt.value)] + (args.shiftbytime*u.second))
+        if args.shiftbytime!=0:
+            print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
         ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
+        if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime[-1].mjd)<(5*60/86400):
+            
+            print("Excluding " + name)
+            print("")
+            bright_fnames.append(-1)
+            bright_offsets.append(-1)
+            continue
         if ffvl[0] != -1 and int(ffvl[-1])==int(search_dec):
             print(name)
             print(besttime[-1].isot)
@@ -1279,7 +1296,8 @@ def astrocal(args):
         plt.savefig(img_dir+bright_names[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_"+ str("outriggers_" if outriggers else "")+"astrocal.png")
         plt.close()
 
-    update_astrocal_table(bright_names,bright_coords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,bright_gulpoffsets,bright_gulpoffset_times,outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=exclude_table,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
+    if args.no_update:
+        update_astrocal_table(bright_names,bright_coords,bright_RAerrs_mas,bright_DECerrs_mas,bright_fnames,bright_poserrs,bright_raerrs,bright_decerrs,bright_resid,bright_gulpoffsets,bright_gulpoffset_times,outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=exclude_table,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
     return
 
 
@@ -1345,12 +1363,15 @@ def speccal(args):
     else:
         search_dec = args.search_dec
     #read sources to exclude
-    exclude_table = table_dir + "/NSFRB_excludecal.json"
+    exclude_table = str("" if args.includeall else table_dir + "/NSFRB_excludecal.json")
     if len(exclude_table) > 0:
         f = open(exclude_table,"r")
-        ex_table = json.load(f)['NVSS_exclude']
+        fullex_table = json.load(f)
+        ex_table = fullex_table['NVSS_exclude']
+        ex_times = fullex_table['NVSS_MJD']
         f.close()
     else:
+        print("Not excluding any sources")
         ex_table =  []
     print("sources to exclude:",ex_table)
 
@@ -1364,7 +1385,8 @@ def speccal(args):
 
     if len(vis_nvsscoords)==0:
         print("no more sources to calibrate")
-        update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
+        if not args.no_update:
+            update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
         return
     #single nvss source
     if len(args.nvss)>0:
@@ -1432,7 +1454,7 @@ def speccal(args):
 
         bright_nvssnames.append(name)
 
-        if name in ex_table:
+        if name in ex_table and (ex_times[list(ex_table).index(name)]==-1):
             besttime.append(-1)
             print("Excluding " + name)
             print("")
@@ -1453,8 +1475,19 @@ def speccal(args):
         secvis = SkyCoord(bright_nvsscoords[i],location=DSA,obstime=timeax)
 
         antpos = secvis.transform_to(AltAz)
-        besttime.append(timeax[np.argmax(antpos.alt.value)])
+        besttime.append(timeax[np.argmax(antpos.alt.value)] + (args.shiftbytime*u.second))
+        if args.shiftbytime!=0:
+            print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
         ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
+
+        if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime.mjd)<(5*60/86400):
+            besttime.append(-1)
+            print("Excluding " + name)
+            print("")
+            bright_fnames.append(-1)
+            bright_offsets.append(-1)
+            continue
+
         if ffvl[0] != -1 and int(ffvl[-1])==int(search_dec):
             print(name)
             print(besttime[-1].isot)
@@ -1698,20 +1731,31 @@ def speccal(args):
                     for j in range(len(corrs)):
                         for k in range(dat.shape[-1]):
                             for jj in range(nchans_per_node):
+                                if args.primarybeam:
+                                    PB = multivariate_normal.pdf(np.concatenate([ra_grid_2D[:,:,np.newaxis],
+                                                                dec_grid_2D[:,:,np.newaxis]],2),
+                                                        mean=(ra_grid_2D[image_size//2,image_size//2],dec_grid_2D[image_size//2,image_size//2]),
+                                                        cov=ellipse_to_covariance(1.22*((ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj])/4.65)*180/np.pi/2.3548,
+                                                                                  1.22*((ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj])/4.65)*180/np.pi/2.3548,0))
+                                    print("primary beam",PB.shape)
+                                    PB /= np.nanmax(PB)
+                                else:
+                                    PB = 1
+                                #np.save("PB_"+str(j) +  ".npy",PB)
                                 if ngulps>1:
                                     full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    image_size,robust=args.robust,
-                                                   pixel_resolution=pixel_resolution)
+                                                   pixel_resolution=pixel_resolution)/PB
                                                      
                                 else:
                                     full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    image_size,robust=args.robust,
-                                                   pixel_resolution=pixel_resolution)
-    
+                                                   pixel_resolution=pixel_resolution)/PB
+                         
                 g += 1
 
             if dat is None or int(dec) != int(search_dec):
@@ -1794,12 +1838,12 @@ def speccal(args):
 
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
         if ngulps>1:
-            plt.scatter(input_ra_grid_2D.flatten(),input_dec_grid_2D.flatten(),c=input_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)
+            plt.scatter(input_ra_grid_2D.flatten(),input_dec_grid_2D.flatten(),c=input_img.flatten(),alpha=0.5,cmap='cool',marker='s',s=(10 if outriggers else 50),vmin=vmin,vmax=vmax)
         else:
             if args.singlesample:
-                plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img[:,:,0,:],2).flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+                plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img[:,:,0,:],2).flatten(),alpha=0.5,cmap='cool',marker='s',s=(10 if outriggers else 50),vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
             else:
-                plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img,(2,3)).flatten(),alpha=0.5,cmap='cool',marker='s',s=100,vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
+                plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=np.nanmean(full_img,(2,3)).flatten(),alpha=0.5,cmap='cool',marker='s',s=(10 if outriggers else 50),vmin=vmin,vmax=vmax)#0.8*np.nanmax((full_img.mean((2,3)))))
         plt.scatter(bright_nvsscoords[bright_idx].ra.to(u.deg).value,bright_nvsscoords[bright_idx].dec.to(u.deg).value,marker='o',s=1000,edgecolors='red',linewidth=4,facecolors="none",alpha=0.8)
         plt.xlim(bright_nvsscoords[bright_idx].ra.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].ra.to(u.deg).value+(0.3 if outriggers else 1.5))
         plt.ylim(bright_nvsscoords[bright_idx].dec.to(u.deg).value-(0.3 if outriggers else 1.5),bright_nvsscoords[bright_idx].dec.to(u.deg).value+(0.3 if outriggers else 1.5))
@@ -1936,7 +1980,8 @@ def speccal(args):
     else:
         brightdetected = None
 
-    update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
+    if not args.no_update:
+        update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
     return
 
 
@@ -1945,12 +1990,12 @@ def speccal(args):
 def main(args):
     if (not args.astrocal_only and not args.speccal_only) or (args.astrocal_only and not args.speccal_only):
         if args.update_only:
-            update_astrocal_table([],[],[],[],[],[],[],[],[],[],[],args.outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
+            update_astrocal_table([],[],[],[],[],[],[],[],[],[],[],args.outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
         else:
             astrocal(args)
     if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
         if args.update_only:
-            update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=table_dir + "/NSFRB_excludecal.json",image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
+            update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps)
         else:
             speccal(args)
     return
@@ -2013,5 +2058,9 @@ if __name__=="__main__":
     parser.add_argument('--completenessxmatch',type=float,help='separation in arcmin to accept candidate as corresponding to NVSS source, default 10',default=10)
     parser.add_argument('--checknumsources',action='store_true',help='return after checking the number of sources actually included in a potential calibration')
     parser.add_argument('--completenessskipsearch',action='store_true',help='Skip search component of completeness test because its already been done')
+    parser.add_argument('--primarybeam',action='store_true',help='Apply a primary beam correction')
+    parser.add_argument('--no_update',action='store_true',help='Update to flux/astrometry table not applied')
+    parser.add_argument('--shiftbytime',type=float,help='offset in seconds from meridian pass of the source',default=0)
+    parser.add_argument('--includeall',action='store_true',help='Do not exclude any sources')
     args = parser.parse_args()
     main(args)

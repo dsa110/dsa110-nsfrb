@@ -70,7 +70,7 @@ ETCDKEY_TIMING_LIST = [f'/mon/nsfrbtiming/'+str(i+1) for i in range(len(corrs))]
 
 #flagged antennas/
 TXtask_list = []
-def realtime_image_task(dat, tidx, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, jj, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None,  Nlayers_w=18,pixperFWHM=pixperFWHM,wstack_parallel=False):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
+def realtime_image_task(dat, tidx, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, jj, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None,  Nlayers_w=18,pixperFWHM=pixperFWHM,wstack_parallel=False,PB_all=None):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
 
     outimage = revised_robust_image(dat.mean(2),#.transpose((0,2,1)),#dat[i:i+1, :, jj, k],
                                             U_wavs,
@@ -90,10 +90,26 @@ def realtime_image_task(dat, tidx, U_wavs, V_wavs, i_indices_all, j_indices_all,
                                             j_indices=j_indices_all,
                                             i_conj_indices=i_conj_indices_all,
                                             j_conj_indices=j_conj_indices_all,
-                                            clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)
+                                            clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)/(1 if PB_all is None else PB_all[:,:,np.newaxis])
     return outimage,tidx
 
+from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal
+from scipy.optimize import curve_fit
+from nsfrb.config import lambdaref
+def ellipse_fit(theta,a,b,PA):
+    t1 = ((b*np.cos(PA))**2 + (a*np.sin(PA))**2)*(np.cos(theta)**2)
+    t2 = ((b*np.sin(PA))**2 + (a*np.cos(PA))**2)*(np.sin(theta)**2)
+    t3 = 2*(a**2 - b**2)*np.cos(PA)*np.sin(PA)*np.cos(theta)*np.sin(theta)
 
+    return a*b/np.sqrt(t1 + t2 + t3)
+
+def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
+    varX1 = semiMajorAxis**2 * np.sin(phi)**2 + semiMinorAxis**2 * np.cos(phi)**2
+    varX2 = semiMajorAxis**2 * np.cos(phi)**2 + semiMinorAxis**2 * np.sin(phi)**2
+    cov12 = (semiMajorAxis**2 - semiMinorAxis**2) * np.cos(phi) * np.sin(phi)
+    cmatrix = np.array([[varX1, cov12], [cov12, varX2]])
+    return cmatrix
 
 
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
@@ -146,7 +162,20 @@ def main(args):
     if args.briggs:
         for jj in range(args.nchans_per_node):
             bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
-
+    if args.primarybeam:
+        PB_all = np.zeros((args.nchans_per_node,args.gridsize,args.gridsize))
+        ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,two_dim=True,DEC=pt_dec*180/np.pi)
+        for jj in range(args.nchans_per_node):
+            chanidx = args.nchans_per_node*args.sb + jj
+            PB_all[jj,:,:] = multivariate_normal.pdf(np.concatenate([ra_grid_2D[:,:,np.newaxis],
+                                                                dec_grid_2D[:,:,np.newaxis]],2),
+                                                        mean=(ra_grid_2D[args.gridsize//2,args.gridsize//2],
+                                                              dec_grid_2D[args.gridsize//2,args.gridsize//2]),
+                                                        cov=ellipse_to_covariance(1.22*((ct.C_GHZ_M/fobs[chanidx])/4.65)*180/np.pi/2.3548,
+                                                                                  1.22*((ct.C_GHZ_M/fobs[chanidx])/4.65)*180/np.pi/2.3548,0))
+            PB_all[jj,:,:] /= np.nanmax(PB_all[jj,:,:])
+    else:
+        PB_all = 1
     print(U_wavs.shape)
     
     #read and reshape into np array (25 times x 4656 baselines x 8 chans x 2 pols, complex)
@@ -282,7 +311,8 @@ def main(args):
                                                     #k_conj_indices_all,
                                                     args.Nlayers,
                                                     args.pixperFWHM,
-                                                    args.wstack_parallel))
+                                                    args.wstack_parallel,
+                                                    None if not args.primarybeam else PB_all[j,:,:]))
         wait(task_list)
         for t in task_list:
             m=t.result()
@@ -396,6 +426,7 @@ if __name__=="__main__":
     parser.add_argument('--inject_interval',type=int,help='Number of gulps between injections',default=90)
     parser.add_argument('--inject_delay',type=int,help='Number of gulps to delay injection',default=0)
     parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
+    parser.add_argument('--primarybeam',action='store_true',help='Apply a primary beam correction')
 
     args = parser.parse_args()
     main(args)

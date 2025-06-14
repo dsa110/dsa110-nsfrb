@@ -54,9 +54,29 @@ sbs = ["sb00","sb01","sb02","sb03","sb04","sb05","sb06","sb07","sb08","sb09","sb
 freqs = np.linspace(fmin,fmax,len(corrs))
 wavs = c/(freqs*1e6) #m
 
+from scipy.stats import multivariate_normal
+from scipy.stats import multivariate_normal
+from scipy.optimize import curve_fit
+from nsfrb.config import lambdaref
+def ellipse_fit(theta,a,b,PA):
+    t1 = ((b*np.cos(PA))**2 + (a*np.sin(PA))**2)*(np.cos(theta)**2)
+    t2 = ((b*np.sin(PA))**2 + (a*np.cos(PA))**2)*(np.sin(theta)**2)
+    t3 = 2*(a**2 - b**2)*np.cos(PA)*np.sin(PA)*np.cos(theta)*np.sin(theta)
+
+    return a*b/np.sqrt(t1 + t2 + t3)
+
+def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
+    varX1 = semiMajorAxis**2 * np.sin(phi)**2 + semiMinorAxis**2 * np.cos(phi)**2
+    varX2 = semiMajorAxis**2 * np.cos(phi)**2 + semiMinorAxis**2 * np.sin(phi)**2
+    cov12 = (semiMajorAxis**2 - semiMinorAxis**2) * np.cos(phi) * np.sin(phi)
+    cmatrix = np.array([[varX1, cov12], [cov12, varX2]])
+    return cmatrix
+    
+
+
 #flagged antennas/
 TXtask_list = []
-def offline_image_task(dat, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None, k_indices_all=None, k_conj_indices_all=None, Nlayers_w=18,pixperFWHM=pixperFWHM,wstack_parallel=False):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
+def offline_image_task(dat, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, j, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None, k_indices_all=None, k_conj_indices_all=None, Nlayers_w=18,pixperFWHM=pixperFWHM,wstack_parallel=False,PB_all=None):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
 
     outimage = np.zeros((args.gridsize,args.gridsize,args.num_time_samples))
     for jj in range(nchans_per_node):
@@ -80,7 +100,7 @@ def offline_image_task(dat, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj
                                             j_indices=j_indices_all[:,jj],
                                             i_conj_indices=i_conj_indices_all[:,jj],
                                             j_conj_indices=j_conj_indices_all[:,jj],
-                                            clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)
+                                            clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)/(1 if PB_all is None else PB_all[jj,:,:,np.newaxis])
     return outimage,j
 
 
@@ -252,6 +272,7 @@ def main(args):
                 RA = RA_axis[int(len(RA_axis)//2)]
                 HA = HA_axis[int(len(HA_axis)//2)]
                 Dec = Dec_axis[int(len(Dec_axis)//2)]
+                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,two_dim=True)
             else:
                 #RA = get_ra(mjd,Dec) #LST*15
                 #HA = 0
@@ -261,6 +282,7 @@ def main(args):
                 RA = RA_axis[int(len(RA_axis)//2)]
                 HA = HA_axis[int(len(HA_axis)//2)]
                 print(HA_axis[len(HA_axis)//2-10:len(HA_axis)//2+10])
+                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd,args.gridsize,flagged_antennas=flagged_antennas,uv_diag=uv_diag,two_dim=True,DEC=Dec)
             if verbose: print("Coordinates (deg):",RA,Dec)
             if verbose: print("Hour angle (deg):",HA)
 
@@ -375,6 +397,11 @@ def main(args):
                     j_conj_indices_all = np.zeros(V_wavs.shape,dtype=int)
                     k_conj_indices_all = np.zeros(W_wavs.shape,dtype=int)
                     bweights_all = np.zeros(U_wavs.shape)
+                    if args.primarybeam:
+                        PB_all = np.zeros((args.nchans_per_node,args.gridsize,args.gridsize))
+                    else:
+                        PB_all = np.ones((args.nchans_per_node,args.gridsize,args.gridsize))
+
                     for jj in range(args.nchans_per_node):
                         chanidx = (args.nchans_per_node*j)+jj
                         U_wavs[:,jj] = U/(ct.C_GHZ_M/fobs[chanidx])
@@ -384,8 +411,15 @@ def main(args):
                         i_indices_all[:,jj],j_indices_all[:,jj],i_conj_indices_all[:,jj],j_conj_indices_all[:,jj] = uniform_grid(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, pixel_resolution, args.pixperFWHM)
                         if args.briggs:
                             bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
-                    
-
+                        if args.primarybeam:
+                            PB_all[jj,:,:] = multivariate_normal.pdf(np.concatenate([ra_grid_2D[:,:,np.newaxis],
+                                                                dec_grid_2D[:,:,np.newaxis]],2),
+                                                        mean=(ra_grid_2D[args.gridsize//2,args.gridsize//2],
+                                                              dec_grid_2D[args.gridsize//2,args.gridsize//2]),
+                                                        cov=ellipse_to_covariance(1.22*((ct.C_GHZ_M/fobs[chanidx])/4.65)*180/np.pi/2.3548,
+                                                                                  1.22*((ct.C_GHZ_M/fobs[chanidx])/4.65)*180/np.pi/2.3548,0))
+                            PB_all[jj,:,:] /= np.nanmax(PB_all[jj,:,:])
+                
                     print("submitting task:",j)
                     if args.search and filelabels[g] == args.filelabel and gulp>=args.gulp_offset:
                         if (args.multisend and len(args.multiport)>0):
@@ -420,7 +454,8 @@ def main(args):
                                                     k_conj_indices_all,
                                                     args.Nlayers,
                                                     args.pixperFWHM,
-                                                    args.wstack_parallel))
+                                                    args.wstack_parallel,
+                                                    PB_all))
                 wait(task_list)
                 for t in task_list:
                     dirty_img[:,:,:,t.result()[1]] = t.result()[0]
@@ -438,6 +473,16 @@ def main(args):
                         if args.briggs:
                             bweights = briggs_weighting(U_wav, V_wav, args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
 
+                        if args.primarybeam:
+                            PB = multivariate_normal.pdf(np.concatenate([ra_grid_2D[:,:,np.newaxis],
+                                                                dec_grid_2D[:,:,np.newaxis]],2),
+                                                        mean=(ra_grid_2D[args.gridsize//2,args.gridsize//2],
+                                                              dec_grid_2D[args.gridsize//2,args.gridsize//2]),
+                                                        cov=ellipse_to_covariance(1.22*((ct.C_GHZ_M/fobs[chanidx])/4.65)*180/np.pi/2.3548,
+                                                                                  1.22*((ct.C_GHZ_M/fobs[chanidx])/4.65)*180/np.pi/2.3548,0))
+                            PB /= np.nanmax(PB)
+                        else:
+                            PB = 1
                         for i in range(dat.shape[0]):
                             for k in range(dat.shape[-1]):
                                 if k == 0 and jj == 0:
@@ -459,7 +504,7 @@ def main(args):
                                             j_indices=j_indices,
                                             i_conj_indices=i_conj_indices,
                                             j_conj_indices=j_conj_indices,
-                                            wstack_parallel=args.wstack_parallel)
+                                            wstack_parallel=args.wstack_parallel)/PB
                                 else:
                                     dirty_img[:,:,i,j] += revised_robust_image(dat[i:i+1, :, chanidx, k],
                                             U_wav,
@@ -479,7 +524,7 @@ def main(args):
                                             j_indices=j_indices,
                                             i_conj_indices=i_conj_indices,
                                             j_conj_indices=j_conj_indices,
-                                            wstack_parallel=args.wstack_parallel)
+                                            wstack_parallel=args.wstack_parallel)/PB
                                             
             print("Imaging complete:",time.time()-timage,"s")            
             print(dirty_img)
@@ -589,6 +634,7 @@ if __name__=="__main__":
     parser.add_argument('--stagger_multisend',type=float,help='Specifies the time in seconds between sending each subband, default 0 sends all at once',default=0)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
+    parser.add_argument('--primarybeam',action='store_true',help='Apply a primary beam correction')
     args = parser.parse_args()
     main(args)
 

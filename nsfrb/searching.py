@@ -207,7 +207,7 @@ def gen_boxcar_filter(widthtrials,truensamps,gridsize=1,nDMtrials=1): #note, you
     loc = int(truensamps//2)
     for i in range(nwidths):
         wid = widthtrials[i]
-        boxcar[i,:,:,loc-wid//2:loc+wid-wid//2,:] = 1
+        boxcar[i,:,:,:wid,:] = 1 #loc-wid//2:loc+wid-wid//2,:] = 1
 
     return boxcar
 full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
