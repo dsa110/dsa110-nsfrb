@@ -18,7 +18,7 @@ setup(name='dsa110-nsfrb',
 )
 
 #set CORR_INSTALL=True if installing realtime imager on the corr nodes
-CORR_INSTALL=False
+CORR_INSTALL=True
 
 #get local nsfrb directory
 import os
@@ -40,7 +40,6 @@ if CORR_INSTALL:
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
         os.system("> ../dsa110-nsfrb-logfiles/" + l)
-
 
 else:
     if 'NSFRBT4' not in os.environ.keys():

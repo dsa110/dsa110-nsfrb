@@ -83,18 +83,19 @@ import sys
 #directories
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
-cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"
 frame_dir = cwd + "-frames/"
 psf_dir = cwd + "-PSF/"
 img_dir = cwd + "-images/"
-vis_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/"
-raw_cand_dir = cand_dir + "raw_cands/"
-backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
-final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
+if 'NSFRBDATA' in os.environ:
+    cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"
+    vis_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/"
+    raw_cand_dir = cand_dir + "raw_cands/"
+    backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
+    final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
+    training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 sslogfile = cwd + "-logfiles/srchstartstoptime_log.txt"
 inject_dir = inject_file = cwd + "-injections/"
 local_inject_dir = cwd + "-injections/realtime_staging_sb/"
-training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 noise_dir = cwd + "-noise/"
 imgpath = cwd + "-images"
 plan_dir = cwd + "-plans/"
