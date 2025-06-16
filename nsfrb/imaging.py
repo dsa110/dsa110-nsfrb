@@ -6,11 +6,11 @@ from scipy.optimize import curve_fit
 from dsamfs import utils as pu
 from dsacalib.utils import Direction
 from dsautils.coordinates import create_WCS,get_declination,get_elevation
-from nsfrb.outputlogging import printlog
+#from nsfrb.outputlogging import printlog
 from scipy.interpolate import interp1d
 from astropy import wcs
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,crpix_dict,pixperFWHM,lambdaref
+from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,crpix_dict,pixperFWHM,lambdaref,az_offset,Lon,Lat,Height
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord,FK5
@@ -28,52 +28,13 @@ from nsfrb.flagging import flag_vis
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize,table_dir
+#from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize,table_dir
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
 
-def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000,pixperFWHM=3):
-    """
-    dec: current declination
-    T: integration time in milliseconds
-    """
-    if usefit:
-        srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
-        if len(srcs)>0:
-            print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
-            decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
-            idx = np.argmin(np.abs(decs-dec))
-            if np.abs(decs[idx]-dec)<1:
-            
-                f = open(srcs[idx],"r")
-                table = json.load(f)
-                f.close()
-                if 'core_gulp_RA_drift_slope' in table.keys():
-                    print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
-                    cutoff_pix = -int((table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)*(pixperFWHM/3))
-                    print("New RA cutoff:",cutoff_pix)
-                    return cutoff_pix
-        else:
-            f = open(table_dir + "/NSFRB_astrocal.json","r")
-            table = json.load(f)
-            f.close()
-            if 'core_gulp_RA_drift_slope' in table.keys():
-                print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
-                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
-                print("New RA cutoff:",cutoff_pix)
-                return cutoff_pix
-
-            
-        print("Fit cal not available, using pix estimate")
-    scale = offset_s*1000/T
-    cutoff_as = scale*(T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
-    cutoff_pix = np.abs((cutoff_as/3600)/pixsize)#np.abs((cutoff_as/3600)//pixsize)
-    print("New RA cutoff:",cutoff_pix)
-    if asint: return int(np.ceil(cutoff_pix))
-    else: return cutoff_pix#int(np.ceil(cutoff_pix))
 
 
 def stack_images(imgs,cutoff_offsets,ref_RA_grid=None,ref_DEC_grid=None):
@@ -456,7 +417,7 @@ def dec_to_m(dec0,dec_offset,d=1,Lat=Lat):
     
 #revision of uv_to_pix to be consistent with FRB search code
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=pixperFWHM):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file="",elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=pixperFWHM):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -490,7 +451,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         RA = obstime.sidereal_time('apparent', longitude=Lon*u.deg).to(u.deg).value
     pointing = SkyCoord(ra=RA*u.deg,dec=DEC*u.deg,frame=FK5,equinox=obstime).transform_to(ICRS)
     """
-    printlog(f'Primary beam pointing: {pointing}',output_file=output_file)
+    #printlog(f'Primary beam pointing: {pointing}',output_file=output_file)
     
 
     if uv_diag is None:
@@ -523,7 +484,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         tmp = w2.wcs_pix2world(np.array([ra_grid_pix,dec_grid_pix]).transpose(),0)
         ra_grid = tmp[:,0]
         dec_grid =tmp[:,1]
-    printlog("RADECSHAPE:" + str(ra_grid.shape) + "," + str(dec_grid.shape),output_file=output_file)
+    #printlog("RADECSHAPE:" + str(ra_grid.shape) + "," + str(dec_grid.shape),output_file=output_file)
     return ra_grid,dec_grid,elev
 
 def process_w_layers(dirty_image,w,Nlayers_w):

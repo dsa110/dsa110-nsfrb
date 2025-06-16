@@ -23,7 +23,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T,bad_antennas,flagged_antennas,Lon,Lat,Height,maxrawsamps,flagged_corrs
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
@@ -40,8 +40,8 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,timelogfile,NSFRB_PSRDADA_TESTKEYS,local_inject_dir
-
+#from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,timelogfile,NSFRB_PSRDADA_TESTKEYS,local_inject_dir
+from nsfrb.config import local_inject_dir,rtbench_file,rttx_file
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 from dsautils import cnf
@@ -371,7 +371,7 @@ def main(args):
             
             
             executor.shutdown()
-            printlog("Realtime exceeded, shutting down imager",output_file=logfile)
+            print("Realtime exceeded, shutting down imager")
             return 
 
 
@@ -420,8 +420,8 @@ if __name__=="__main__":
     parser.add_argument('--timestamp',type=str,help='Timestamp in ISOT format (e.g. 2024-06-12T21:35:49); if not given, timestamp is retrieved from sb00 file with os.path.getctime() or from time of rsync',default='')
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
     parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=raw_datasize)
-    parser.add_argument('--path',type=str,help='Path to raw data files',default=vis_dir[:-1])
-    parser.add_argument('--outpath',type=str,help='Output path for images',default=imgpath)
+    #parser.add_argument('--path',type=str,help='Path to raw data files',default=vis_dir[:-1])
+    #parser.add_argument('--outpath',type=str,help='Output path for images',default=imgpath)
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
     parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')

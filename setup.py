@@ -24,9 +24,29 @@ CORR_INSTALL=False
 import os
 os.system("pwd > metadata.txt")
 
+#setup environment variables
+if 'NSFRBDIR' not in os.environ.keys():
+    os.system("echo \"export NSFRBDIR=$PWD\" >> ~/.bashrc\n")
+if 'NSFRBIP' not in os.environ.keys():
+    os.system("echo \"export NSFRBIP=\\\"10.41.0.254\\\"\" >> ~/.bashrc\n")
 
-if not CORR_INSTALL:
+if CORR_INSTALL:
+    os.system("mkdir ../dsa110-nsfrb-injections")
+    os.system("mkdir ../dsa110-nsfrb-injections/realtime_staging_sb")
+    os.system("mkdir ../dsa110-nsfrb-logfiles")
+    logfiles = ["rttimes_log.txt",
+                "rttx_log.txt"]
+    for i in range(len(logfiles)):
+        l = logfiles[i]
+        os.system("touch ../dsa110-nsfrb-logfiles/" + l)
+        os.system("> ../dsa110-nsfrb-logfiles/" + l)
 
+
+else:
+    if 'NSFRBT4' not in os.environ.keys():
+        os.system("echo \"export NSFRBT4=/home/user/data/T4/\" >> ~/.bashrc\n")
+    if 'NSFRBDATA' not in os.environ.keys():
+        os.system("echo \"export NSFRBDATA=/dataz/dsa110/nsfrb/\" >> ~/.bashrc\n")
 
     #make logfile directory outside of git repo
     os.system("mkdir ../dsa110-nsfrb-logfiles")

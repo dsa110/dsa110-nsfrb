@@ -9,7 +9,8 @@ from dsacalib import constants as ct
 from dsacalib.fringestopping import calc_uvw
 import numba
 
-from nsfrb.imaging import get_ra,get_RA_cutoff,stack_images,briggs_weighting
+from nsfrb.imaging import get_ra,stack_images,briggs_weighting
+from nsfrb.planning import get_RA_cutoff
 from matplotlib.patches import Ellipse
 from nsfrb.config import *
 import numpy as np

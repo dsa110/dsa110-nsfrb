@@ -1,4 +1,5 @@
 import numpy as np
+from nsfrb.planning import get_RA_cutoff
 from threading import Lock
 from dask.distributed import Client
 import select
@@ -142,7 +143,7 @@ class fullimg:
             self.slow_RA_cutoffs = []
             for i in range(self.bin_slow):
                 self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*self.shape[2]*i/1000/86400))
-                self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*self.shape[2]*i/1000))
+                self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*self.shape[2]*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.slowstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         elif imgdiff:
@@ -153,7 +154,7 @@ class fullimg:
             for i in range(self.imgdiffgulps):
                 for j in range(self.bin_imgdiff):
                     self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*config.nsamps*(self.bin_imgdiff*i + j)/1000/86400))
-                self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=j*config.tsamp*config.nsamps*i/1000))
+                self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=j*config.tsamp*config.nsamps*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.imgdiffstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
@@ -897,7 +898,7 @@ def main(args):
         sl.default_cutoff = 0
     else:
         printlog(sl.DEC_axis,output_file=processfile)
-        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=np.abs(sl.RA_axis[1]-sl.RA_axis[0]))
+        sl.default_cutoff = get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=np.abs(sl.RA_axis[1]-sl.RA_axis[0]))
         printlog("Initialized pixel cutoff to " + str(sl.default_cutoff) + " pixels",output_file=processfile)
 
     """

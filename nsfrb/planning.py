@@ -16,12 +16,57 @@ from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
 from nsfrb.imaging import DSAelev_to_ASTROPYalt,get_ra,ASTROPYalt_to_DSAelev,uv_to_pix
-from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset,tsamp,nsamps
+from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset,tsamp,nsamps,T,pixsize
 from nsfrb.pipeline import read_raw_vis
 import pickle as pkl
 """
 This module contains functions for observation planning, including making DSA-110 observing scripts giving desired elevation at subsequent timesteps.
 """
+
+
+def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000,pixperFWHM=3):
+    """
+    dec: current declination
+    T: integration time in milliseconds
+    """
+    if usefit:
+        srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
+        if len(srcs)>0:
+            print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
+            decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
+            idx = np.argmin(np.abs(decs-dec))
+            if np.abs(decs[idx]-dec)<1:
+
+                f = open(srcs[idx],"r")
+                table = json.load(f)
+                f.close()
+                if 'core_gulp_RA_drift_slope' in table.keys():
+                    print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
+                    cutoff_pix = -int((table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)*(pixperFWHM/3))
+                    print("New RA cutoff:",cutoff_pix)
+                    return cutoff_pix
+        else:
+            f = open(table_dir + "/NSFRB_astrocal.json","r")
+            table = json.load(f)
+            f.close()
+            if 'core_gulp_RA_drift_slope' in table.keys():
+                print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
+                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                print("New RA cutoff:",cutoff_pix)
+                return cutoff_pix
+
+
+        print("Fit cal not available, using pix estimate")
+    scale = offset_s*1000/T
+    cutoff_as = scale*(T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
+    cutoff_pix = np.abs((cutoff_as/3600)/pixsize)#np.abs((cutoff_as/3600)//pixsize)
+    print("New RA cutoff:",cutoff_pix)
+    if asint: return int(np.ceil(cutoff_pix))
+    else: return cutoff_pix#int(np.ceil(cutoff_pix))
+
+
+
+
 
 
 def GP_curve(longitude,lat_offset=0):

@@ -25,7 +25,8 @@ from scipy.signal import convolve2d
 from nsfrb import simulating as sim
 from simulations_and_classifications import generate_PSF_images as scPSF
 from nsfrb.outputlogging import printlog,numpy_to_fits
-from nsfrb.imaging import uv_to_pix,get_RA_cutoff
+from nsfrb.imaging import uv_to_pix
+from nsfrb.planning import get_RA_cutoff
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 from astropy.time import Time
