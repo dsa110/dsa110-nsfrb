@@ -23,6 +23,7 @@ CORR_INSTALL=False
 #get local nsfrb directory
 import os
 os.system("pwd > metadata.txt")
+os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
 
 #setup environment variables
 if 'NSFRBDIR' not in os.environ.keys():
@@ -40,7 +41,6 @@ if CORR_INSTALL:
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
         os.system("> ../dsa110-nsfrb-logfiles/" + l)
-
 
 else:
     if 'NSFRBT4' not in os.environ.keys():

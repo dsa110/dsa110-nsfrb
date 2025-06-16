@@ -1,7 +1,7 @@
 import numpy as np
 from dsacalib.utils import Direction
 from dsautils.coordinates import create_WCS,get_declination,get_elevation
-from nsfrb.outputlogging import printlog
+#from nsfrb.outputlogging import printlog
 from scipy.interpolate import interp1d
 from astropy import wcs
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
@@ -18,8 +18,7 @@ import copy
 import numba
 import os
 from scipy.optimize import curve_fit
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,tsamp
-
+from nsfrb.config import noise_dir
 
 def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf,flagged_chans=np.array([]),flagged_baseline_idxs=np.array([]),verbose=False,returnidxs=False):
     """
