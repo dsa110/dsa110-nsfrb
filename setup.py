@@ -18,11 +18,12 @@ setup(name='dsa110-nsfrb',
 )
 
 #set CORR_INSTALL=True if installing realtime imager on the corr nodes
-CORR_INSTALL=True
+CORR_INSTALL=False
 
 #get local nsfrb directory
 import os
 os.system("pwd > metadata.txt")
+os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
 
 #setup environment variables
 if 'NSFRBDIR' not in os.environ.keys():

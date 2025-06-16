@@ -7,9 +7,9 @@ Description=rt_imager
 [Service]
 
 # Command to execute when service start
-WorkingDirectory=$NSFRBDIR/realtime
-ExecStart=/bin/bash -i $NSFRBDIR/realtime/run_realtime_imager
-ExecStop=/bin/bash -i $NSFRBDIR/realtime/kill_realtime_imager
+WorkingDirectory=NSFRBDIR/realtime
+ExecStart=/bin/bash -i NSFRBDIR/realtime/run_realtime_imager
+ExecStop=/bin/bash -i NSFRBDIR/realtime/kill_realtime_imager
 #ExecStop=/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/bin/python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/clearvis.py --populate
 #"/bin/kill -9 $(pgrep -f mercury)"
 MemoryMax=5G
