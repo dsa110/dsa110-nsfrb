@@ -11,7 +11,7 @@ then
 	#dada_db -k cada -b 144961600
 	#dada_db -k caea -b 28992320
 	#dada_db -k cafa -b 28992320
-	python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --offline -T --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --realtime #--daskaddress "tcp://10.42.0.228:8786"
+	python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax -T --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --realtime --slow --imgdiff --forfeit #--daskaddress "tcp://10.42.0.228:8786"
 else
 	echo "offline process server active"
 	if [ "$completeness" = "true" ];

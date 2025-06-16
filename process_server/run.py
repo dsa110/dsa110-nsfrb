@@ -1,4 +1,5 @@
 import numpy as np
+from threading import Lock
 from dask.distributed import Client
 import select
 import os
@@ -449,7 +450,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     f.close()
     return
 
-def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_slow,RA_axis_slow,timestepisot_imgdiff,RA_axis_imgdiff,DEC_axis,etcd_enabled,dask_enabled):
+def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_slow,RA_axis_slow,timestepisot_imgdiff,RA_axis_imgdiff,DEC_axis,etcd_enabled,dask_enabled,thash):
     """
     This function prints the result once a thread finishes processing an image
     """
@@ -518,6 +519,9 @@ def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_sl
     if timestepisot_imgdiff is not None:
         del imgdiff_fullimg_dict[timestepisot_imgdiff]
     del fullimg_dict[timestepisot]
+    f = open(sslogfile,"a")
+    f.write("[stop] [" + thash +"] " + str(time.time()))
+    f.close()
     return
 
 ECODE_BREAK = -1
@@ -644,7 +648,7 @@ multiport_accepting = dict()
 def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,ii,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,attachmode,completeness):
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,attachmode,completeness,slowlock,forfeit):
     """
     This task sets up the given socket to accept connections, reads
     data when a client connects, and submits a search task
@@ -682,9 +686,10 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
             init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
             sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
 
-
+        printlog(">>>>"+str(img_id_mjd)+"<<<<",output_file=processfile)
         #make slow fullimag object
         if slow:
+            slowlock.acquire()
             slowdone = False
             for k in slow_fullimg_dict.keys():
                 img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
@@ -700,10 +705,12 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
                 k = img_id_isot
             slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
+            slowlock.release()
         else:
             slowsearch_now = False
         #make imgdiff fullimag object
         if imgdiff:
+            slowlock.acquire()
             imgdiffdone = False
             for kd in imgdiff_fullimg_dict.keys():
                 img_idx,foundmjd = imgdiff_fullimg_dict[kd].imgdiff_mjd_in_img(img_id_mjd)
@@ -719,6 +726,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
                 kd = img_id_isot
             imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
+            slowlock.release()
         else:
             imgdiffsearch_now = False
 
@@ -745,21 +753,27 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
             return [stask]
 
 
+        ret_tasks = []
+        if (not forfeit) or (forfeit and (not slowsearch_now) and (not imgdiffsearch_now)):
 
-        if dask_enabled:
-            stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            if dask_enabled:
+                stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,resources={'GPU': 1})
-        else:
-            stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,resources={'GPU': 1})
+            else:
+                stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness)
-        stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash))
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit)
+            stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash))
+            ret_tasks.append(stask)
+        elif forfeit and (slowsearch_now or imgdiffsearch_now):
+            del fullimg_dict[img_id_isot]
+            printlog(socksuffix+"BASE SEARCH FORFEIT "+img_id_isot,output_file=processfile)
 
         #task_list.append(stask)
-        if slowsearch_now:
+        if slowsearch_now and ((not forfeit) or (forfeit and (not imgdiffsearch_now))):
             printlog(socksuffix+"SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
             printlog(socksuffix+str(slow_fullimg_dict[k].image_tesseract),output_file=output_file)
             #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
@@ -767,16 +781,20 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,resources={'GPU': 1})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,resources={'GPU': 1})
             else:
                 sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit)
                     
             sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
             #task_list.append(sstask)
-        
+            ret_tasks.append(sstask)
+        elif forfeit and slowsearch_now:
+            del slow_fullimg_dict[k]
+            printlog(socksuffix + "SLOW SEARCH FORFEIT "+str(k),output_file=processfile)
+
         if imgdiffsearch_now:
             printlog(socksuffix+"IMGDIFFSEARCH NOW:" + str(imgdiff_fullimg_dict[kd]),output_file=processfile)
             printlog(socksuffix+str(imgdiff_fullimg_dict[kd].image_tesseract),output_file=output_file)
@@ -785,26 +803,29 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 ssstask = executor.submit(sl.search_task,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,resources={'GPU': 1})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,resources={'GPU': 1})
             else:
                 ssstask = executor.submit(sl.search_task,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit)
 
             ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
             #task_list.append(sstask)
-
-        if slowsearch_now and not imgdiffsearch_now: return [stask,sstask]
-        elif slowsearch_now and imgdiffsearch_now: return [stask,sstask,ssstask]
-        elif not slowsearch_now and imgdiffsearch_now: return [stask,ssstask]
-        return [stask]
+            ret_tasks.append(ssstask)
+        return ret_tasks
+        printlog(socksuffix+" "+str(ret_tasks) + " tasks",output_file=processfile )
+        #if slowsearch_now and not imgdiffsearch_now: return [stask,sstask]
+        #elif slowsearch_now and imgdiffsearch_now: return [stask,sstask,ssstask]
+        #elif not slowsearch_now and imgdiffsearch_now: return [stask,ssstask]
+        #return [stask]
     return ECODE_SUCCESS
 
 def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
     
+    slowlock_ = Lock()
 
     #if "DASKPORT" in os.environ.keys():
     #    printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
@@ -1188,7 +1209,7 @@ def main(args):
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness)
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit)
             if type(ret) == int:
                 if ret == ECODE_CONT:
                     packet_dict["dropped"] += 1
@@ -1224,7 +1245,7 @@ def main(args):
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness))
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit))
                     multiport_num_list.append(ii)
                 else:
                     packet_dict["dropped"] += 1
@@ -1350,6 +1371,7 @@ if __name__=="__main__":
     parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
     parser.add_argument('--attachmode',action='store_true',help='in attached mode, search tasks for slow and image diff pipelines are combined with normal pipeline to minimize overheads')
     parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
+    parser.add_argument('--forfeit',action='store_true',help='Forfeit searching base resolution data gulp to search slow/imgdiff data; forfeit searching slow data gulp to search imgdiff data; superceded by attach mode')
     args = parser.parse_args()
 
     """

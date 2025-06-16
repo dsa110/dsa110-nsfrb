@@ -203,12 +203,11 @@ def main(args):
             #    dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_TESTKEYS[args.sb],nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
             #else:
             if gulp_counter == 0:
-                dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
+                dat_i,mjd_init,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
             else:
                 dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
-            mjd += (gulp_counter*T/1000/86400)
-            gulp_counter += 1
-            print(mjd)
+           
+           
             #printlog(str((mjd,sb,Dec)),output_file=logfile)
             assert(sb==args.sb)
             print(Dec,pt_dec*180/np.pi)
@@ -218,6 +217,9 @@ def main(args):
             else:
                 dat = np.concatenate([dat,dat_i])
             #printlog(dat.shape,output_file=logfile)
+        mjd = mjd_init + (gulp_counter*T/1000/86400)
+        gulp_counter += 1
+        print(">>",mjd,"<<")
         #if args.testh23:
         #    mjd = Time.now().mjd
 
@@ -381,7 +383,7 @@ def main(args):
                 tasklist = []
                 for sbi in range(len(corrs)):
                     tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))]))
-                    #time.sleep(T/1000/32)
+                    #time.sleep(T/1000)#/32)
                     """
                     ttx = time.time()
                     msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(sbi%len(args.multiport))])

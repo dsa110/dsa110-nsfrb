@@ -158,9 +158,11 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     if len(target)>0:
         target_coord = SkyCoord(target,unit=(u.hourangle,u.deg),frame='icrs')
         target_obstime = Time(targetMJD,format='mjd')
+    print(ex_table,ex_times)
     for k in tab[arraykey].keys():
         for kk in tab[arraykey][k].keys():
-            if (str(k) not in ex_table) or (str(k) in ex_table and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))):
+            if ((str(k) not in ex_table) or (str(k) in ex_table and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))))):
+                #if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' in tab[arraykey][k][kk].keys()) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))):
                 
                 #if a target is given, check that sources are within range
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["nvss_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
@@ -257,12 +259,20 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
 
         #estimate Smin from noise level
         try:
+            noisef = open(table_dir + "NSFRB_noisestats.json","r")
+            stat_noise = json.load(noisef)
+            noisef.close()
+            Smin = stat_noise["image_noise_median_full"]*popt[0] + popt[1]
+            Smin_uperr = (stat_noise["image_noise_median_full"]*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
+            Smin_loerr = Smin - (stat_noise["image_noise_median_full"]*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
+            """
             noisef = open(noise_dir + "noise_301x301.pkl","rb")
             stat_noise = pkl.load(noisef)[0][1]
             noisef.close()
             Smin = (stat_noise[1]/np.sqrt(nchans))*popt[0] + popt[1]
             Smin_uperr = ((stat_noise[1]/np.sqrt(nchans))*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
             Smin_loerr = Smin - ((stat_noise[1]/np.sqrt(nchans))*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
+            """
             if len(target)>0:
                 target_table[arraykey + "_Smin"] = Smin
                 target_table[arraykey + "_Smin_uperr"] = Smin_uperr
@@ -317,11 +327,13 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.plot(faxis,pfunc_fit(faxis),color='grey')
         plt.fill_between(faxis,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
     plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90))
+    """
     for i in range(len(uniquesrcnames)):
         plt.errorbar(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]]),allnvssfluxes[allsrcnames==uniquesrcnames[i]][0],#pfunc(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]])),
                 xerr=np.nanstd(allfluxs[allsrcnames==uniquesrcnames[i]])/np.sqrt(np.sum(allsrcnames==uniquesrcnames[i])),
                 #yerr=pfunc(np.nanstd(allfluxs[allsrcnames==uniquesrcnames[i]])/np.sqrt(np.sum(allsrcnames==uniquesrcnames[i]))),
                 marker='',color='red',capsize=20,markersize=20,alpha=0.5)
+    """
     plt.xlabel("Mean Pixel Value per Time Sample (arb. units)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
     plt.ylim(1,1e4)
@@ -330,10 +342,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
     if not badsoln and not np.isnan(Smin):
+        
+        """
         plt.axvline(stat_noise[1]/np.sqrt(nchans),color='purple',linestyle='--')
         #plt.axhline(Smin,color='purple',linestyle='--')
         #plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
         plt.text(stat_noise[1]/np.sqrt(nchans),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
+        """
+        plt.axvline(stat_noise["image_noise_median_full"],color='purple',linestyle='--')
+        plt.text(stat_noise["image_noise_median_full"],3,"Measured: " + str(np.around(Smin))+" mJy",fontsize=15)
         print("Estimated sensitivity:",Smin,"mJy")
     #estimate and plot theoretical sensitivity
     SEFD=7000
@@ -354,7 +371,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     NSFRBsens = 2*SEFD*1000/np.sqrt((2*Nbase)*BW*tsamp_ms*2/1000) #mJy
     print("Comparing to theoretical sensitivity:",NSFRBsens,"mJy")
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
-    plt.text(0.6e-4,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    plt.text(1e-6,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     #plt.ylim(NSFRBsens/2)
     plt.yscale("log")
     plt.xscale("log")
@@ -381,12 +398,16 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
     if not badsoln and not np.isnan(Smin):
+        """
         plt.axvline(pfunc(stat_noise[1]/np.sqrt(nchans)),color='purple',linestyle='--')
         #plt.axhline(Smin,color='purple',linestyle='--')
         #plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
         plt.text(pfunc(stat_noise[1]/np.sqrt(nchans)),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
+        """
+        plt.axvline(pfunc(stat_noise["image_noise_median_full"]),color='purple',linestyle='--')
+        plt.text(pfunc(stat_noise["image_noise_median_full"]),3,"Measured: "+str(np.around(Smin))+" mJy",fontsize=15)
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
-    plt.text(pfunc(0.6e-4),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    plt.text(pfunc(1e-6),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     #plt.ylim(NSFRBsens/2)
     plt.yscale("log")
     plt.xscale("log")
@@ -503,7 +524,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         target_obstime = Time(targetMJD,format='mjd')
     for k in tab[arraykey].keys():
         for kk in tab[arraykey][k].keys():
-            if ((str(k) not in ex_table) or (str(k) in ex_table and 'mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))) and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
+            if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))) and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
                     allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
@@ -860,6 +881,15 @@ def astrocal(args):
         if args.shiftbytime!=0:
             print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
         ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
+
+
+        oldsrcflag = (args.newsources and intable(name,str(ffvl[0]),table_dir + "NSFRB_astrocal.json",args.outriggers,False,False))
+        if oldsrcflag:
+            print(name,ffvl[0],"already in table")
+            bright_names = bright_names[:-1]
+            continue
+
+
         if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime[-1].mjd)<(5*60/86400):
             
             print("Excluding " + name)
@@ -1315,6 +1345,16 @@ def get_best_elev(reftime,timestep_hr = 1):
     return np.nanmedian(elevs)*u.deg
 
 
+def intable(name,fnum,table,outriggers,image_flux,exactposition):
+    arraykey = str('outriggers' if outriggers else 'core') + str("_image" if image_flux else "") + str("_exact" if exactposition else "")
+    try:
+        f = open(table,"r")
+        tab = json.load(f)
+        f.close()
+    except:
+        print(name,fnum,"not found")
+    return (name in tab[arraykey].keys()) and fnum in tab[arraykey][name].keys() 
+
 def speccal(args):
     # find brightest continuum sources at the current declination # dec 16 continuum sources
     if len(args.reftimeISOT) == 0:
@@ -1481,6 +1521,11 @@ def speccal(args):
         if args.shiftbytime!=0:
             print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
         ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
+        oldsrcflag = (args.newsources and intable(name,str(ffvl[0]),table_dir + "NSFRB_speccal.json",args.outriggers,True,args.exactposition))
+        if oldsrcflag:
+            print(name,ffvl[0],"already in table")
+            bright_nvssnames = bright_nvssnames[:-1]
+            continue
 
         if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime.mjd)<(5*60/86400):
             besttime.append(-1)
@@ -1988,18 +2033,148 @@ def speccal(args):
 
 
 
+def noiseest(args):
+    """
+    Estimates noise from given file or most recent file
+    """
+    fnum = args.noisefnum
+    if fnum == -1 or len(glob.glob(vis_dir + "/lxd110h03/nsfrb_sb00_"+str(fnum)+".out"))==0:
+        fname = np.sort(glob.glob(vis_dir + "/lxd110h03/nsfrb_sb00_*.out"))[-2]
+        fnum = int(fname[fname.index("sb00") + 5:fname.index(".out")])
+
+    print("Estimating noise using fnum",fnum)
+
+
+
+    image_size=args.image_size#1101 #8001
+    gulpsize = nsamps
+    nchan_per_node=nchans_per_node = args.nchans_per_node
+    outriggers = args.outriggers
+    ref_wav=0.20
+    bmin=args.bmin
+    ngulps = args.ngulps
+    noisearr = np.zeros(ngulps)
+    visnoisearr = np.zeros(ngulps,dtype=complex)
+    g=0
+    min_gridsize = image_size
+
+
+    sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+
+    if args.randgulps:
+        gulps = np.sort(np.random.choice(np.arange(90,dtype=int),ngulps,replace=False))
+    else:
+        gulps = np.arange(ngulps,dtype=int)
+    print(gulps)
+    for gulp in gulps:
+        full_img = np.zeros((image_size,image_size,nsamps),dtype=float) #,gulpsize,16*nchan_per_node))
+        print("Image shape:",full_img.shape)
+
+        dat = None
+        for i in range(16):
+            try:
+                dat_i,sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
+                if dat is None:
+                    dat = np.nan*np.ones(dat_i.shape,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
+
+                dat[:,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat_i
+
+            except Exception as exc:
+                print(exc)
+
+  
+        print("Getting UVW params...")
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        pt_dec = dec*np.pi/180.
+        bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+        fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
+
+
+        #flagging andd baseline cut
+        fcts = []
+        if args.flagSWAVE:
+            fcts.append(fct_SWAVE)
+        if args.flagBPASS:
+            fcts.append(fct_BPASS)
+        if args.flagFRCBAND:
+            fcts.append(fct_FRCBAND)
+        if args.flagBPASSBURST:
+            fcts.append(fct_BPASSBURST)
+
+        dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+        U = UVW[0,:,1]
+        V = UVW[0,:,0]
+        W = UVW[0,:,2]
+
+        uv_diag=np.max(np.sqrt(U**2 + V**2))
+        pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
+        dat[np.isnan(dat)] = 0
+
+        #visnoisearr[gulp] = np.nanstd(np.nanmean(dat - np.nanmedian(dat,0,keepdims=True),(1,2,3)))
+
+        for j in range(len(corrs)):
+            tmp = np.zeros((gridsize,gridsize,nsamps))
+            for jj in range(nchans_per_node):
+                for i in range(int(dat.shape[0])):
+                    tmp[:,:,i] += revised_robust_image(dat[i:(i+1),:,(j*nchans_per_node) + jj,:].sum(2),
+                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                   image_size,robust=args.robust,
+                                                   pixel_resolution=pixel_resolution)/len(corrs)
+            full_img += (tmp - np.nanmedian(tmp,2,keepdims=True))/len(corrs)
+        noisearr[g] = np.nanmedian(np.nanstd(full_img-np.nanmedian(full_img,2,keepdims=True),2))
+        print("gulp",gulp,"noise:",noisearr[g])
+        g+=1
+    np.save(noise_dir+"/"+str(fnum)+"_imagenoise.npy",noisearr)
+    #np.save("/dataz/dsa110/nsfrb/dsa110-nsfrb-detailed-noisestats/"+str(fnum)+"_visnoise.npy",visnoisearr)
+
+
+
+    if not args.init_noise and len(glob.glob(table_dir + "/NSFRB_noisestats.json"))>0:
+        f = open(table_dir + "/NSFRB_noisestats.json","r")
+        noisestats = json.load(f)
+        f.close()
+
+        noiseall = np.load(noise_dir+"/"+"all_imagenoise.npy")
+        #visnoiseall =  np.load("/dataz/dsa110/nsfrb/dsa110-nsfrb-detailed-noisestats/all_visnoise.npy")
+    else:
+        noisestats = dict()
+        noiseall = np.array([],dtype=float)
+        #visnoiseall = np.array([],dtype=complex)
+
+    noisestats[fnum] = dict()
+    noisestats[fnum]['image_noise_median'] = np.nanmedian(noisearr)
+    noisestats[fnum]['gulps'] = [int(i) for i in gulps]#.astype(int))
+    #noisestats[fnum]['vis_noise_median'] = np.nanmedian(visnoisearr)
+    noiseall = np.concatenate([noiseall,noisearr])
+    #visnoiseall = np.concatenate([visnoiseall,visnoisearr])
+    noisestats["image_noise_median_full"] = np.nanmedian(noiseall)
+    #noisestats["vis_noise_median_full"] = np.nanmedian(visnoiseall)
+
+    np.save(noise_dir+"/"+"all_imagenoise.npy",noiseall)
+    #np.save("/dataz/dsa110/nsfrb/dsa110-nsfrb-detailed-noisestats/all_visnoise.npy",visnoiseall)
+    f = open(table_dir + "/NSFRB_noisestats.json","w")
+    json.dump(noisestats,f)
+    f.close()
+    return
+
+
 
 def main(args):
-    if (not args.astrocal_only and not args.speccal_only) or (args.astrocal_only and not args.speccal_only):
-        if args.update_only:
-            update_astrocal_table([],[],[],[],[],[],[],[],[],[],[],args.outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
-        else:
-            astrocal(args)
-    if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
-        if args.update_only:
-            update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
-        else:
-            speccal(args)
+    if args.noiseest:
+        noiseest(args)
+    else:
+        if (not args.astrocal_only and not args.speccal_only) or (args.astrocal_only and not args.speccal_only):
+            if args.update_only:
+                update_astrocal_table([],[],[],[],[],[],[],[],[],[],[],args.outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
+            else:
+                astrocal(args)
+        if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
+            if args.update_only:
+                update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
+            else:
+                speccal(args)
     return
 
 
@@ -2064,5 +2239,10 @@ if __name__=="__main__":
     parser.add_argument('--no_update',action='store_true',help='Update to flux/astrometry table not applied')
     parser.add_argument('--shiftbytime',type=float,help='offset in seconds from meridian pass of the source',default=0)
     parser.add_argument('--includeall',action='store_true',help='Do not exclude any sources')
+    parser.add_argument('--newsources',action='store_true',help='Only use source observations not already in array')
+    parser.add_argument('--noiseest',action='store_true',help='Run noise estimation pipeline on given filenum or most recent file')
+    parser.add_argument('--noisefnum',type=int,help='filenum to run noise estimation with',default=-1)
+    parser.add_argument('--init_noise',action='store_true',help='initialize noise stats')
+    parser.add_argument('--randgulps',action='store_true',help='random gulps for noise estimate')
     args = parser.parse_args()
     main(args)
