@@ -2122,7 +2122,7 @@ def noiseest(args):
                                                    U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    image_size,robust=args.robust,
-                                                   pixel_resolution=pixel_resolution)/len(corrs)
+                                                   pixel_resolution=pixel_resolution)/nchans_per_node
             full_img += (tmp - np.nanmedian(tmp,2,keepdims=True))/len(corrs)
         noisearr[g] = np.nanmedian(np.nanstd(full_img-np.nanmedian(full_img,2,keepdims=True),2))
         print("gulp",gulp,"noise:",noisearr[g])

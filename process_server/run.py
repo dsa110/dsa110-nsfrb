@@ -1,7 +1,8 @@
 import numpy as np
 from nsfrb.planning import get_RA_cutoff
 from threading import Lock
-from dask.distributed import Client
+from dask.distributed import Lock as Lock_DASK
+from dask.distributed import Client,get_client
 import select
 import os
 import jax
@@ -654,6 +655,8 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     This task sets up the given socket to accept connections, reads
     data when a client connects, and submits a search task
     """
+    if dask_enabled:
+        search_executor = get_client()
     socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
     if img_id_isot not in fullimg_dict.keys():
@@ -826,8 +829,10 @@ def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
     
-    slowlock_ = Lock()
-
+    if len(args.daskaddress)==0:
+        slowlock_ = Lock()
+    else:
+        slowlock_ = Lock_DASK()
     #if "DASKPORT" in os.environ.keys():
     #    printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
     if args.etcd:
@@ -1185,7 +1190,7 @@ def main(args):
     if len(args.daskaddress)>0:
         printlog("Using DASK scheduler",output_file=processfile)
         executor = Client(args.daskaddress)
-        search_executor = Client(args.daskaddress)
+        #search_executor = Client(args.daskaddress)
     else:
         executor = ThreadPoolExecutor(args.maxProcesses)
         search_executor = ThreadPoolExecutor(args.maxProcesses)
@@ -1210,7 +1215,7 @@ def main(args):
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit)
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit)
             if type(ret) == int:
                 if ret == ECODE_CONT:
                     packet_dict["dropped"] += 1
@@ -1246,7 +1251,7 @@ def main(args):
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit))
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit))
                     multiport_num_list.append(ii)
                 else:
                     packet_dict["dropped"] += 1

@@ -4,8 +4,8 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 from nsfrb import periodicity
 from nsfrb.flagging import flag_vis
-from nsfrb.planning import find_fast_vis_label
-from nsfrb.config import tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis,freq_axis_fullres,vis_dir,raw_cand_dir,bad_antennas,flagged_antennas,lambdaref,pixperFWHM
+#from nsfrb.planning import find_fast_vis_label
+from nsfrb.config import tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis,freq_axis_fullres,vis_dir,raw_cand_dir,bad_antennas,flagged_antennas,lambdaref,pixperFWHM,remote_cand_dir
 from nsfrb.config import tsamp as tsamp_ms
 from nsfrb import plotting as pl
 from nsfrb import pipeline
@@ -31,6 +31,7 @@ from nsfrb import candcutting
 from event import event
 from dsaT4 import data_manager
 from dask.distributed import Client#, Lock
+from dask.distributed import Lock as Lock_DASK
 from threading import Lock
 from copy import deepcopy
 from itertools import chain
@@ -186,6 +187,7 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
 
 #ffa_semaphore = False
 def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock):
+    from nsfrb.planning import find_fast_vis_label
     #global ffa_semaphore
     tsamp_use = tsamp_ms
     if len(args.daskaddress) > 0:
@@ -207,7 +209,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
         #ffa_semaphore = False
         return None
 
-    if (not args.FFA) or args.completeness:
+    if (not args.FFA) or args.completeness or args.remote:
         #ffa_semaphore = False
         if classify_flag:
             return finalcands,finalidxs,dict(),predictions,probabilities 
@@ -492,7 +494,7 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
     return finalcands,finalidxs,predictions,probabilities
 
 from nsfrb.searching import maxshift,maxshift_slow
-def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D):
+def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile):
     if len(args.daskaddress) > 0:
         res = d_future
     else:
@@ -520,6 +522,11 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                 wr.writerow([cand_isot,DM_trials_use[int(finalcands[j][3])],widthtrials[int(finalcands[j][2])],finalcands[j][-1],(None if not classify_flag else predictions[j]),(None if not classify_flag else probabilities[j])])
         csvfile.close()
 
+        if args.remote:
+            printlog("updating injection files on h24...",output_file=cutterfile)
+            os.system("scp "+recover_file+" h24.pro.pvt:/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-injections/")
+            printlog("done",output_file=cutterfile)
+
     print("done updating recoveries")
     #make final directory for candidates
     dirlabel = "candidates"
@@ -528,7 +535,10 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     elif args.completeness:
         dirlabel = "completeness"
 
-    os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff)
+    if args.remote:
+        os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff+"\"")
+    else:
+        os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff)
 
     #write final candidates to csv
     prefix = "NSFRB"
@@ -541,7 +551,10 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
 
     #lastname =      #once we have etcd, change to 'names.get_lastname()'
     allcandnames = []
-    csvfile = open(final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/final_candidates_" + cand_isot + ".csv","w")
+    if args.remote:
+        csvfile = open(remote_cand_dir + "/final_candidates_" + cand_isot + ".csv","w")
+    else:
+        csvfile = open(final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/final_candidates_" + cand_isot + ".csv","w")
     wr = csv.writer(csvfile,delimiter=',')
     hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
     if useTOA: hdr += ["TOA"]
@@ -566,6 +579,10 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                 wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
         allcandnames.append(prefix + lastname)
     csvfile.close()
+    if args.remote:
+        printlog("copying cand file to h24...",output_file=cutterfile)
+        os.system("scp "+remote_cand_dir + "/final_candidates_" + cand_isot + ".csv "+final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/")
+        printlog("done")
 
     with open(table_dir+"nsfrb_lastname.txt","w") as lnamefile:
         if lastname is not None:
@@ -582,8 +599,12 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
 
         lastname = allcandnames[j]
         #make folder for each candidate
-        os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname)
-        os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname + "/voltages")
+        if args.remote:
+            os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname+"\"")
+            os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname + "/voltages\"")
+        else:
+            os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname)
+            os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + lastname + "/voltages")
 
     if len(finalidxs) > 0:
         #make diagnostic plot
@@ -667,12 +688,16 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                 else:
                     cand_mjd = Time(cand_isot,format='isot').mjd
                 print("ALMOST ALMOST DONE",finalpcands)
-                if (args.FFA and not args.completeness) and (i in finalpcands.keys()):
+                if (args.FFA and not args.completeness and not args.remote) and (i in finalpcands.keys()):
                     P = float(finalpcands[i]["fineP_secs"])
                 else:
                     P =-1
                 print("RIGHT HERE:",finalpcands,i,P)
-                fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
+                if args.remote:
+                    fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=remote_cand_dir,slow=slow,imgdiff=imgdiff)
+                    os.system("scp "+remote_cand_dir+trigname+".json h24.pro.pvt:"+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/")
+                else:
+                    fl = nsfrb_to_json(cand_isot,cand_mjd,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
 
                 printlog(fl,output_file=cutterfile)
     
@@ -745,30 +770,34 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
     print(canddict,image,RA_axis,DEC_axis)
     candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
-                                            output_dir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",show=False,s100=args.SNRthresh/2,
+                                            output_dir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",
+                                            show=False,s100=args.SNRthresh/2,
                                             injection=injection_flag,vmax=np.nanmax(searched_image),vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=finalpcands)
+    printlog(candplot,output_file=cutterfile)
 
     if args.toslack:
         printlog("sending plot to slack...",output_file=cutterfile)
-        send_candidate_slack(candplot,filedir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/")
+        send_candidate_slack(candplot,filedir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/")
         #printlog("sending plot to pushover...",output_file=cutterfile)
         #send_candidate_pushover(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
         printlog("done!",output_file=cutterfile)
         printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
+        
+        if not args.remote:
 
-        if slow:
-            os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
-        elif imgdiff:
-            os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
-        else:
-            os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
-        printlog("sending notification via x11...",output_file=cutterfile)
-        os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
-        os.system("echo " + str((2/3) if imgdiff else 1) + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
-        os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
-        printlog("done!",output_file=cutterfile)
+            if slow:
+                os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
+            elif imgdiff:
+                os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
+            else:
+                os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
+            printlog("sending notification via x11...",output_file=cutterfile)
+            os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
+            os.system("echo " + str((2/3) if imgdiff else 1) + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
+            os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
+            printlog("done!",output_file=cutterfile)
     if args.trigger:
         T4trigger = event.create_event(fl)
         return list(res) + [candplot, T4trigger]
@@ -799,10 +828,16 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
 
 
     #copy csv and cand plot
-    printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-    os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
-    printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
-    os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+    if args.remote:
+        printlog("scp " + remote_cand_dir + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + remote_cand_dir + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + remote_cand_dir + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + remote_cand_dir + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+    else:
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + cand_isot + "_NSFRBcandplot.png user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
+        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/"+ "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/",output_file=cutterfile)
+        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/"+  "final_candidates_" + cand_isot + ".csv user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/")
 
     #make folder for each candidate
     printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + suff + "/" + lastname for lastname in allcandnames]) + "\"",output_file=cutterfile)
@@ -811,9 +846,17 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + suff + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
     for lastname in allcandnames:
         #copy numpy files
-        printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
-        os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
+        if args.remote:
+            printlog("scp " + remote_cand_dir + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
+            os.system("scp " + remote_cand_dir + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
+        else:
+            printlog("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/",output_file=cutterfile)
+            os.system("scp " + final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/" + lastname + "/*" + " user@dsa-storage.ovro.pvt:" + T4dir + "/" + cand_isot + "/" + lastname + "/")
 
+    if args.remote:
+        printlog("Clearing tmp cand dir...",output_file=cutterfile)
+        os.system("rm "+remote_cand_dir + "/*")
+        printlog("done",output_file=cutterfile)
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
     return
 
@@ -842,7 +885,7 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
     d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock)
 
     #(4) writing csvs and jsons for remaining cands (might not be any remaining cands)
-    d_write = client.submit(writecands_manage,d_ffa,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_write = client.submit(writecands_manage,d_ffa,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(5) sending alerts (slack, triggers, etc)
     d_trigger = client.submit(sendtrigger_manage,d_write,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
@@ -1127,7 +1170,7 @@ import dsautils.dsa_store as ds
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/candidates'
 QQUEUE = Queue()
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,pixperFWHM,nchans
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,pixperFWHM,nchans,remote_cand_dir
 
 def etcd_to_queue(etcd_dict,queue=QQUEUE):
     """
@@ -1146,7 +1189,10 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
 from realtime.rtreader import rtread_cand
 from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,NSFRB_CANDDADA_SLOW_KEY,NSFRB_SRCHDADA_SLOW_KEY,NSFRB_TOADADA_SLOW_KEY,NSFRB_CANDDADA_IMGDIFF_KEY,NSFRB_SRCHDADA_IMGDIFF_KEY,NSFRB_TOADADA_IMGDIFF_KEY
 def main(args):
-    ffalock_ = Lock()
+    if len(args.daskaddress)==0:
+        ffalock_ = Lock()
+    else:
+        ffalock_ = Lock_DASK()
     #sys.stderr = open(error_file,"w")
     printlog("Starting T4 Manager (realtime candcutter)...",output_file=cutterfile)
     printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
@@ -1175,7 +1221,7 @@ def main(args):
     while True:
         if not args.testtrigger:
             printlog("Looking for cands in queue:" + str(QQUEUE),output_file=cutterfile)        
-            fname = raw_cand_dir + str(QQUEUE.get())
+            fname = (remote_cand_dir if args.remote else raw_cand_dir) + str(QQUEUE.get())
             uv_diag = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
             dec_obs = float(QQUEUE.get())#np.frombuffer(bytes.fromhex(QQUEUE.get()))[0]
             img_shape = tuple(QQUEUE.get())
@@ -1192,7 +1238,7 @@ def main(args):
             printlog("Cand Cutter found cand file " + str(fname),output_file=cutterfile)
         else:
             cand_isot = "2025-06-10T12:05:00.000"#Time(Time.now().mjd - (50/60/24),format='mjd').isot
-            fname = raw_cand_dir + "candidates_" + cand_isot + ".csv"
+            fname = (remote_cand_dir if args.remote else raw_cand_dir) + "candidates_" + cand_isot + ".csv"
             uv_diag = 500
             dec_obs = 71.6
             img_shape = (301,301)
@@ -1235,13 +1281,23 @@ def main(args):
         """
         if not args.testtrigger:
             try:
-                image = np.load(raw_cand_dir + cand_isot + suff + ".npy")
-                searched_image = np.load(raw_cand_dir + cand_isot + suff + "_searched.npy")
-                TOAs = np.load(raw_cand_dir + cand_isot + suff + "_TOAs.npy").astype(int)
+                #if remote, copy from h24
+                if args.remote:
+                    os.system("scp lxd110h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + ".npy "+remote_cand_dir)
+                    os.system("scp lxd110h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_searched.npy "+remote_cand_dir)
+                    os.system("scp lxd110h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_TOAs.npy "+remote_cand_dir)
+                    image = np.load(remote_cand_dir + cand_isot + suff + ".npy")
+                    searched_image = np.load(remote_cand_dir+ cand_isot + suff + "_searched.npy")
+                    TOAs = np.load(remote_cand_dir+ cand_isot + suff + "_TOAs.npy").astype(int)
+                else:
+                    image = np.load(raw_cand_dir + cand_isot + suff + ".npy")
+                    searched_image = np.load(raw_cand_dir + cand_isot + suff + "_searched.npy")
+                    TOAs = np.load(raw_cand_dir + cand_isot + suff + "_TOAs.npy").astype(int)
             except Exception as e:
                 printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
                 printlog(str(e),output_file=cutterfile)
-                os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*")
+                if not args.remote:
+                    os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*")
                 return
         else:
             from scipy.stats import uniform
@@ -1304,7 +1360,7 @@ if __name__=="__main__":
     parser.add_argument('--classify3D',action='store_true', help='Classify candidates with a machine learning convolutional neural network with time dependence')
     parser.add_argument('--classcut',action='store_true',help='Only save candidates that the classifier passes')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights_20250212.pth")
-    parser.add_argument('--model_weights3D',type=str, help='Path to the model weights file for 3D classifying',default="/dataz/dsa110/nsfrb/dsa110-nsfrb-training/NN_train/enhanced3dcnn_weights_final.pth")
+    parser.add_argument('--model_weights3D',type=str, help='Path to the model weights file for 3D classifying',default=cwd + "/simulations_and_classifications/enhanced3dcnn_weights_final.pth")
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)
@@ -1338,6 +1394,7 @@ if __name__=="__main__":
     parser.add_argument('--FFAbinchans',action='store_true',help='Average over all channels in each sub-band for periodicity search')
     parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
     parser.add_argument('--searchradius',type=float,help='Max search radius in degrees within which to include candidates,default=inf',default=np.inf)
+    parser.add_argument('--remote',action='store_true',help='Run T4 manager on remote server; files are scp to/from h24')
     args = parser.parse_args()
     
     main(args)

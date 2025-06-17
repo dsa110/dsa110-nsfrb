@@ -17,8 +17,11 @@ setup(name='dsa110-nsfrb',
      # ]
 )
 
-#set CORR_INSTALL=True if installing realtime imager on the corr nodes
-CORR_INSTALL=False
+H24_INSTALL=0 #set INSTALLMODE=H24_INSTALL for full server installation on h24
+CORR_INSTALL=1 #set INSTALLMODE=CORR_INSTALL if installing realtime imager on the corr nodes
+T4REMOTE_INSTALL=2 #set INSTALLMODE=T4REMOTE_INSTALL if installing T4 candidate post-processor on a remote server (e.g. h20)
+INSTALLMODE = H24_INSTALL
+
 
 #get local nsfrb directory
 import os
@@ -31,12 +34,36 @@ if 'NSFRBDIR' not in os.environ.keys():
 if 'NSFRBIP' not in os.environ.keys():
     os.system("echo \"export NSFRBIP=\\\"10.41.0.254\\\"\" >> ~/.bashrc\n")
 
-if CORR_INSTALL:
+if INSTALLMODE == CORR_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-injections")
     os.system("mkdir ../dsa110-nsfrb-injections/realtime_staging_sb")
     os.system("mkdir ../dsa110-nsfrb-logfiles")
     logfiles = ["rttimes_log.txt",
                 "rttx_log.txt"]
+    for i in range(len(logfiles)):
+        l = logfiles[i]
+        os.system("touch ../dsa110-nsfrb-logfiles/" + l)
+        os.system("> ../dsa110-nsfrb-logfiles/" + l)
+elif INSTALLMODE == T4REMOTE_INSTALL:
+    os.system("mkdir ../dsa110-nsfrb-injections")
+    with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(['ISOT','DM','WIDTH','SNR'])
+    csvfile.close()
+    with open("../dsa110-nsfrb-injections/recoveries.csv","w") as csvfile:
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(['ISOT','DM','WIDTH','SNR','PREDICT','PROB'])
+    csvfile.close()
+
+    os.system("mkdir ../dsa110-nsfrb-tables")
+    if len(glob.glob("../dsa110-nsfrb-tables/nsfrb_lastname.txt"))==0:
+        os.system("touch ../dsa110-nsfrb-tables/nsfrb_lastname.txt")
+        os.system("echo None > ../dsa110-nsfrb-tables/nsfrb_lastname.txt")
+    os.system("mkdir ../dsa110-nsfrb-logfiles")
+    os.system("mkdir ../dsa110-nsfrb-tmp-candidates")
+    logfiles = ["candcutter_log.txt",
+            "candcuttertask_log.txt",
+            "candcutter_error_log.txt"]
     for i in range(len(logfiles)):
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)

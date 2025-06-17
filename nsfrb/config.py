@@ -93,6 +93,7 @@ if 'NSFRBDATA' in os.environ:
     backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
     final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
     training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
+remote_cand_dir = cwd +"-tmp-candidates/"
 sslogfile = cwd + "-logfiles/srchstartstoptime_log.txt"
 inject_dir = inject_file = cwd + "-injections/"
 local_inject_dir = cwd + "-injections/realtime_staging_sb/"
