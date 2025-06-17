@@ -20,11 +20,13 @@ setup(name='dsa110-nsfrb',
 H24_INSTALL=0 #set INSTALLMODE=H24_INSTALL for full server installation on h24
 CORR_INSTALL=1 #set INSTALLMODE=CORR_INSTALL if installing realtime imager on the corr nodes
 T4REMOTE_INSTALL=2 #set INSTALLMODE=T4REMOTE_INSTALL if installing T4 candidate post-processor on a remote server (e.g. h20)
-INSTALLMODE = H24_INSTALL
+INSTALLMODE = T4REMOTE_INSTALL
 
 
 #get local nsfrb directory
 import os
+import csv
+import glob
 os.system("pwd > metadata.txt")
 os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
 
@@ -45,6 +47,8 @@ if INSTALLMODE == CORR_INSTALL:
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
         os.system("> ../dsa110-nsfrb-logfiles/" + l)
 elif INSTALLMODE == T4REMOTE_INSTALL:
+    if 'NSFRBT4' not in os.environ.keys():
+        os.system("echo \"export NSFRBT4=/home/user/data/T4/\" >> ~/.bashrc\n")
     os.system("mkdir ../dsa110-nsfrb-injections")
     with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
         wr = csv.writer(csvfile,delimiter=',')

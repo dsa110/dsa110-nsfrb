@@ -1,7 +1,7 @@
 import numpy as np
 from nsfrb.config import nsamps as init_nsamps
 from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,NSFRB_CANDDADA_SLOW_KEY,NSFRB_SRCHDADA_SLOW_KEY,NSFRB_TOADADA_SLOW_KEY,NSFRB_CANDDADA_IMGDIFF_KEY,NSFRB_SRCHDADA_IMGDIFF_KEY,NSFRB_TOADADA_IMGDIFF_KEY
-from realtime.rtreader import rtread_cand
+#from realtime.rtreader import rtread_cand
 from nsfrb.planning import find_fast_vis_label
 from nsfrb import pipeline
 #from dsaT4 import T4_manager as T4m
