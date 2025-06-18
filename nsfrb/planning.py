@@ -16,7 +16,11 @@ from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
 from nsfrb.imaging import DSAelev_to_ASTROPYalt,get_ra,ASTROPYalt_to_DSAelev,uv_to_pix
-from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset,tsamp,nsamps,T,pixsize
+from nsfrb.config import plan_dir,table_dir,Lon,Lat,Height,az_offset,tsamp,nsamps,T,pixsize
+try:
+    from nsfrb.config import vis_dir
+except Exception as exc:
+    print(exc)
 from nsfrb.pipeline import read_raw_vis
 import pickle as pkl
 """
@@ -1493,3 +1497,38 @@ def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path='',return_dec=False):
             return -1,-1,-1
         else:
             return -1,-1
+
+
+
+#DM trials
+def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B,nsamps,ZERO=True):
+    #tol = 1.25 # S/N loss tolerance
+    #nu = 1.405 # center frequency (GHz)
+    #nchan = 1024 # number of channels
+    #tsamp = 262.144 # sampling time (microseconds)
+    #B = 250./nchan # bandwidth per channel (MHz)
+
+    ndms = 1
+    dm_prev = dm1
+    dm = 0.
+    dms = []
+    while dm<dm2:
+
+        n2 = nchan**2.
+        alp = 1./(16.+n2)
+        bet = tsamp**2.
+        dm = n2*alp*dm_prev + np.sqrt(16.*alp*(tol**2.-n2*alp)*dm_prev**2.+16.*alp*bet*(tol**2.-1.)*(nu**3./8.3/B)**2.)
+        dm_prev = dm
+        ndms += 1
+        #print(dm)
+        dms.append(dm)
+    dms = np.array(dms)
+    #limit maximum DM using the number of samples
+    fmin=nu - (B*nchan*1e-3/2) #GHz
+    fmax=nu + (B*nchan*1e-3/2)
+    tdms = np.ceil((4.15)*np.array(dms)*((1/fmin)**2 - (1/fmax)**2)/tsamp) #samps
+    dms = dms[tdms<nsamps]
+
+    #print('DM trials:',ndms)
+    if ZERO: return [0] +list(dms)
+    else: return dms

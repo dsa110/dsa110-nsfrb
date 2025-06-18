@@ -5,7 +5,7 @@ from astropy import units as u
 from nsfrb import periodicity
 from nsfrb.flagging import flag_vis
 #from nsfrb.planning import find_fast_vis_label
-from nsfrb.config import tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis,freq_axis_fullres,vis_dir,raw_cand_dir,bad_antennas,flagged_antennas,lambdaref,pixperFWHM,remote_cand_dir
+from nsfrb.config import tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol_slow,DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis,freq_axis_fullres,raw_cand_dir,bad_antennas,flagged_antennas,lambdaref,pixperFWHM,remote_cand_dir,minDM,maxDM,fc,chanbw,final_cand_dir
 from nsfrb.config import tsamp as tsamp_ms
 from nsfrb import plotting as pl
 from nsfrb import pipeline
@@ -15,7 +15,8 @@ from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDatase
 from nsfrb.classifying_with_time import classify_images_3D
 from concurrent.futures import ThreadPoolExecutor
 from nsfrb.imaging import uv_to_pix,single_pix_image
-from nsfrb.searching import gen_dm_shifts,widthtrials,DM_trials,DM_trials_slow,gen_boxcar_filter,default_PSF,noise_update_all
+from nsfrb.noise import noise_update_all
+from nsfrb.planning import gen_dm
 import argparse
 from dsautils import dsa_store
 from nsfrb import candcutting as cc
@@ -55,7 +56,13 @@ compatible with DSA-110 event scheduler
 #client = Client('10.41.0.254:8781')
 #client = ThreadPoolExecutor(40)#Client('tcp://10.42.0.228:8786')#10.42.0.232:8786')
 LOCK = None #Lock('update_json')
-    
+widthtrials = np.array(2**np.arange(5),dtype=int)
+DM_trials = np.array(gen_dm(minDM,maxDM,DM_tol,fc*1e-3,nchans,tsamp_ms,chanbw,init_nsamps))    
+DM_trials_slow = np.array(gen_dm(minDM*5,maxDM*5,DM_tol,fc*1e-3,nchans,tsamp_slow,chanbw,init_nsamps))
+tDM_max = (4.15)*np.max(DM_trials)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
+tDM_max_slow = (4.15)*np.max(DM_trials_slow)*((1/np.min(freq_axis)/1e-3)**2 - (1/np.max(freq_axis)/1e-3)**2) #ms
+maxshift = int(np.ceil(tDM_max/tsamp_ms))
+maxshift_slow = int(np.ceil(tDM_max_slow/tsamp_slow))
 ds = dsa_store.DsaStore()
 """
 LOGGER = dsl.DsaSyslogger()
@@ -70,7 +77,6 @@ FILPATH = os.environ["DSA110DIR"] + "operations/T1/"
 OUTPUT_PATH = os.environ["DSA110DIR"] + "operations/T4/"
 #IP_GUANO = '3.13.26.235'
 
-final_cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/final_cands/candidates/"
 def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,P=-1,final_cand_dir=final_cand_dir,slow=False,imgdiff=False):
     """
     Takes the following arguments and saves to a json file in the specified cand dir
@@ -188,6 +194,7 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
 #ffa_semaphore = False
 def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock):
     from nsfrb.planning import find_fast_vis_label
+    from nsfrb.config import vis_dir
     #global ffa_semaphore
     tsamp_use = tsamp_ms
     if len(args.daskaddress) > 0:
@@ -308,7 +315,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
             else:
                 alldspec[:,:,j*nchans_per_node:(j+1)*nchans_per_node] = np.nan
             continue
-        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
         pt_dec = dec*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
         outriggers=False
@@ -408,7 +415,7 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
                 printlog(finalcands[j],output_file=cutterfile)
 
                 #don't need to dedisperse(?)
-                subimg = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
+                subimg = cc.get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
                 if useTOA:
                     printlog("using TOA...",output_file=cutterfile)
                     loc = int(finalcands[j][4])
@@ -459,7 +466,7 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
                 printlog(finalcands[j],output_file=cutterfile)
 
                 #don't need to dedisperse(?)
-                data_array[j,:,:,:,:] = get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
+                data_array[j,:,:,:,:] = cc.get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
                 printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
 
         #run classifier
@@ -493,7 +500,6 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
         finalidxs = np.arange(len(finalcands),dtype=int)
     return finalcands,finalidxs,predictions,probabilities
 
-from nsfrb.searching import maxshift,maxshift_slow
 def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile):
     if len(args.daskaddress) > 0:
         res = d_future
@@ -774,7 +780,7 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
                                             show=False,s100=args.SNRthresh/2,
                                             injection=injection_flag,vmax=np.nanmax(searched_image),vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
-                                            dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=finalpcands)
+                                            dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=finalpcands,output_file=cutterfile)
     printlog(candplot,output_file=cutterfile)
 
     if args.toslack:
@@ -1186,7 +1192,7 @@ def etcd_to_queue(etcd_dict,queue=QQUEUE):
     queue.put(etcd_dict['img_search_shape'])
     return
 
-from realtime.rtreader import rtread_cand
+#from realtime.rtreader import rtread_cand
 from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,NSFRB_CANDDADA_SLOW_KEY,NSFRB_SRCHDADA_SLOW_KEY,NSFRB_TOADADA_SLOW_KEY,NSFRB_CANDDADA_IMGDIFF_KEY,NSFRB_SRCHDADA_IMGDIFF_KEY,NSFRB_TOADADA_IMGDIFF_KEY
 def main(args):
     if len(args.daskaddress)==0:
@@ -1208,7 +1214,7 @@ def main(args):
 
 
     #get system parameters at runtime
-    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
     printlog("System declination:" + str(pt_dec*180/np.pi),output_file=cutterfile)
 
     if args.psfcluster:
@@ -1283,9 +1289,9 @@ def main(args):
             try:
                 #if remote, copy from h24
                 if args.remote:
-                    os.system("scp lxd110h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + ".npy "+remote_cand_dir)
-                    os.system("scp lxd110h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_searched.npy "+remote_cand_dir)
-                    os.system("scp lxd110h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_TOAs.npy "+remote_cand_dir)
+                    os.system("scp h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + ".npy "+remote_cand_dir)
+                    os.system("scp h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_searched.npy "+remote_cand_dir)
+                    os.system("scp h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_TOAs.npy "+remote_cand_dir)
                     image = np.load(remote_cand_dir + cand_isot + suff + ".npy")
                     searched_image = np.load(remote_cand_dir+ cand_isot + suff + "_searched.npy")
                     TOAs = np.load(remote_cand_dir+ cand_isot + suff + "_TOAs.npy").astype(int)
@@ -1360,7 +1366,7 @@ if __name__=="__main__":
     parser.add_argument('--classify3D',action='store_true', help='Classify candidates with a machine learning convolutional neural network with time dependence')
     parser.add_argument('--classcut',action='store_true',help='Only save candidates that the classifier passes')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights_20250212.pth")
-    parser.add_argument('--model_weights3D',type=str, help='Path to the model weights file for 3D classifying',default=cwd + "/simulations_and_classifications/enhanced3dcnn_weights_final.pth")
+    parser.add_argument('--model_weights3D',type=str, help='Path to the model weights file for 3D classifying',default=cwd + "/simulations_and_classifications/enhanced3dcnn_weights_final_remote.pth")
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)

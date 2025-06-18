@@ -49,6 +49,10 @@ if INSTALLMODE == CORR_INSTALL:
 elif INSTALLMODE == T4REMOTE_INSTALL:
     if 'NSFRBT4' not in os.environ.keys():
         os.system("echo \"export NSFRBT4=/home/user/data/T4/\" >> ~/.bashrc\n")
+    if 'NSFRBDATA' not in os.environ.keys():
+        os.system("echo \"export NSFRBDATA=/dataz/dsa110/nsfrb/\" >> ~/.bashrc\n")
+    if 'DSA110DIR' not in os.environ.keys():
+        os.system("echo \"export DSA110DIR=/mnt/dsa110/\" >> ~/.bashrc\n")
     os.system("mkdir ../dsa110-nsfrb-injections")
     with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
         wr = csv.writer(csvfile,delimiter=',')
@@ -67,7 +71,9 @@ elif INSTALLMODE == T4REMOTE_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-tmp-candidates")
     logfiles = ["candcutter_log.txt",
             "candcuttertask_log.txt",
-            "candcutter_error_log.txt"]
+            "journalctl.txt",
+            "candcutter_error_log.txt",
+            "error_log.txt"]
     for i in range(len(logfiles)):
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
@@ -78,6 +84,8 @@ else:
         os.system("echo \"export NSFRBT4=/home/user/data/T4/\" >> ~/.bashrc\n")
     if 'NSFRBDATA' not in os.environ.keys():
         os.system("echo \"export NSFRBDATA=/dataz/dsa110/nsfrb/\" >> ~/.bashrc\n")
+    if 'DSA110DIR' not in os.environ.keys():
+        os.system("echo \"export DSA110DIR=/mnt/dsa110/\" >> ~/.bashrc\n")
 
     #make logfile directory outside of git repo
     os.system("mkdir ../dsa110-nsfrb-logfiles")
@@ -98,6 +106,7 @@ else:
             "srchtime_log.txt",
             "candmem_log.txt",
             "candtime_log.txt",
+            "journalctl.txt",
             "srchstartstoptime_log.txt"]
     for i in range(len(logfiles)):
         l = logfiles[i]

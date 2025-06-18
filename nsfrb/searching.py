@@ -28,10 +28,10 @@ from nsfrb.outputlogging import printlog,numpy_to_fits
 from nsfrb.imaging import uv_to_pix
 from nsfrb.planning import get_RA_cutoff
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
-from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
+#from pytorch_dedispersion import dedispersion,boxcar_filter,candidate_finder
 from astropy.time import Time
 from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,NSFRB_CANDDADA_SLOW_KEY,NSFRB_SRCHDADA_SLOW_KEY,NSFRB_TOADADA_SLOW_KEY,NSFRB_CANDDADA_IMGDIFF_KEY,NSFRB_SRCHDADA_IMGDIFF_KEY,NSFRB_TOADADA_IMGDIFF_KEY
-from realtime.rtwriter import rtwrite
+#from realtime.rtwriter import rtwrite
 
 fsize=45
 fsize2=35
@@ -72,14 +72,17 @@ from nsfrb.config import *
 from nsfrb.noise import noise_update,noise_dir,noise_update_all
 from nsfrb import jax_funcs
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,freq_axis,srchtx_file,srchtime_file
+from nsfrb.config import cwd,frame_dir,psf_dir,noise_dir,output_file,timelogfile,processfile,error_file,freq_axis,srchtx_file,srchtime_file,minDM,maxDM
 
-
+try:
+    from nsfrb.config import cand_dir
+except Exception as exc:
+    printlog(exc,output_file=error_file)
 
 try:
     torch.multiprocessing.set_start_method("spawn")
 except:
-    printlog("Failed to set torch multiprocess method...sucks for you",output_file=output_file)
+    printlog("Failed to set torch multiprocess method...sucks for you",output_file=error_file)
 
 
 """
@@ -182,8 +185,8 @@ def gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps,gridsize=1,outputwraps=False,
     return corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append
 
 
-minDM = 171
-maxDM = 4000
+#minDM = 171
+#maxDM = 4000
 DM_trials = np.array(gen_dm(minDM,maxDM,DM_tol,fc*1e-3,nchans,tsamp,chanbw,nsamps))#[0:1]
 nDMtrials = len(DM_trials)
 corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append = gen_dm_shifts(DM_trials,freq_axis,tsamp,nsamps)
@@ -280,7 +283,7 @@ try:
     last_frame = get_last_frame()
 except Exception as exc:
     printlog(exc,output_file=error_file)
-    printlog("initializing last frame to zeros",output_file=process_file)
+    printlog("initializing last frame to zeros",output_file=error_file)
     last_frame = np.zeros((gridsize,gridsize,nsamps,nchans))
     save_last_frame(last_frame)
 last_frame_init_idx = 0
@@ -289,7 +292,7 @@ try:
     last_frame_slow = get_last_frame(slow=True)
 except Exception as exc:
     printlog(exc,output_file=error_file)
-    printlog("initializing slow last frame to zeros",output_file=process_file)
+    printlog("initializing slow last frame to zeros",output_file=error_file)
     last_frame_slow = np.zeros((gridsize,gridsize,nsamps,nchans))
     save_last_frame(last_frame_slow,slow=True)
 last_frame_slow_init_idx = 0
