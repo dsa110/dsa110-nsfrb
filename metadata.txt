@@ -1,1 +1,1 @@
-/home/ubuntu/msherman_nsfrb/dsa110-nsfrb
+/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb

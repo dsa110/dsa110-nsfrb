@@ -226,6 +226,8 @@ def main(args):
         
 
         #creating injection
+        inject_flat = False
+        inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         if args.inject and (inject_count>=args.inject_interval):
             inject_count = 0
             #if verbose: printlog("Injecting pulse",output_file=logfile)
@@ -272,9 +274,6 @@ def main(args):
                     if injection_params['inject_only']: dat[:,:,:,:] = 0
                     inject_flat = injection_params['inject_flat']
                     if args.verbose: print("Done injecting")
-        else:
-            inject_flat = False
-            inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         dat[np.isnan(dat)]= 0
 
 

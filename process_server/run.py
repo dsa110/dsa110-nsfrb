@@ -1,4 +1,5 @@
 import numpy as np
+from multiprocessing import Manager
 from nsfrb.planning import get_RA_cutoff
 from threading import Lock
 from dask.distributed import Lock as Lock_DASK
@@ -656,7 +657,8 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     data when a client connects, and submits a search task
     """
     if dask_enabled:
-        search_executor = get_client()
+        executor = get_client()
+        slowlock = Lock_DASK("dasklock",client=executor)
     socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
     if img_id_isot not in fullimg_dict.keys():
@@ -741,7 +743,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,resources={'GPU': 1})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
@@ -764,7 +766,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,resources={'GPU': 1})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
@@ -785,7 +787,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,resources={'GPU': 1})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
@@ -807,7 +809,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 ssstask = executor.submit(sl.search_task,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,resources={'GPU': 1})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 ssstask = executor.submit(sl.search_task,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
@@ -829,10 +831,6 @@ def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
     
-    if len(args.daskaddress)==0:
-        slowlock_ = Lock()
-    else:
-        slowlock_ = Lock_DASK()
     #if "DASKPORT" in os.environ.keys():
     #    printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
     if args.etcd:
@@ -1189,11 +1187,13 @@ def main(args):
     #else:
     if len(args.daskaddress)>0:
         printlog("Using DASK scheduler",output_file=processfile)
-        executor = Client(args.daskaddress)
+        executor = Client(args.daskaddress)#,serializers=["msgpack"],deserializers=["msgpack"])
         #search_executor = Client(args.daskaddress)
+        #slowlock_ = Lock_DASK(client=executor)
     else:
         executor = ThreadPoolExecutor(args.maxProcesses)
         search_executor = ThreadPoolExecutor(args.maxProcesses)
+        slowlock_ = Lock()
     #executor = Client(processes=False)#"10.41.0.254:8844")
 
     task_list = []
@@ -1246,12 +1246,20 @@ def main(args):
                                     args.offline)
                 if type(ret) != int:
                     corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = ret
-                    multiport_task_list.append(executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+                    if dask_enabled:
+                        multiport_task_list.append(multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
                                     ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit))
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,args.forfeit))
+                    else:
+                        multiport_task_list.append(executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+                                    ii,args.testh23,
+                                    args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,args.forfeit))
                     multiport_num_list.append(ii)
                 else:
                     packet_dict["dropped"] += 1
@@ -1265,7 +1273,10 @@ def main(args):
                 #if len(args.daskaddress)>0:
                 #    ret = multiport_task_list[jj]
                 #else:
-                ret = multiport_task_list[jj].result()
+                if dask_enabled:
+                    ret = multiport_task_list[jj]
+                else:
+                    ret = multiport_task_list[jj].result()
                 if type(ret) == int:
                     if ret == ECODE_CONT:
                         printlog("multiport task exited with error code " + str(ret),output_file=processfile)
