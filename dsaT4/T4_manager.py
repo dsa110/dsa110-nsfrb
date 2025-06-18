@@ -206,6 +206,8 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     #ffa_semaphore = True
     #printlog("SEMAPHORE ACQUIRED",output_file=cutterfile)
 
+    if ret is None:
+        return None
     if len(ret)==4:
         finalcands,finalidxs,predictions,probabilities = ret
         classify_flag = True
@@ -812,12 +814,18 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
 
 def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
     if args.completeness or (not args.archive) or 'NSFRBT4' not in os.environ.keys():
+        printlog("Clearing tmp cand dir...",output_file=cutterfile)
+        os.system("rm "+remote_cand_dir + "/" + cand_isot + "*"+suff+"*")
+        printlog("done",output_file=cutterfile)
         return None
     if len(args.daskaddress)>0:
         res = d_future
     else:
         res = d_future.result()
     if res is None:
+        printlog("Clearing tmp cand dir...",output_file=cutterfile)
+        os.system("rm "+remote_cand_dir + "/" + cand_isot + "*"+suff+"*")
+        printlog("done",output_file=cutterfile)
         return
     else:
         finalcands,finalidxs = res[0],res[1]
@@ -861,7 +869,7 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
 
     if args.remote:
         printlog("Clearing tmp cand dir...",output_file=cutterfile)
-        os.system("rm "+remote_cand_dir + "/*")
+        os.system("rm "+remote_cand_dir + "/" + cand_isot + "*"+suff+"*")
         printlog("done",output_file=cutterfile)
     printlog("Done! Total Remaining Candidates: " + str(len(finalidxs)),output_file=cutterfile)
     return
@@ -1303,8 +1311,10 @@ def main(args):
                 printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
                 printlog(str(e),output_file=cutterfile)
                 if not args.remote:
-                    os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*")
-                return
+                    os.system("rm " +  raw_cand_dir + "*" + cand_isot + "*"+suff+"*")
+                #return
+                continue
+
         else:
             from scipy.stats import uniform
             searched_image = uniform.rvs(loc=0,scale=args.SNRthresh+1,size=((301,301,5,16)))

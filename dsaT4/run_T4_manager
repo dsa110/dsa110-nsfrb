@@ -8,7 +8,7 @@ then
 else
 	if [ "$rt" = "true" ];
 	then
-		python T4_manager.py --subimgpix 301 --SNRthresh 6 --useTOA --psfpercentile 70 --maxcands 10 --classify3D --cluster --avgcluster --psfcluster --clusteriters 2 --maxcand --classcut --maxProcesses 5 --daskaddress "tcp://10.42.0.228:8786" --remote --toslack --verbose --testtrigger "$@" #--cluster --psfcluster --classify3D
+		python T4_manager.py --subimgpix 301 --SNRthresh 6 --useTOA --psfpercentile 70 --maxcands 10 --classify3D --cluster --avgcluster --psfcluster --clusteriters 2 --maxcand --classcut --maxProcesses 5 --daskaddress "tcp://10.42.0.249:8786" --remote --toslack "$@" #--cluster --psfcluster --classify3D
 	else
 		python T4_manager.py --subimgpix 301 --SNRthresh 6 --useTOA --psfpercentile 70 --maxcands 10 --classify3D --cluster --avgcluster --psfcluster --clusteriters 2 --maxcand --classcut --maxProcesses 5 --periods 10 20 30 40 --FFA --FFASNRthresh 0 --FFAbin 5 --FFAgulps 25 --FFAbinchans --toslack --verbose # --daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D
 	fi
