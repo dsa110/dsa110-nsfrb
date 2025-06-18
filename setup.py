@@ -20,7 +20,7 @@ setup(name='dsa110-nsfrb',
 H24_INSTALL=0 #set INSTALLMODE=H24_INSTALL for full server installation on h24
 CORR_INSTALL=1 #set INSTALLMODE=CORR_INSTALL if installing realtime imager on the corr nodes
 T4REMOTE_INSTALL=2 #set INSTALLMODE=T4REMOTE_INSTALL if installing T4 candidate post-processor on a remote server (e.g. h20)
-INSTALLMODE = T4REMOTE_INSTALL
+INSTALLMODE = H24_INSTALL
 
 
 #get local nsfrb directory
@@ -29,12 +29,6 @@ import csv
 import glob
 os.system("pwd > metadata.txt")
 os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
-
-#setup environment variables
-if 'NSFRBDIR' not in os.environ.keys():
-    os.system("echo \"export NSFRBDIR=$PWD\" >> ~/.bashrc\n")
-if 'NSFRBIP' not in os.environ.keys():
-    os.system("echo \"export NSFRBIP=\\\"10.41.0.254\\\"\" >> ~/.bashrc\n")
 
 if INSTALLMODE == CORR_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-injections")
@@ -47,12 +41,6 @@ if INSTALLMODE == CORR_INSTALL:
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
         os.system("> ../dsa110-nsfrb-logfiles/" + l)
 elif INSTALLMODE == T4REMOTE_INSTALL:
-    if 'NSFRBT4' not in os.environ.keys():
-        os.system("echo \"export NSFRBT4=/home/user/data/T4/\" >> ~/.bashrc\n")
-    if 'NSFRBDATA' not in os.environ.keys():
-        os.system("echo \"export NSFRBDATA=/dataz/dsa110/nsfrb/\" >> ~/.bashrc\n")
-    if 'DSA110DIR' not in os.environ.keys():
-        os.system("echo \"export DSA110DIR=/mnt/dsa110/\" >> ~/.bashrc\n")
     os.system("mkdir ../dsa110-nsfrb-injections")
     with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
         wr = csv.writer(csvfile,delimiter=',')
@@ -80,13 +68,6 @@ elif INSTALLMODE == T4REMOTE_INSTALL:
         os.system("> ../dsa110-nsfrb-logfiles/" + l)
 
 else:
-    if 'NSFRBT4' not in os.environ.keys():
-        os.system("echo \"export NSFRBT4=/home/user/data/T4/\" >> ~/.bashrc\n")
-    if 'NSFRBDATA' not in os.environ.keys():
-        os.system("echo \"export NSFRBDATA=/dataz/dsa110/nsfrb/\" >> ~/.bashrc\n")
-    if 'DSA110DIR' not in os.environ.keys():
-        os.system("echo \"export DSA110DIR=/mnt/dsa110/\" >> ~/.bashrc\n")
-
     #make logfile directory outside of git repo
     os.system("mkdir ../dsa110-nsfrb-logfiles")
     logfiles = ["error_log.txt",

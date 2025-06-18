@@ -1712,7 +1712,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
     #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
     global jaxdev
-    usedev = ((jaxdev + 1)%2 if (not forfeit and (slow or imgdiff)) else jaxdev)
+    usedev = ((jaxdev + 1)%2 if ((not forfeit) and (slow or imgdiff)) else jaxdev)
     if forfeit or (not (slow or imgdiff)):
         jaxdev += 1
         jaxdev %= 2
@@ -1721,7 +1721,8 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     print(tdelays_frac,file=fout)
     print(full_boxcar_filter,file=fout)
     global jax_inuse
-    if not forfeit and (slow or imgdiff):#realtime:
+    if (not forfeit) and (slow or imgdiff):#realtime:
+        print("WAITING HERE",file=fout)
         while jax_inuse[usedev]:
             continue
     jax_inuse[usedev] = True
@@ -1837,6 +1838,8 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 #CONTEXTSETUP = False
 def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False):
+    if forfeit:
+        printlog("FORFEIT MODE",output_file=processfile)
     timing1 = time.time()
     #global CONTEXTSETUP
     #if not QSETUP and not CONTEXTSETUP:

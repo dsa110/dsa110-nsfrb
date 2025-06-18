@@ -87,14 +87,73 @@ ETCDKEY = f'/mon/nsfrb/inject'
 This service will run on h24 and create injections thqt can be rsynced to each corr node for use in the realtime system.
 """
 
+def update(args,current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS):
+    
+    printlog("INJECT QUEUE:"+str(INJECT_QUEUE),output_file=inject_log_file)
+    #check if first injection has been sent
+    if not INJECT_INIT:
+        INJECT_INIT = True
+    
+        #push injection parameters to etcd
+        try:
+            ETCD.put_dict(ETCDKEY,INJECT_QUEUE.pop(0))
+            current_inject_time = INJECT_TIMES.pop(0)
+        except:
+            printlog("no injections available",output_file=inject_log_file)
+    elif len(INJECT_PARAMS)>0:
+        #otherwise, first check if previous injection has been read or timed out
+        current_dict = ETCD.get_dict(ETCDKEY)
+        if np.all(current_dict['ack']): 
+            current_params = INJECT_PARAMS.pop(0)
+            #write to csv
+            with open(inject_file,"a") as csvfile:
+                wr = csv.writer(csvfile,delimiter=',')
+                wr.writerow([current_dict['ISOT'],current_params['DM'],current_params['width'],current_params['SNR']])
+            csvfile.close()
+            os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(current_dict['ID']) + "_sb*.npy")
+            if not np.all(current_dict['injected']):
+                printlog("Injection" + current_dict['ISOT'] + " missing channels:" + str(np.arange(args.num_chans)[np.logical_not(np.array(current_dict['injected']))]),output_file=inject_log_file)
+            try:
+                ETCD.put_dict(ETCDKEY,INJECT_QUEUE.pop(0))
+                current_inject_time = INJECT_TIMES.pop(0)
+            except:
+                printlog("no injections available",output_file=inject_log_file)
+        """
+        elif (time.time()-current_inject_time >= args.waittime*60):
+            printlog("Injection timed out",inject_log_file)
+            current_params = INJECT_PARAMS.pop(0)
+            #delete injection
+            printlog("Removing injection " + str(current_dict['ID']),output_file=inject_log_file)
+            os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(current_dict['ID']) + "_sb*.npy")
+            try:
+                ETCD.put_dict(ETCDKEY,INJECT_QUEUE.pop(0))
+                current_inject_time = INJECT_TIMES.pop(0)
+            except:
+                printlog("no injections available",output_file=inject_log_file)
+        """
+    return current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS
 
 def main(args):
 
     verbose = args.verbose
-
-
+    INJECT_QUEUE = []
+    INJECT_TIMES = []
+    INJECT_PARAMS = []
+    INJECT_INIT = False
+    current_inject_time = -1
+    int_time = time.time()
+    int_onoff = True
     while True:
-
+        if args.intermittent and time.time()-int_time >= args.waittime*60:
+            int_onoff = not int_onoff
+            if int_onoff:
+                printlog("Intermittent mode, pausing injection production",output_file=inject_log_file)
+            else:
+                printlog("Intermittent mode, resuming injection production",output_file=inject_log_file)
+            int_time = time.time()
+        if args.intermittent and int_onoff:
+            current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS= update(args,current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS)
+            continue
         #RA, dec axes
         t_now = Time.now()
         mjd = t_now.mjd
@@ -147,34 +206,51 @@ def main(args):
         for j in range(args.num_chans):
             np.save(inject_dir + "realtime_staging/" + "injection_" + str(ID) + "_sb" +str("0" if j<10 else "")+ str(j) + ".npy",inject_img[:,:,:,j])
         
-        
-        #push injection parameters to etcd
-        ETCD.put_dict(ETCDKEY,{"ID":ID,
+        if args.continuous or args.intermittent:
+            #put injection in queue
+            INJECT_PARAMS.append({"DM":DM,
+                              "width":width,
+                              "SNR":SNR})
+            INJECT_TIMES.append(time.time())
+            INJECT_QUEUE.append({"ID":ID,
                                "dec":Dec,
                                "injected":[False]*args.num_chans,
                                "ack":[False]*args.num_chans,
                                "inject_only":cleardataflag,
                                "inject_flat":injectflatflag})
 
-        #sleep...sort of
-        t1 = time.time()
-        while time.time() - t1 < args.waittime*60:
+
+            #update
+            current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS = update(args,current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS)
+
+        else:
+            #push injection parameters to etcd
+            ETCD.put_dict(ETCDKEY,{"ID":ID,
+                               "dec":Dec,
+                               "injected":[False]*args.num_chans,
+                               "ack":[False]*args.num_chans,
+                               "inject_only":cleardataflag,
+                               "inject_flat":injectflatflag})
+
+            #sleep...sort of
+            t1 = time.time()
+            while time.time() - t1 < args.waittime*60:
             
-            #check to see its been injected on all corr nodes
-            time.sleep(args.waittime*60/90)
-            injection_dict = ETCD.get_dict(ETCDKEY)
-            if np.all(injection_dict['ack']):
-                #write to csv
-                with open(inject_file,"a") as csvfile:
-                    wr = csv.writer(csvfile,delimiter=',')
-                    wr.writerow([injection_dict['ISOT'],DM,width,SNR])
-                csvfile.close()
-                if not np.all(injection_dict['injected']):
-                    printlog("Injection" + injection_dict['ISOT'] + " missing channels:" + str(np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))]),output_file=inject_log_file)
-                #delete injection
-                printlog("Removing injection " + str(ID),output_file=inject_log_file)
-                os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
-                break
+                #check to see its been injected on all corr nodes
+                time.sleep(args.waittime*60/90)
+                injection_dict = ETCD.get_dict(ETCDKEY)
+                if np.all(injection_dict['ack']):
+                    #write to csv
+                    with open(inject_file,"a") as csvfile:
+                        wr = csv.writer(csvfile,delimiter=',')
+                        wr.writerow([injection_dict['ISOT'],DM,width,SNR])
+                    csvfile.close()
+                    if not np.all(injection_dict['injected']):
+                        printlog("Injection" + injection_dict['ISOT'] + " missing channels:" + str(np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))]),output_file=inject_log_file)
+                    #delete injection
+                    printlog("Removing injection " + str(ID),output_file=inject_log_file)
+                    os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
+                    break
 
         
     return
@@ -204,5 +280,7 @@ if __name__=="__main__":
     parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')
     parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
+    parser.add_argument('--continuous',action='store_true',help='Continuously make injections')
+    parser.add_argument('--intermittent',action='store_true',help='Continuously make injections for --waittime minutes, then stop for --waittime minutes')
     args = parser.parse_args()
     main(args)

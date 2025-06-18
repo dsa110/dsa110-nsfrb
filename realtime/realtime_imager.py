@@ -78,14 +78,19 @@ def realtime_image_task(dat, tidx, U_wavs, V_wavs, i_indices_all, j_indices_all,
                                             clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)/(1 if PB_all is None else PB_all[:,:,np.newaxis])
     return outimage,tidx
 
-def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port):
+def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,timeout,failsafe):
     """
     task to send data to the process server; this is only required for testing, the 
     real implementation will only send data for one corr node in the foreground process
     """
     ttx = time.time()
-    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=5,keepalive_time=10,port=port)
-
+    try:
+        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=5,keepalive_time=timeout,port=port)
+    except Exception as exc:
+        if failsafe:
+            raise(exc)
+        else:
+            print(exc)
     txtime = time.time()-ttx
     timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
     if timing_dict is None: timing_dict = dict()
@@ -180,6 +185,7 @@ def main(args):
     
     #read and reshape into np array (25 times x 4656 baselines x 8 chans x 2 pols, complex)
     gulp_counter = 0
+    tasklist = []
     while True:
         dat = None
         while (dat is None) or dat.shape[0]<args.num_time_samples:
@@ -269,7 +275,12 @@ def main(args):
                     
                     
                     #read
-                    inject_img = np.load(local_inject_dir + fname)
+                    try:
+                        inject_img = np.load(local_inject_dir + fname)
+                    except Exception as exc:
+                        inject_flat = False
+                        inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
+                        print(args.sb," inject failed")
                     #clear data if we only want the injection
                     if injection_params['inject_only']: dat[:,:,:,:] = 0
                     inject_flat = injection_params['inject_flat']
@@ -351,7 +362,8 @@ def main(args):
         ftime = open(rtbench_file,"a")
         ftime.write(str(rtime)+"\n")
         ftime.close()
-        if rtime>args.rttimeout:
+        
+        if args.failsafe and rtime>args.rttimeout:
             
             
             executor.shutdown()
@@ -366,7 +378,8 @@ def main(args):
             if args.testh23:
                 tasklist = []
                 for sbi in range(len(corrs)):
-                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))]))
+                    print("TIME LEFT",(args.rttimeout - (time.time()-timage)))
+                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe))
                     #time.sleep(T/1000)#/32)
                     """
                     ttx = time.time()
@@ -384,8 +397,21 @@ def main(args):
                 txtime = tasklist[-1].result()
             else:
                 ttx = time.time()
-                msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(args.sb%len(args.multiport))])
+                print("TIME LEFT",(args.rttimeout - (time.time()-timage)))
+                if (args.rttimeout - (time.time()-timage)) < 0.1:
+                    print("WITHHOLD TX, OUT OF TIME")
+                    if args.inject: inject_count += 1
+                    continue
+                try:
+                    #tasklist.append(executor.submit(send_data_task,args.sb,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(args.sb%len(args.multiport))],args.rttimeout,args.failsafe))
+                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))])
+                except Exception as exc:
+                    if args.failsafe:
+                        raise(exc)
+                    else:
+                        print(exc)
                 txtime = time.time()-ttx
+                print("TXTIME:",txtime)
                 timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
                 if timing_dict is None: timing_dict = dict()
                 timing_dict["tx_time"] = txtime
@@ -393,8 +419,13 @@ def main(args):
             ftime = open(rttx_file,"a")
             ftime.write(str(txtime)+"\n")
             ftime.close()
+
+            if args.failsafe and time.time()-timage>args.rttimeout:
+                executor.shutdown()
+                print("Realtime exceeded, shutting down imager")
+                return
         if args.inject:
-            inject_count += 1   
+            inject_count += 1
     return
 
 
@@ -442,6 +473,7 @@ if __name__=="__main__":
     parser.add_argument('--inject_delay',type=int,help='Number of gulps to delay injection',default=0)
     parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
     parser.add_argument('--primarybeam',action='store_true',help='Apply a primary beam correction')
+    parser.add_argument('--failsafe',action='store_true',help='Shutdown if real-time limit is exceeded')
 
     args = parser.parse_args()
     main(args)

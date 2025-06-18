@@ -20,10 +20,28 @@ Before installing `dsa110-nsfrb`, first edit the `setup.py` script and set `CORR
 
 ```bash
 pip install .
-source ~/.bashrc
 ```
 
-from the bash command line. The second line is only required for the first installation in order to setup the required environment variables. For corr node installation, a service file is provided as `realtime/rt_imager.service`, which should be setup with paths correctly pointing to the current working directory. This can be copied to the e.g. `/etc/systemd/user/` directory to run the real-time imager as a service. 
+from the bash command line. Add the following lines to the `~/.bashrc` to initialize environment variables:
+
+```bash
+export NSFRBDIR=PATHTOREPO/dsa110-nsfrb/
+export NSFRBIP=... #public ip address of process server, contact administrator
+```
+
+The environment variables below are required only for `T4REMOTE_INSTALL` and `H24_INSTALL` modes:
+
+```bash
+export SLACK_TOKEN_DSA=... #slack token, contact administrator
+export NSFRBT4=/home/user/data/T4/
+export NSFRBDATA=/dataz/dsa110/nsfrb/
+export DSA110DIR=/mnt/dsa110/
+```
+
+Restart the terminal or run `source ~/.bashrc` to set the environment variables.
+
+
+For corr node installation, a service file is provided as `realtime/rt_imager.service`, which should be setup with paths correctly pointing to the current working directory. This can be copied to the e.g. `/etc/systemd/user/` directory to run the real-time imager as a service. 
 
 The following sub-modules are defined:
 
