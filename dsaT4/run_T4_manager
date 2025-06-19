@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "realtime candcutter active"
 completeness="false"
-rt="true"
+rt="false"
 if [ "$completeness" = "true" ];
 then
 	python T4_manager.py --subimgpix 51 --SNRthresh 6 --useTOA --psfpercentile 70 --cluster --avgcluster --psfcluster --clusteriters 2 --maxProcesses 5 --completeness --searchradius 0.25  #--daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D

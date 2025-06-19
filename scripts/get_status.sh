@@ -17,28 +17,14 @@ do
 	if [ -z "$3" ]; then
 
 
+		for f in ${cwd}-logfiles/*_log.txt;
+		do
+			echo ""
+			echo  ">>>>>>>>>>>>>>> $f"
+			tail -$2 $f
+			echo  ">>>>>>>>>>>>>>>"
 
-        	echo ""
-        	echo ">>>>>>>>>>>>>>> error_log.txt"
-        	tail -$2 ${cwd}-logfiles/error_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/src/server_log.txt
-        	echo ">>>>>>>>>>>>>>>"
-
-
-		echo ""
-        	echo ">>>>>>>>>>>>>>> candcutter_log.txt"
-        	tail -$2 ${cwd}-logfiles/candcutter_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
-        	echo ">>>>>>>>>>>>>>>"
-
-		echo ""
-        	echo ">>>>>>>>>>>>>>> candcuttertask_log.txt"
-        	tail -$2 ${cwd}-logfiles/candcuttertask_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
-        	echo ">>>>>>>>>>>>>>>"
-
-		echo ""
-        	echo ">>>>>>>>>>>>>>> candcutter_error_log.txt"
-        	tail -$2 ${cwd}-logfiles/candcutter_error_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt
-        	echo ">>>>>>>>>>>>>>>"
-
+		done 
 
 		echo ""
 		echo ">>>>>>>>>>>>>>> journalctl.txt"

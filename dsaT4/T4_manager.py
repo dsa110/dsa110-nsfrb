@@ -192,7 +192,7 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
     return finalcands,finalidxs
 
 #ffa_semaphore = False
-def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock):
+def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock,suff):
     from nsfrb.planning import find_fast_vis_label
     from nsfrb.config import vis_dir
     #global ffa_semaphore
@@ -218,7 +218,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
         #ffa_semaphore = False
         return None
 
-    if (not args.FFA) or args.completeness or args.remote:
+    if (not args.FFA) or args.completeness or args.remote:# or slow or imgdiff:
         #ffa_semaphore = False
         if classify_flag:
             return finalcands,finalidxs,dict(),predictions,probabilities 
@@ -292,6 +292,10 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
     corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
     nbin = args.FFAbin
+    if slow:
+        nbin *= int(tsamp_slow//tsamp_ms)
+    elif imgdiff:
+        nbin *= int(tsamp_imgdiff//tsamp_ms)
     image_size = image.shape[0]
     printlog("target coords:" + str(target_coords),output_file=cutterfile)
 
@@ -347,7 +351,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
         printlog("sb done",output_file=cutterfile)
 
     for i in range(len(target_coords)):
-        np.save(raw_cand_dir + "/single_pix_" + cand_isot + "_" + str(i) + ".npy",alldspec[i,:,:])
+        np.save(raw_cand_dir + "/single_pix_" + cand_isot + "_" + str(i) + suff + ".npy",alldspec[i,:,:])
     printlog("done creating single pix dynamic spectra",output_file=cutterfile)
     ffalock.release()
     printlog("starting periodicity search...",output_file=cutterfile)
@@ -716,7 +720,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
             return list(res) + [canddict,allcandnames,timeseries]
     return
 
-def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
+def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag,plotlock):
     if len(args.daskaddress)>0:
         res = d_future
     else:
@@ -776,6 +780,7 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
     printlog("Creating candplot...",output_file=cutterfile)
     print(final_cand_dir + dirlabel + "/" + cand_isot + suff + "/")
     print(canddict,image,RA_axis,DEC_axis)
+    plotlock.acquire()
     candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",
@@ -806,6 +811,7 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
             os.system("echo " + str((2/3) if imgdiff else 1) + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
             os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
             printlog("done!",output_file=cutterfile)
+    plotlock.release()
     if args.trigger:
         T4trigger = event.create_event(fl)
         return list(res) + [candplot, T4trigger]
@@ -814,18 +820,20 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
 
 def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
     if args.completeness or (not args.archive) or 'NSFRBT4' not in os.environ.keys():
-        printlog("Clearing tmp cand dir...",output_file=cutterfile)
-        os.system("rm "+remote_cand_dir + "/" + cand_isot + "*"+suff+"*")
-        printlog("done",output_file=cutterfile)
+        if args.remote:
+            printlog("Clearing tmp cand dir...",output_file=cutterfile)
+            os.system("rm "+remote_cand_dir + "/" + cand_isot + "*"+suff+"*")
+            printlog("done",output_file=cutterfile)
         return None
     if len(args.daskaddress)>0:
         res = d_future
     else:
         res = d_future.result()
     if res is None:
-        printlog("Clearing tmp cand dir...",output_file=cutterfile)
-        os.system("rm "+remote_cand_dir + "/" + cand_isot + "*"+suff+"*")
-        printlog("done",output_file=cutterfile)
+        if args.remote:
+            printlog("Clearing tmp cand dir...",output_file=cutterfile)
+            os.system("rm "+remote_cand_dir + "/" + cand_isot + "*"+suff+"*")
+            printlog("done",output_file=cutterfile)
         return
     else:
         finalcands,finalidxs = res[0],res[1]
@@ -875,7 +883,7 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     return
 
 
-def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock):
+def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock,plotlock):
     """
     Modelled from dsa110-T3/dsaT3/T3_manager.submit_cand(); Given filename of trigger json,
     create DSACand and submit to scheduler for T3 processing
@@ -896,13 +904,13 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
     d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3.5) fast folding
-    d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock)
+    d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_ms,ffalock,suff)
 
     #(4) writing csvs and jsons for remaining cands (might not be any remaining cands)
     d_write = client.submit(writecands_manage,d_ffa,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(5) sending alerts (slack, triggers, etc)
-    d_trigger = client.submit(sendtrigger_manage,d_write,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_trigger = client.submit(sendtrigger_manage,d_write,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag,plotlock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
     
     #(6) archiving
     d_archive = client.submit(archive_manage,d_trigger,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
@@ -1205,8 +1213,10 @@ from nsfrb.config import NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY
 def main(args):
     if len(args.daskaddress)==0:
         ffalock_ = Lock()
+        plotlock_ = Lock()
     else:
         ffalock_ = Lock_DASK()
+        plotlock_ = Lock_DASK()
     #sys.stderr = open(error_file,"w")
     printlog("Starting T4 Manager (realtime candcutter)...",output_file=cutterfile)
     printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
@@ -1337,7 +1347,7 @@ def main(args):
         #submit task
         #tasktimes.append(time.time())
         tasklist.append(submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
-                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_)) 
+                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_,plotlock_)) 
         """
         poplist = []
         for ti in range(len(tasklist)):
