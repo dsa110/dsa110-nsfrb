@@ -1,4 +1,6 @@
 import torch
+#torch.set_default_dtype(torch.FloatTensor)
+torch.set_default_device("cpu")
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
@@ -150,7 +152,7 @@ def classify_images(data_array, model_weights_path, verbose=False):
       predictions, indicating the confidence level of each prediction.
     """
     model = EnhancedCNN()
-    model.load_state_dict(torch.load(model_weights_path))
+    model.load_state_dict(torch.load(model_weights_path,map_location=torch.device('cpu')))
     model.eval()
 
     predictions = []  # List to store binary predictions (0s and 1s)
@@ -192,7 +194,7 @@ def classify_images_dataset(dataset_dir, model_weights_path, verbose=False):
       predictions, indicating the confidence level of each prediction.
     """
     model = EnhancedCNN()
-    model.load_state_dict(torch.load(model_weights_path))
+    model.load_state_dict(torch.load(model_weights_path,map_location=torch.device('cpu')))
     model.eval()
 
     predictions = []  # List to store binary predictions (0s and 1s)

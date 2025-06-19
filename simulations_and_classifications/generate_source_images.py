@@ -74,7 +74,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
         exclude_antennas = np.random.choice(range(ANTENNA_COUNT), size=int(ANTENNA_COUNT * EXCLUDE_ANTENNA_PERCENTAGE), replace=False)
 
         #get UV coords from etcd
-        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
         pt_dec = Dec_point*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
         tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, list(exclude_antennas) + list(flagged_antennas),flagged_corrs=[],flag_channel_templates=[],bmin=bmin)

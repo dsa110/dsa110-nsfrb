@@ -7,7 +7,7 @@ from nsfrb.config import nsamps,NSFRB_CANDDADA_KEY
 Functions for writing to psrdada buffer
 """
 
-def rtwrite(image,key=NSFRB_CANDDADA_KEY):
+def rtwrite(image,key=NSFRB_CANDDADA_KEY,addheader=False,header=dict(),dtype=np.float32):
     """
     Writes to a psrdada buffer as float32
 
@@ -16,10 +16,16 @@ def rtwrite(image,key=NSFRB_CANDDADA_KEY):
     image: image data to write (301 x 301 pixels x 25 samples x 16 channels)
 
     """
-    image = image.astype(np.float32).flatten()
+    image = image.astype(dtype).flatten()
     
+    print(len(image))
     #create writer
     writer = Writer(key)
+
+    #set header
+    if addheader:
+        #write header
+        writer.setHeader(header)
 
     #write image as single page
     page = writer.getNextPage()

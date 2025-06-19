@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 from PIL import Image
 import torch
+torch.set_default_device("cpu")
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -95,7 +96,7 @@ def classify_images_3D(data_array, model_weights_path, verbose=False):
       predictions, indicating the confidence level of each prediction.
     """
     model = Enhanced3DCNN()
-    model.load_state_dict(torch.load(model_weights_path))
+    model.load_state_dict(torch.load(model_weights_path,map_location=torch.device('cpu'),weights_only=True))
     model.eval()
 
     predictions = []  # List to store binary predictions (0s and 1s)
@@ -122,7 +123,7 @@ def classify_images_3D(data_array, model_weights_path, verbose=False):
 
         # 5) Load model & weights
         model = Enhanced3DCNN()
-        model.load_state_dict(torch.load(model_weights_path, map_location='cpu'))
+        model.load_state_dict(torch.load(model_weights_path, map_location=torch.device('cpu'),weights_only=True))
         model.eval()
 
         # 6) Convert to torch.Tensor
@@ -186,7 +187,7 @@ def main():
 
     # 5) Load model & weights
     model = Enhanced3DCNN()
-    model.load_state_dict(torch.load(args.model_weights, map_location='cpu'))
+    model.load_state_dict(torch.load(args.model_weights, map_location='cpu',weights_only=True))
     model.eval()
 
     # 6) Convert to torch.Tensor

@@ -17,17 +17,57 @@ setup(name='dsa110-nsfrb',
      # ]
 )
 
-#set CORR_INSTALL=True if installing realtime imager on the corr nodes
-CORR_INSTALL=False
+H24_INSTALL=0 #set INSTALLMODE=H24_INSTALL for full server installation on h24
+CORR_INSTALL=1 #set INSTALLMODE=CORR_INSTALL if installing realtime imager on the corr nodes
+T4REMOTE_INSTALL=2 #set INSTALLMODE=T4REMOTE_INSTALL if installing T4 candidate post-processor on a remote server (e.g. h20)
+INSTALLMODE = H24_INSTALL
+
 
 #get local nsfrb directory
 import os
+import csv
+import glob
 os.system("pwd > metadata.txt")
+os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
 
+if INSTALLMODE == CORR_INSTALL:
+    os.system("mkdir ../dsa110-nsfrb-injections")
+    os.system("mkdir ../dsa110-nsfrb-injections/realtime_staging_sb")
+    os.system("mkdir ../dsa110-nsfrb-logfiles")
+    logfiles = ["rttimes_log.txt",
+                "rttx_log.txt"]
+    for i in range(len(logfiles)):
+        l = logfiles[i]
+        os.system("touch ../dsa110-nsfrb-logfiles/" + l)
+        os.system("> ../dsa110-nsfrb-logfiles/" + l)
+elif INSTALLMODE == T4REMOTE_INSTALL:
+    os.system("mkdir ../dsa110-nsfrb-injections")
+    with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(['ISOT','DM','WIDTH','SNR'])
+    csvfile.close()
+    with open("../dsa110-nsfrb-injections/recoveries.csv","w") as csvfile:
+        wr = csv.writer(csvfile,delimiter=',')
+        wr.writerow(['ISOT','DM','WIDTH','SNR','PREDICT','PROB'])
+    csvfile.close()
 
-if not CORR_INSTALL:
+    os.system("mkdir ../dsa110-nsfrb-tables")
+    if len(glob.glob("../dsa110-nsfrb-tables/nsfrb_lastname.txt"))==0:
+        os.system("touch ../dsa110-nsfrb-tables/nsfrb_lastname.txt")
+        os.system("echo None > ../dsa110-nsfrb-tables/nsfrb_lastname.txt")
+    os.system("mkdir ../dsa110-nsfrb-logfiles")
+    os.system("mkdir ../dsa110-nsfrb-tmp-candidates")
+    logfiles = ["candcutter_log.txt",
+            "candcuttertask_log.txt",
+            "journalctl.txt",
+            "candcutter_error_log.txt",
+            "error_log.txt"]
+    for i in range(len(logfiles)):
+        l = logfiles[i]
+        os.system("touch ../dsa110-nsfrb-logfiles/" + l)
+        os.system("> ../dsa110-nsfrb-logfiles/" + l)
 
-
+else:
     #make logfile directory outside of git repo
     os.system("mkdir ../dsa110-nsfrb-logfiles")
     logfiles = ["error_log.txt",
@@ -40,7 +80,15 @@ if not CORR_INSTALL:
             "candcuttertask_log.txt",
             "candcutter_error_log.txt",
             "inject_log.txt",
-            "time_log.txt"]
+            "time_log.txt",
+            "rttimes_log.txt",
+            "rttx_log.txt",
+            "srchtx_log.txt",
+            "srchtime_log.txt",
+            "candmem_log.txt",
+            "candtime_log.txt",
+            "journalctl.txt",
+            "srchstartstoptime_log.txt"]
     for i in range(len(logfiles)):
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
@@ -61,6 +109,7 @@ if not CORR_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-candidates/raw_cands/")
     os.system("mkdir ../dsa110-nsfrb-candidates/final_cands/")
     os.system("mkdir ../dsa110-nsfrb-candidates/backup_raw_cands/")
+    
     """
     #create injections directory
     os.system("mkdir ../dsa110-nsfrb-injections/")
@@ -70,6 +119,7 @@ if not CORR_INSTALL:
 
     #create directory for observing plans
     os.system("mkdir ../dsa110-nsfrb-plans/")
+    os.system("mkdir ../dsa110-nsfrb-candplotserver/")
     import csv
 
     """ 

@@ -2,7 +2,7 @@
 
 [Unit]
 
-Description=procserver
+Description=rt_imager
 
 [Service]
 

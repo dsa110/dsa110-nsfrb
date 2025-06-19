@@ -1,0 +1,82 @@
+2025-05-29 13:45:19,603 - distributed.nanny - INFO - Closing Nanny at 'tcp://127.0.0.1:33743'. Reason: failure-to-start-<class 'OSError'>
+2025-05-29 13:45:19,604 - distributed.dask_worker - INFO - End worker
+Traceback (most recent call last):
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/comm/tcp.py", line 546, in connect
+    stream = await self.client.connect(
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/tornado/tcpclient.py", line 279, in connect
+    af, addr, stream = await connector.start(connect_timeout=timeout)
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/asyncio/tasks.py", line 456, in wait_for
+    return fut.result()
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/comm/core.py", line 342, in connect
+    comm = await wait_for(
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/utils.py", line 1961, in wait_for
+    return await asyncio.wait_for(fut, timeout)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/asyncio/tasks.py", line 458, in wait_for
+    raise exceptions.TimeoutError() from exc
+asyncio.exceptions.TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/core.py", line 664, in start
+    await wait_for(self.start_unsafe(), timeout=timeout)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/utils.py", line 1961, in wait_for
+    return await asyncio.wait_for(fut, timeout)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/asyncio/tasks.py", line 408, in wait_for
+    return await fut
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/nanny.py", line 358, in start_unsafe
+    comm = await self.rpc.connect(saddr)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/core.py", line 1674, in connect
+    return connect_attempt.result()
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/core.py", line 1564, in _connect
+    comm = await connect(
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/comm/core.py", line 368, in connect
+    raise OSError(
+OSError: Timed out trying to connect to tcp://127.0.0.1:8845 after 30 s
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/bin/dask", line 10, in <module>
+    sys.exit(main())
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/dask/__main__.py", line 7, in main
+    run_cli()
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/dask/cli.py", line 209, in run_cli
+    cli()
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/click/core.py", line 1157, in __call__
+    return self.main(*args, **kwargs)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/click/core.py", line 1078, in main
+    rv = self.invoke(ctx)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/click/core.py", line 1688, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/click/core.py", line 1434, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/click/core.py", line 783, in invoke
+    return __callback(*args, **kwargs)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/cli/dask_worker.py", line 450, in main
+    asyncio_run(run(), loop_factory=get_loop_factory())
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/compatibility.py", line 236, in asyncio_run
+    return loop.run_until_complete(main)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/asyncio/base_events.py", line 649, in run_until_complete
+    return future.result()
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/cli/dask_worker.py", line 447, in run
+    [task.result() for task in done]
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/cli/dask_worker.py", line 447, in <listcomp>
+    [task.result() for task in done]
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/cli/dask_worker.py", line 420, in wait_for_nannies_to_finish
+    await asyncio.gather(*nannies)
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/asyncio/tasks.py", line 650, in _wrap_awaitable
+    return (yield from awaitable.__await__())
+  File "/home/ubuntu/msherman_nsfrb/miniconda/envs/casa310nsfrb/lib/python3.10/site-packages/distributed/core.py", line 672, in start
+    raise RuntimeError(f"{type(self).__name__} failed to start.") from exc
+RuntimeError: Nanny failed to start.

@@ -32,7 +32,7 @@ def read_buffer_multisamp(reader, nbls, nchan, npol,nsamps,dtype=np.float32,dtyp
 
     page = reader.getNextPage()
     reader.markCleared()
-    print(page,type(page))
+    #print(page,type(page))
     data = np.frombuffer(page.tobytes(),dtype=dtype)
     data = data.view(dtype)
     data = data.reshape(-1, 2).view(dtypecomplex).squeeze(axis=-1)
@@ -46,7 +46,7 @@ def read_buffer_multisamp(reader, nbls, nchan, npol,nsamps,dtype=np.float32,dtyp
         ].reshape(nsamps, nbls, nchan, npol)
     return data
 
-def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize=4):
+def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize=4,readheader=False):
     """
     reads from psrdada specified by key provided
 
@@ -84,16 +84,20 @@ def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize
         print("Reaer not connected")
         tup = None
     else:
-        #read header
-        header = reader.getHeader()
-        print(header)
-        mjd = np.float64(header['MJD'])
-        sb = int(header['SB'])
-        dec = np.float32(header['DEC'])
-
+        if readheader:
+            #read header
+            header = reader.getHeader()
+            #print(header)
+            mjd = np.float64(header['MJD'])
+            sb = int(header['SB'])
+            dec = np.float32(header['DEC'])
+        
         #read buffer
         data = read_buffer_multisamp(reader,nbls,nchan,npol,nsamps,dtype=dtype,dtypecomplex=dtypecomplex)
-        tup = (data,mjd,sb,dec)
+        if readheader:
+            tup = (data,mjd,sb,dec)
+        else:
+            tup = data
     #disconnect reader
     try:
         reader.disconnect()

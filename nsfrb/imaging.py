@@ -1,15 +1,16 @@
 import numpy as np
+from dsacalib import constants as ct
 import glob
 import json
 from scipy.optimize import curve_fit
 from dsamfs import utils as pu
 from dsacalib.utils import Direction
 from dsautils.coordinates import create_WCS,get_declination,get_elevation
-from nsfrb.outputlogging import printlog
+#from nsfrb.outputlogging import printlog
 from scipy.interpolate import interp1d
 from astropy import wcs
 from scipy.fftpack import ifftshift, ifft2,fftshift,fft2,fftfreq
-from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,crpix_dict,pixperFWHM
+from nsfrb.config import IMAGE_SIZE,UVMAX,flagged_antennas,crpix_dict,pixperFWHM,lambdaref,az_offset,Lon,Lat,Height
 #modules for position and RA/DEC calibration
 from influxdb import DataFrameClient
 from astropy.coordinates import EarthLocation, AltAz, ICRS,SkyCoord,FK5
@@ -27,52 +28,13 @@ from nsfrb.flagging import flag_vis
 #cwd = f.read()[:-1]
 #f.close()
 import os
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize,table_dir
+#from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,az_offset,Height,flagged_antennas,flagged_corrs,T,pixsize,table_dir
 """
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
 output_file = cwd + "-logfiles/run_log.txt"
 """
 
-def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000):
-    """
-    dec: current declination
-    T: integration time in milliseconds
-    """
-    if usefit:
-        srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
-        if len(srcs)>0:
-            print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
-            decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
-            idx = np.argmin(np.abs(decs-dec))
-            if np.abs(decs[idx]-dec)<1:
-            
-                f = open(srcs[idx],"r")
-                table = json.load(f)
-                f.close()
-                if 'core_gulp_RA_drift_slope' in table.keys():
-                    print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
-                    cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
-                    print("New RA cutoff:",cutoff_pix)
-                    return cutoff_pix
-        else:
-            f = open(table_dir + "/NSFRB_astrocal.json","r")
-            table = json.load(f)
-            f.close()
-            if 'core_gulp_RA_drift_slope' in table.keys():
-                print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
-                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
-                print("New RA cutoff:",cutoff_pix)
-                return cutoff_pix
-
-            
-        print("Fit cal not available, using pix estimate")
-    scale = offset_s*1000/T
-    cutoff_as = scale*(T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
-    cutoff_pix = np.abs((cutoff_as/3600)/pixsize)#np.abs((cutoff_as/3600)//pixsize)
-    print("New RA cutoff:",cutoff_pix)
-    if asint: return int(np.ceil(cutoff_pix))
-    else: return cutoff_pix#int(np.ceil(cutoff_pix))
 
 
 def stack_images(imgs,cutoff_offsets,ref_RA_grid=None,ref_DEC_grid=None):
@@ -224,11 +186,14 @@ def uniform_grid(u, v, image_size, pixel_resolution, pixperFWHM):
     i_indices = ((u + uv_max) / grid_res).astype(int)
     j_indices = ((v + uv_max) / grid_res).astype(int)
 
+    """
     #remove long baselines
     uvs = np.sqrt(u**2 + v**2)
+    print(i_indices.shape)
     i_indices = i_indices[uvs<uv_max]
     j_indices = j_indices[uvs<uv_max]
-
+    print(j_indices.shape)
+    """
     #get conjugate baselines
     i_conj_indices = image_size - i_indices - 1
     j_conj_indices = image_size - j_indices - 1
@@ -276,8 +241,8 @@ def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, imag
         #remove long baselines
         uvs = np.sqrt(u**2 + v**2)
         #v_avg = v_avg[uvs<uv_max]
-        i_indices = i_indices[uvs<uv_max]
-        j_indices = j_indices[uvs<uv_max]
+        #i_indices = i_indices[uvs<uv_max]
+        #j_indices = j_indices[uvs<uv_max]
         if i_conj_indices is None and j_conj_indices is None:
             #get conjugate baselines
             i_conj_indices = image_size - i_indices - 1
@@ -452,7 +417,7 @@ def dec_to_m(dec0,dec_offset,d=1,Lat=Lat):
     
 #revision of uv_to_pix to be consistent with FRB search code
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
-def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file=output_file,elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=pixperFWHM):
+def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file="",elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=pixperFWHM):
     """
     Takes UV grid coordinates and converts them to RA and declination
 
@@ -486,11 +451,11 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         RA = obstime.sidereal_time('apparent', longitude=Lon*u.deg).to(u.deg).value
     pointing = SkyCoord(ra=RA*u.deg,dec=DEC*u.deg,frame=FK5,equinox=obstime).transform_to(ICRS)
     """
-    printlog(f'Primary beam pointing: {pointing}',output_file=output_file)
+    #printlog(f'Primary beam pointing: {pointing}',output_file=output_file)
     
 
     if uv_diag is None:
-        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
         pt_dec = DEC.value*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
         tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, flagged_antennas, bmin=0,flagged_corrs=[],flag_channel_templates=[])
@@ -519,7 +484,7 @@ def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,
         tmp = w2.wcs_pix2world(np.array([ra_grid_pix,dec_grid_pix]).transpose(),0)
         ra_grid = tmp[:,0]
         dec_grid =tmp[:,1]
-    printlog("RADECSHAPE:" + str(ra_grid.shape) + "," + str(dec_grid.shape),output_file=output_file)
+    #printlog("RADECSHAPE:" + str(ra_grid.shape) + "," + str(dec_grid.shape),output_file=output_file)
     return ra_grid,dec_grid,elev
 
 def process_w_layers(dirty_image,w,Nlayers_w):
@@ -579,3 +544,77 @@ def process_w_layers_parallel(dirty_image: np.ndarray,
             out_image[i, j] = temp_sum
 
     return out_image
+
+
+def single_pix_image(dat_all,U,V,fobs,sb,dec,mjd,ngulps,nbin,target_coord,tsamp_use,pixel_resolution,pixperFWHM,uv_diag,nchans_per_node=8,gulpsize=25,image_size=301,allpix=[],DM=0,robust=-2):
+    """
+    robust single pixel imaging given array of visibilities (nsamp x nbase x nchan x npol)
+    """
+    yidxs,xidxs = np.meshgrid(np.arange(image_size,dtype=int),np.arange(image_size,dtype=int))
+    nchan_per_node = nchans_per_node
+    dspec = np.zeros((gulpsize*ngulps//nbin,nchan_per_node))
+    #uv_diag=np.max(np.sqrt(U**2 + V**2))
+    #pixel_resolution = (lambdaref / uv_diag) / pixperFWHM
+    j = sb
+
+    #gridding
+    U_wavs = np.zeros((len(U),nchans_per_node))
+    V_wavs = np.zeros((len(V),nchans_per_node))
+    #W_wavs = np.zeros((len(W),nchans_per_node))
+    i_indices_all = np.zeros(U_wavs.shape,dtype=int)
+    j_indices_all = np.zeros(V_wavs.shape,dtype=int)
+    #k_indices_all = np.zeros(W_wavs.shape,dtype=int)
+    i_conj_indices_all = np.zeros(U_wavs.shape,dtype=int)
+    j_conj_indices_all = np.zeros(V_wavs.shape,dtype=int)
+    #k_conj_indices_all = np.zeros(W_wavs.shape,dtype=int)
+    bweights_all = np.zeros(U_wavs.shape)
+    
+    for jj in range(nchans_per_node):
+        chanidx = (nchans_per_node*j)+jj
+        U_wavs[:,jj] = U/(ct.C_GHZ_M/fobs[chanidx])
+        V_wavs[:,jj] = V/(ct.C_GHZ_M/fobs[chanidx])
+        i_indices_all[:,jj],j_indices_all[:,jj],i_conj_indices_all[:,jj],j_conj_indices_all[:,jj] = uniform_grid(U_wavs[:,jj], V_wavs[:,jj], image_size, pixel_resolution, pixperFWHM)
+        bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], image_size, robust=robust,pixel_resolution=pixel_resolution)
+    
+    for gulp in range(ngulps):
+  
+        #get UVWs
+        dat = dat_all[gulpsize*gulp:gulpsize*(gulp+1),:,:,:]
+        if len(allpix)<=gulp:
+            #make RA,DEC grid
+            #if j == 0:
+            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulp*gulpsize*tsamp_use/1000/86400),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+            target_pix = np.unravel_index(np.argmin(target_coord.separation(SkyCoord(ra=ra_grid_2D*u.deg,dec=dec_grid_2D*u.deg,frame='icrs'))),ra_grid_2D.shape)
+            print("targeting coord",target_coord,target_pix)
+            allpix.append(target_pix)
+            del ra_grid_2D
+            del dec_grid_2D
+        else:
+            target_pix = allpix[gulp]
+            
+        #make dynamic spectrum for single coord
+        uv_max = 1/(2*pixel_resolution)
+        for ii in range(gulpsize//nbin):
+            for jj in range(nchans_per_node):
+                chanidx = (nchans_per_node*j)+jj
+                vis_grid = np.zeros((image_size,image_size),dtype=complex)
+                v_avg = np.nanmean(dat_all[gulpsize*gulp + (ii*nbin):gulpsize*gulp + (ii+1)*nbin,:,jj,:],(0,2))*bweights_all[:,jj]*image_size
+                nancondition = ~np.isnan(v_avg)#,np.sqrt(U_wavs[:,jj]**2 + V_wavs[:,jj]**2)<uv_max)
+                #for i in range(dat.shape[0]):
+                np.add.at(vis_grid, (np.concatenate([i_indices_all[nancondition,jj],i_conj_indices_all[nancondition,jj]]),
+                                 np.concatenate([j_indices_all[nancondition,jj],j_conj_indices_all[nancondition,jj]])),
+                                 np.concatenate([v_avg[nancondition],np.conj(v_avg[nancondition])]))
+        
+                #beam/image
+                dspec[(gulp*gulpsize//nbin) + ii,jj] = np.real(np.nansum(ifftshift(vis_grid)*np.exp(1j*2*np.pi*(1/image_size)*(((target_pix[1]+(image_size//2))*yidxs) + ((target_pix[0]+(image_size//2))*xidxs)))))/(image_size*image_size)
+        dspec[(gulp*gulpsize//nbin):((gulp+1)*gulpsize//nbin),:] -= np.nanmedian(dspec[(gulp*gulpsize//nbin):((gulp+1)*gulpsize//nbin),:],0)
+    if DM>0:
+        final_dspec = np.zeros_like(dspec)
+
+        tshift =np.array(np.abs((4.15)*DM*((1/np.nanmin(fobs[nchans_per_node*j:(j+1)*nchans_per_node]))**2 - (1/fobs[nchans_per_node*j:(j+1)*nchans_per_node])**2))//tsamp_use,dtype=int)
+        for jj in range(nchans_per_node):
+            final_dspec[:,jj] = np.pad(dspec[:,jj],((0,tshift[jj])),mode='constant')[-final_dspec.shape[0]:]
+        return final_dspec,allpix
+    else:
+        return dspec,allpix
+

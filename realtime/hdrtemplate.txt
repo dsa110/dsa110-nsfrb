@@ -1,0 +1,31 @@
+#
+# This fake data header is used for the examples
+#
+
+HDR_VERSION 1.0
+HDR_SIZE    4096
+
+BW    -400		# bandwidth in MHz
+FREQ  1382		# centre frequency in MHz
+ 
+TELESCOPE  PKS
+RECEIVER   MULTI
+INSTRUMENT CASPSR	# determines the unpacker used in the benchmark
+
+SOURCE J0437-4715
+MODE PSR
+
+NBIT 8
+NCHAN 1
+NDIM 1
+NPOL 2
+
+OBS_OFFSET 0
+
+UTC_START
+TSAMP 0.00125
+RESOLUTION 4
+
+MJD 
+SB 
+DEC 

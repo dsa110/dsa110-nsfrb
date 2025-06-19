@@ -18,13 +18,12 @@ while :
 	      cat tmp1.txt | while read l
 	      do
                   IFS=' ' read -r -a array <<< "$l"
-		  echo "${array[0]},0," >> ${NSFRBDATA}dsa110-nsfrb-fast-visibilities/vis_files.csv
+		  echo "${array[0]},0," >> ${NSFRBDATA}dsa110-nsfrb-fast-visibilities/vis_files_2.csv
 	      done	
 	      rm tmp1.txt
 	      echo "finished transfer"
 	      #tail -32 ${NSFRBDATA}dsa110-nsfrb-fast-visibilities/vis_files.csv
 	  done
-
 	  sleep 10
 
 done

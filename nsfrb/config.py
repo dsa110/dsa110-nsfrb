@@ -22,6 +22,9 @@ tsamp_slow = 0.1342182159423828*1000*bin_slow #ms
 baseband_tsamp = 256e-3 #ms
 nsamps = 25
 T = tsamp*nsamps #3250 #ms
+bin_imgdiff = 3 #number of samples to bin by
+tsamp_imgdiff = bin_imgdiff*T
+ngulps_per_file = 90
 #nsamps = int(T/tsamp)
 
 # Image channel information
@@ -49,6 +52,7 @@ lambdaref = (c/(freq_axis_fullres[0]*1e6))
 #chanbw = (fmax-fmin)/nchans #MHz
 telescope_diameter = 4.65 #m
 DM_tol = 1.6
+DM_tol_slow = 1.2
 
 #resolution parameters
 pixsize = 0.002962513099862611#(48/3600)*np.pi/180 #rad
@@ -79,21 +83,28 @@ import sys
 #directories
 cwd = os.environ['NSFRBDIR']
 sys.path.append(cwd + "/")
-cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"
 frame_dir = cwd + "-frames/"
 psf_dir = cwd + "-PSF/"
 img_dir = cwd + "-images/"
-vis_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/"
-raw_cand_dir = cand_dir + "raw_cands/"
-backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
-final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
+if 'NSFRBDATA' in os.environ:
+    cand_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/"
+    vis_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/"
+    raw_cand_dir = cand_dir + "raw_cands/"
+    backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
+    final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
+    training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
+remote_cand_dir = cwd +"-tmp-candidates/"
+sslogfile = cwd + "-logfiles/srchstartstoptime_log.txt"
 inject_dir = inject_file = cwd + "-injections/"
 local_inject_dir = cwd + "-injections/realtime_staging_sb/"
-training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 noise_dir = cwd + "-noise/"
 imgpath = cwd + "-images"
 plan_dir = cwd + "-plans/"
 table_dir = cwd + "-tables/"
+candplotfile = cwd + "-candplotserver/lastcandplot.png"
+candplotfile_slow = cwd + "-candplotserver/lastcandplot_slow.png"
+candplotfile_imgdiff = cwd + "-candplotserver/lastcandplot_imgdiff.png"
+candplotupdatefile = cwd + "-candplotserver/cand.txt"
 psr_dir = cwd + "-pulsar/"
 #data files
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"
@@ -116,6 +127,12 @@ inject_file = cwd + "-injections/injections.csv"
 recover_file = cwd + "-injections/recoveries.csv"
 binary_file = cwd + "-logfiles/binary_log.txt"
 inject_log_file = cwd + "-logfiles/inject_log.txt"
+rtbench_file = cwd + "-logfiles/rttimes_log.txt"
+rttx_file = cwd + "-logfiles/rttx_log.txt"
+srchtx_file = cwd + "-logfiles/srchtx_log.txt"
+srchtime_file = cwd + "-logfiles/srchtime_log.txt"
+candcutter_memory_file = cwd + "-logfiles/candmem_log.txt"
+candcutter_time_file = cwd + "-logfiles/candtime_log.txt"
 
 import casatools as cc
 me = cc.measures()
@@ -140,6 +157,42 @@ maxrawsamps = 2250
 
 #psrdada key
 NSFRB_PSRDADA_KEY = 0xcaba
+NSFRB_PSRDADA_TESTKEYS = {0:0xcab0,
+                          1:0xcab1,
+                          2:0xcab2,
+                          3:0xcab3,
+                          4:0xcab4,
+                          5:0xcab5,
+                          6:0xcab6,
+                          7:0xcab7,
+                          8:0xcab8,
+                          9:0xcab9,
+                          10:0xcaba,
+                          11:0xcabb,
+                          12:0xcabc,
+                          13:0xcabd,
+                          14:0xcabe,
+                          15:0xcabf}
+#main
 NSFRB_CANDDADA_KEY = 0xcada
 NSFRB_SRCHDADA_KEY = 0xcaea
 NSFRB_TOADADA_KEY = 0xcafa
+#slow
+NSFRB_CANDDADA_SLOW_KEY = 0xcadb
+NSFRB_SRCHDADA_SLOW_KEY = 0xcaeb
+NSFRB_TOADADA_SLOW_KEY = 0xcafb
+#imgdiff
+NSFRB_CANDDADA_IMGDIFF_KEY = 0xcadc
+NSFRB_SRCHDADA_IMGDIFF_KEY = 0xcaec
+NSFRB_TOADADA_IMGDIFF_KEY = 0xcafc
+
+
+
+
+NSFRB_PSRDADA_BYTES = 14899200
+NSFRB_CANDDADA_BYTES = 144961600
+NSFRB_SRCHDADA_BYTES = 28992320
+NSFRB_TOADADA_BYTES = 28992320
+
+minDM = 171
+maxDM = 4000

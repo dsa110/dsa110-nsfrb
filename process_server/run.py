@@ -1,4 +1,9 @@
 import numpy as np
+from multiprocessing import Manager
+from nsfrb.planning import get_RA_cutoff
+from threading import Lock
+from dask.distributed import Lock as Lock_DASK
+from dask.distributed import Client,get_client
 import select
 import os
 import jax
@@ -68,7 +73,7 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff,sslogfile
 
 """
 NSFRB modules
@@ -83,6 +88,8 @@ Dask manager
 import dsautils.dsa_store as ds
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/candidates'
+ETCDKEY_SEARCHTIMING = f'/mon/nsfrbsearchtiming'
+ETCDKEY_PACKET = f'/mon/nsfrbpackets'
 
 from nsfrb import searching as sl
 """
@@ -108,7 +115,7 @@ def set_pflag_loc(flag=None,on=True,reset=False):
 Create a structure for full image
 """
 class fullimg:
-    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow):
+    def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow,imgdiff=False,bin_imgdiff=bin_imgdiff):
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=bool)
         self.img_id_isot = img_id_isot
@@ -122,6 +129,8 @@ class fullimg:
         self.slow_counter=0
         self.bin_slow=  bin_slow
         self.bin_interval_slow = int(self.shape[2])//self.bin_slow
+        self.imgdiffgulps = self.shape[2]
+        self.bin_imgdiff = bin_imgdiff
         if slow:
             printlog("bin slow:" + str(self.bin_slow) + "; bin interval:" + str(self.bin_interval_slow),output_file=processfile)
             """
@@ -136,9 +145,20 @@ class fullimg:
             self.slow_RA_cutoffs = []
             for i in range(self.bin_slow):
                 self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*self.shape[2]*i/1000/86400))
-                self.slow_RA_cutoffs.append(sl.get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*self.shape[2]*i/1000))
+                self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*self.shape[2]*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.slowstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
+        elif imgdiff:
+            printlog("starting object for image difference mode with " + str(self.imgdiffgulps) + " gulps at a time",output_file=processfile)
+            #make list of possible mjds
+            self.img_id_mjd_list = []
+            self.slow_RA_cutoffs = []
+            for i in range(self.imgdiffgulps):
+                for j in range(self.bin_imgdiff):
+                    self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*config.nsamps*(self.bin_imgdiff*i + j)/1000/86400))
+                self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=j*config.tsamp*config.nsamps*i/1000))
+            self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
+            self.imgdiffstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
@@ -154,6 +174,14 @@ class fullimg:
         foundmjd = np.abs(self.img_id_mjd_list[img_idx]-mjd)*86400*1000 <= (config.tsamp*self.shape[2]/2)
         printlog("IT DOES" + str("" if foundmjd else " NOT"),output_file=processfile)
         return (img_idx if foundmjd else -1),foundmjd
+    def imgdiff_mjd_in_img(self,mjd):
+        printlog("CHECKING IF " + str(self.img_id_mjd_list) + " CONTAINS " + str(mjd),output_file=processfile)
+
+        img_idx = np.argmin(np.abs(self.img_id_mjd_list - mjd))
+        foundmjd = np.abs(self.img_id_mjd_list[img_idx]-mjd)*86400*1000 <= (config.tsamp*config.nsamps/2)
+        printlog("IT DOES" + str("" if foundmjd else " NOT"),output_file=processfile)
+        return (img_idx if foundmjd else -1),foundmjd
+
     def slow_append_img(self,data,img_idx):
         self.image_tesseract[:,:,img_idx*self.bin_interval_slow:(img_idx+1)*self.bin_interval_slow,:] = np.nanmean(data.reshape((self.shape[0],self.shape[1],self.bin_interval_slow,self.bin_slow,self.shape[3])),3)
         """
@@ -169,14 +197,37 @@ class fullimg:
         #align if full
         if self.slow_is_full():
             stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i*self.bin_interval_slow:(i+1)*self.bin_interval_slow,:] for i in range(self.bin_slow)],self.slow_RA_cutoffs)
-            self.RA_axis = self.RA_axis[-min_gridsize:]
+            self.RA_axis = self.RA_axis[:min_gridsize]
             self.slow_RA_cutoff = self.shape[1] - min_gridsize
             self.image_tesseract = np.concatenate(stack,axis=2)
             self.shape = self.image_tesseract.shape
             printlog("Stacked slow images:" + str(self.image_tesseract.shape),output_file=processfile)
         return
+    def imgdiff_append_img(self,data,img_idx):
+        self.image_tesseract[:,:,int(img_idx//self.bin_imgdiff),0] += np.nanmean(data,(2,3)) 
+        printlog("FROM IMGDIFF APPEND_1 " + str(img_idx) + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
+        self.image_tesseract[:,:,int(img_idx//self.bin_imgdiff),0] -= np.nanmedian(np.nanmean(data,3),axis=2)
+        printlog("FROM IMGDIFF APPEND_2 " + str(img_idx)  + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
+        self.imgdiffstatus[img_idx] = 1
+        printlog("MJD LIST:" + str(self.img_id_mjd_list),output_file=processfile)
+        printlog("IMGDIFF STATUS:" + str(self.imgdiffstatus),output_file=processfile)
+        self.slow_counter += 1
+        #self.imgdiffstatus[:] = 1
+        #align if full
+        if self.imgdiff_is_full():
+            printlog("STACKING IMAGES",output_file=processfile)
+            stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i:(i+1),:] for i in range(self.imgdiffgulps)],self.slow_RA_cutoffs)
+            self.RA_axis = self.RA_axis[:min_gridsize]
+            self.imgdiff_RA_cutoff = self.shape[1] - min_gridsize
+            self.image_tesseract = np.concatenate(stack,axis=2)
+            self.shape = self.image_tesseract.shape
+            printlog("Stacked imgdiff images:" + str(self.image_tesseract.shape),output_file=processfile)
+        return
+
     def slow_is_full(self):
         return np.all(self.slowstatus==1)#(self.slow_counter)*self.bin_interval_slow >= self.shape[2]
+    def imgdiff_is_full(self):
+        return np.all(self.imgdiffstatus==1)
     def is_full(self):
         return np.all(self.corrstatus==1)
 
@@ -328,63 +379,158 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
 
 fullimg_dict = dict()
 slow_fullimg_dict =dict()
-def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled):
+imgdiff_fullimg_dict=dict()
+def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,dask_enabled,thash):
     """
     This function prints the result once a thread finishes processing an image
     """
     #if QSETUP and not (future.result()[1] is None):
     #    QQUEUE.put(future.result()[1])
-    slow = future.result()[2]
-    if etcd_enabled and not (future.result()[1] is None):
-        printlog("adding " + future.result()[1] + "to etcd queue",output_file=processfile)
+    if dask_enabled:
+        fresult = future
+    else:
+        fresult = future.result()
+    slow = fresult[1]
+    imgdiff = fresult[2]
+    if etcd_enabled and not (fresult[0] is None):
+        printlog("adding " + fresult[0] + "to etcd queue",output_file=processfile)
         if slow:
             ETCD.put_dict(
                     ETCDKEY,
                     {
-                        "candfile":future.result()[1],
+                        "candfile":fresult[0],
                         "uv_diag":slow_fullimg_dict[timestepisot].img_uv_diag,
                         "dec":slow_fullimg_dict[timestepisot].img_dec,
                         "img_shape":slow_fullimg_dict[timestepisot].image_tesseract.shape,
                         "img_search_shape":slow_fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
+        elif imgdiff:
+            ETCD.put_dict(
+                    ETCDKEY,
+                    {
+                        "candfile":fresult[0],
+                        "uv_diag":imgdiff_fullimg_dict[timestepisot].img_uv_diag,
+                        "dec":imgdiff_fullimg_dict[timestepisot].img_dec,
+                        "img_shape":imgdiff_fullimg_dict[timestepisot].image_tesseract.shape,
+                        "img_search_shape":imgdiff_fullimg_dict[timestepisot].image_tesseract_searched.shape
+                    }
+                )
         else:
             ETCD.put_dict(
                     ETCDKEY,
                     {
-                        "candfile":future.result()[1],
+                        "candfile":fresult[0],
                         "uv_diag":fullimg_dict[timestepisot].img_uv_diag,
                         "dec":fullimg_dict[timestepisot].img_dec,
                         "img_shape":fullimg_dict[timestepisot].image_tesseract.shape,
                         "img_search_shape":fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
-    printlog(future.result()[0],output_file=processfile)
-    pl.binary_plot(future.result()[0],SNRthresh,timestepisot,RA_axis,DEC_axis)
+    #timing_dict = ETCD.get_dict(ETCDKEY_SEARCHTIMING)
+    #if timing_dict is None: timing_dict = dict()
+    timing_dict = dict()
+    timing_dict["search_time"]=fresult[-2]
+    timing_dict["search_tx_time"]=fresult[-1]
+    #timing_dict["search_completed"]=True
+    ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
+
+    #printlog(future.result()[0],output_file=processfile)
+    #pl.binary_plot(fullimg_dict[timestepisot].image_tesseract_searched,SNRthresh,timestepisot,RA_axis,DEC_axis)
     printlog("****Thread Completed****",output_file=processfile)
-    printlog(future.result(),output_file=processfile)
+    printlog(fresult,output_file=processfile)
     printlog("************************",output_file=processfile)
 
     #delete from array
     if slow:
         del slow_fullimg_dict[timestepisot]
+    elif imgdiff:
+        del imgdiff_fullimg_dict[timestepisot]
     else:
         del fullimg_dict[timestepisot]
+    f = open(sslogfile,"a")
+    f.write("[stop] [" + thash +"] " + str(time.time()))
+    f.close()
+    return
+
+def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_slow,RA_axis_slow,timestepisot_imgdiff,RA_axis_imgdiff,DEC_axis,etcd_enabled,dask_enabled,thash):
+    """
+    This function prints the result once a thread finishes processing an image
+    """
+    #if QSETUP and not (future.result()[1] is None):
+    #    QQUEUE.put(future.result()[1])
+    if dask_enabled:
+        fresult = future
+    else:
+        fresult = future.result()
+    
+    for c in range(len(fresult[0])):
+        slow = fresult[1][c]
+        imgdiff = fresult[2][c]
+        if etcd_enabled:
+            printlog("adding " + fresult[0][c] + "to etcd queue",output_file=processfile)
+            if slow:
+                ETCD.put_dict(
+                    ETCDKEY,
+                    {
+                        "candfile":fresult[0][c],
+                        "uv_diag":slow_fullimg_dict[timestepisot_slow].img_uv_diag,
+                        "dec":slow_fullimg_dict[timestepisot_slow].img_dec,
+                        "img_shape":slow_fullimg_dict[timestepisot_slow].image_tesseract.shape,
+                        "img_search_shape":slow_fullimg_dict[timestepisot_slow].image_tesseract_searched.shape
+                    }
+                )
+            elif imgdiff:
+                ETCD.put_dict(
+                    ETCDKEY,
+                    {
+                        "candfile":fresult[0][c],
+                        "uv_diag":imgdiff_fullimg_dict[timestepisot_imgdiff].img_uv_diag,
+                        "dec":imgdiff_fullimg_dict[timestepisot_imgdiff].img_dec,
+                        "img_shape":imgdiff_fullimg_dict[timestepisot_imgdiff].image_tesseract.shape,
+                        "img_search_shape":imgdiff_fullimg_dict[timestepisot_imgdiff].image_tesseract_searched.shape
+                    }
+                )
+            else:
+                ETCD.put_dict(
+                    ETCDKEY,
+                    {
+                        "candfile":fresult[0][c],
+                        "uv_diag":fullimg_dict[timestepisot].img_uv_diag,
+                        "dec":fullimg_dict[timestepisot].img_dec,
+                        "img_shape":fullimg_dict[timestepisot].image_tesseract.shape,
+                        "img_search_shape":fullimg_dict[timestepisot].image_tesseract_searched.shape
+                    }
+                )
+    #timing_dict = ETCD.get_dict(ETCDKEY_SEARCHTIMING)
+    #if timing_dict is None: timing_dict = dict()
+    timing_dict = dict()
+    timing_dict["search_time"]=fresult[-2]
+    timing_dict["search_tx_time"]=fresult[-1]
+    #timing_dict["search_completed"]=True
+    ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
+
+    #printlog(future.result()[0],output_file=processfile)
+    #pl.binary_plot(fullimg_dict[timestepisot].image_tesseract_searched,SNRthresh,timestepisot,RA_axis,DEC_axis)
+    printlog("****Thread Completed****",output_file=processfile)
+    printlog(fresult,output_file=processfile)
+    printlog("************************",output_file=processfile)
+
+    #delete from array
+    if timestepisot_slow is not None:
+        del slow_fullimg_dict[timestepisot_slow]
+    if timestepisot_imgdiff is not None:
+        del imgdiff_fullimg_dict[timestepisot_imgdiff]
+    del fullimg_dict[timestepisot]
+    f = open(sslogfile,"a")
+    f.write("[stop] [" + thash +"] " + str(time.time()))
+    f.close()
     return
 
 ECODE_BREAK = -1
 ECODE_CONT = -2
 ECODE_SUCCESS = 0
-multiport_accepting = dict()
-def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,headersize,datasize,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
-                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
-                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor):
-    """
-    This task sets up the given socket to accept connections, reads
-    data when a client connects, and submits a search task
-    """
-    if ii != -1: multiport_accepting[ii] = False
+def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,headersize,datasize,testh23,offline):
     socksuffix = "SOCKET " + str(ii) + " >>"
     printlog(socksuffix + "accepting connection...",output_file=processfile,end='')
     clientSocket,address = servSockD.accept()
@@ -463,7 +609,7 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             totalbytessend += clientSocket.send(successmsg)
         printlog(socksuffix+"Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
         return ECODE_CONT#continue
-    
+
     #try to parse to get address
     try:
         corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=headersize,datasize=datasize,port=port,corr_address=corr_address,testh23=testh23)
@@ -496,21 +642,41 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
     if pflag != 0:
         return ECODE_CONT #continue
     printlog(socksuffix+"Data: " + str(arrData),output_file=processfile)
-    
-    #reopen
-    if ii != -1: multiport_accepting[ii] = True
 
+    #reopen
+
+    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData
+
+multiport_accepting = dict()
+def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,ii,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,attachmode,completeness,slowlock,forfeit):
+    """
+    This task sets up the given socket to accept connections, reads
+    data when a client connects, and submits a search task
+    """
+    if dask_enabled:
+        executor = get_client()
+        slowlock = Lock_DASK("dasklock",client=executor)
+    socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
     if img_id_isot not in fullimg_dict.keys():
         fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])))
 
-    printlog("IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
+    printlog(socksuffix+"IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
     #add image and update flags
     fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
     #if the image is complete, start the search
     printlog(socksuffix+"corrstatus:",output_file=processfile,end='')
     printlog(fullimg_dict[img_id_isot].corrstatus,output_file=processfile)
+
     if fullimg_dict[img_id_isot].is_full(): #fullimg_array[idx].is_full():
+        f = open(sslogfile,"a")
+        thash = hex(random.getrandbits(32))
+        f.write("[start] [" + thash + "] " + str(time.time()))
+        f.close()
+        
         #submit a search task to the process pool
         printlog(socksuffix+"Submitting new task for image " + str(img_id_isot),output_file=processfile)
         RA_axis_idx = copy.deepcopy(fullimg_dict[img_id_isot].RA_axis) #copy.deepcopy(fullimg_array[idx].RA_axis)
@@ -526,51 +692,145 @@ def multiport_task(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,head
             init_noise(sl.DM_trials,sl.widthtrials,config.gridsize,config.gridsize)
             sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True)
 
-
+        printlog(">>>>"+str(img_id_mjd)+"<<<<",output_file=processfile)
         #make slow fullimag object
-        slowdone = False
-        for k in slow_fullimg_dict.keys():
-            img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
-            if (not slow_fullimg_dict[k].slow_is_full()) and foundmjd:
-                printlog(socksuffix+"SLOW MJD:" + str(img_id_mjd),output_file=processfile)
-                printlog(socksuffix+str((img_id_mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
-                slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
-                slowdone = True
-                break
-        if not slowdone:
-            printlog(socksuffix+"FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
-            slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),slow=True)
-            slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
-            k = img_id_isot
-        slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
+        if slow:
+            slowlock.acquire()
+            slowdone = False
+            for k in slow_fullimg_dict.keys():
+                img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
+                if (not slow_fullimg_dict[k].slow_is_full()) and foundmjd:
+                    printlog(socksuffix+"SLOW MJD:" + str(img_id_mjd),output_file=processfile)
+                    printlog(socksuffix+str((img_id_mjd - Time(str(k),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " slow append:" + str(slow_fullimg_dict[k].slow_counter),output_file=processfile)
+                    slow_fullimg_dict[k].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
+                    slowdone = True
+                    break
+            if not slowdone:
+                printlog(socksuffix+"FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
+                slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),slow=True)
+                slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+                k = img_id_isot
+            slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
+            slowlock.release()
+        else:
+            slowsearch_now = False
+        #make imgdiff fullimag object
+        if imgdiff:
+            slowlock.acquire()
+            imgdiffdone = False
+            for kd in imgdiff_fullimg_dict.keys():
+                img_idx,foundmjd = imgdiff_fullimg_dict[kd].imgdiff_mjd_in_img(img_id_mjd)
+                if (not imgdiff_fullimg_dict[kd].imgdiff_is_full()) and foundmjd:
+                    printlog(socksuffix+"IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
+                    printlog(socksuffix+str((img_id_mjd - Time(str(kd),format='isot').mjd)*86400*1000)  + "/" + str(config.nsamps*config.tsamp_slow) + " imgdiff append:" + str(imgdiff_fullimg_dict[kd].slow_counter),output_file=processfile)
+                    imgdiff_fullimg_dict[kd].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,img_idx)
+                    imgdiffdone=True
+                    break
+            if not imgdiffdone:
+                printlog(socksuffix+"FIRST IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
+                imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
+                imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+                kd = img_id_isot
+            imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
+            slowlock.release()
+        else:
+            imgdiffsearch_now = False
 
         #submit task
-        stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
-                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
+        if attachmode:
+            printlog(socksuffix + "SUBMITTING ATTACH-MODE TASK",output_file=processfile)
+            if dask_enabled:
+                stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False)
-        stask.add_done_callback(lambda future: future_callback(future,args.SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,args.etcd))
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,resources={'GPU': 1,'MEMORY':10e6})
+            else:
+                stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness)
+            stask.add_done_callback(lambda future: future_callback_attach(future,SNRthresh,img_id_isot,RA_axis_idx,
+                                                                                            str(k) if slowsearch_now else None,
+                                                                                            RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:] if slowsearch_now else None,
+                                                                                            str(kd) if imgdiffsearch_now else None,
+                                                                                            RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:] if imgdiffsearch_now else None,
+                                                                                            DEC_axis_idx,
+                                                                                            etcd_enabled,dask_enabled,thash))
+            return [stask]
+
+
+        ret_tasks = []
+        if (not forfeit) or (forfeit and (not slowsearch_now) and (not imgdiffsearch_now)):
+
+            if dask_enabled:
+                stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
+            else:
+                stask = executor.submit(sl.search_task,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit)
+            stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash))
+            ret_tasks.append(stask)
+        elif forfeit and (slowsearch_now or imgdiffsearch_now):
+            del fullimg_dict[img_id_isot]
+            printlog(socksuffix+"BASE SEARCH FORFEIT "+img_id_isot,output_file=processfile)
+
         #task_list.append(stask)
-        if slowsearch_now:
+        if slowsearch_now and ((not forfeit) or (forfeit and (not imgdiffsearch_now))):
             printlog(socksuffix+"SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
             printlog(socksuffix+str(slow_fullimg_dict[k].image_tesseract),output_file=output_file)
             #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
-            sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
-                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
-                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True)
+            if dask_enabled:
+                sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
+            else:
+                sstask = executor.submit(sl.search_task,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit)
                     
-            sstask.add_done_callback(lambda future: future_callback(future,args.SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,args.etcd))
+            sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
             #task_list.append(sstask)
-            return [stask,sstask]
-        return [stask]
+            ret_tasks.append(sstask)
+        elif forfeit and slowsearch_now:
+            del slow_fullimg_dict[k]
+            printlog(socksuffix + "SLOW SEARCH FORFEIT "+str(k),output_file=processfile)
+
+        if imgdiffsearch_now:
+            printlog(socksuffix+"IMGDIFFSEARCH NOW:" + str(imgdiff_fullimg_dict[kd]),output_file=processfile)
+            printlog(socksuffix+str(imgdiff_fullimg_dict[kd].image_tesseract),output_file=output_file)
+            #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
+            if dask_enabled:
+                ssstask = executor.submit(sl.search_task,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
+            else:
+                ssstask = executor.submit(sl.search_task,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+                                    multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
+                                    spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit)
+
+            ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
+            #task_list.append(sstask)
+            ret_tasks.append(ssstask)
+        return ret_tasks
+        printlog(socksuffix+" "+str(ret_tasks) + " tasks",output_file=processfile )
+        #if slowsearch_now and not imgdiffsearch_now: return [stask,sstask]
+        #elif slowsearch_now and imgdiffsearch_now: return [stask,sstask,ssstask]
+        #elif not slowsearch_now and imgdiffsearch_now: return [stask,ssstask]
+        #return [stask]
     return ECODE_SUCCESS
 
 def main(args):
     #redirect stderr
     sys.stderr = open(error_file,"w")
     
-
     #if "DASKPORT" in os.environ.keys():
     #    printlog("Using Dask Scheduler on Port " + str(os.environ['DASKPORT']) + " for cand_cutter queue",output_file=processfile)
     if args.etcd:
@@ -578,7 +838,7 @@ def main(args):
 
     #update default values and lookup tables
     sl.SNRthresh = args.SNRthresh
-    if args.gridsize != config.gridsize or args.nchans != config.nchans or args.nsamps != config.nsamps:
+    if args.gridsize != config.gridsize or args.nchans != config.nchans or args.nsamps != config.nsamps or args.imgdiffgulps != config.ngulps_per_file:
 
         config.nsamps = args.nsamps
         sl.nsamps = args.nsamps
@@ -588,6 +848,7 @@ def main(args):
         sl.widthtrials = sl.widthtrials[sl.widthtrials<args.nsamps]
         sl.nwidths = len(sl.widthtrials)
         sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,args.nsamps)
+        sl.full_boxcar_filter_imgdiff = sl.gen_boxcar_filter(sl.widthtrials,args.imgdiffgulps)
 
         config.nchans = args.nchans
         sl.nchans = args.nchans
@@ -621,17 +882,41 @@ def main(args):
         #sl.default_PSF = scPSF.generate_PSF_images(psf_dir,np.nanmean(sl.DEC_axis),args.kernelsize//2,True,args.nsamps) #make_PSF_cube(gridsize=args.kernelsize,nsamps=args.nsamps,nchans=args.nchans)
         #sl.default_PSF_params = (args.kernelsize,"{d:.2f}".format(d=np.nanmean(sl.DEC_axis)))
 
-        sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
         sl.tDM_max = (4.15)*np.max(sl.DM_trials)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
         sl.maxshift = int(np.ceil(sl.tDM_max/config.tsamp))
 
+        sl.DM_trials_slow = np.array(sl.gen_dm(sl.minDM*5,sl.maxDM*5,config.DM_tol,config.fc*1e-3,config.nchans,config.tsamp_slow,config.chanbw,args.nsamps))#np.array(sl.gen_dm(sl.minDM*5,sl.maxDM,config.DM_tol_slow,config.fc*1e-3,config.nchans,config.tsamp_slow,config.chanbw,args.nsamps))#[0:1]
+        sl.nDMtrials_slow = len(sl.DM_trials_slow)
+
+        sl.corr_shifts_all_append_slow,sl.tdelays_frac_append_slow,sl.corr_shifts_all_no_append_slow,sl.tdelays_frac_no_append_slow = sl.gen_dm_shifts(sl.DM_trials_slow,sl.freq_axis,config.tsamp_slow,config.nsamps)
+
+        #sl.current_noise = noise_update_all(None,config.gridsize,config.gridsize,sl.DM_trials,sl.widthtrials,readonly=True) #get_noise_dict(config.gridsize,config.gridsize)
+        sl.tDM_max_slow = (4.15)*np.max(sl.DM_trials_slow)*((1/np.min(sl.freq_axis)/1e-3)**2 - (1/np.max(sl.freq_axis)/1e-3)**2) #ms
+        sl.maxshift_slow = int(np.ceil(sl.tDM_max_slow/config.tsamp_slow))
+
+
         printlog("UPDATED MAXSHIFT:" + str(sl.maxshift),output_file=processfile)
+
     if args.nocutoff:
         sl.default_cutoff = 0
     else:
         printlog(sl.DEC_axis,output_file=processfile)
-        sl.default_cutoff = sl.get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=sl.DEC_axis[1]-sl.DEC_axis[0])
+        sl.default_cutoff = get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=np.abs(sl.RA_axis[1]-sl.RA_axis[0]))
         printlog("Initialized pixel cutoff to " + str(sl.default_cutoff) + " pixels",output_file=processfile)
+
+    """
+    #move PSF, width trials, DM trials to GPU
+    sl.default_PSF_gpu_0 = jax.device_put(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True))))[int((sl.default_PSF.shape[0]-sl.gridsize)//2):int((sl.default_PSF.shape[0]-sl.gridsize)//2)+sl.gridsize,
+                      (int((sl.default_PSF.shape[1]-sl.gridsize)//2))+int(sl.default_cutoff//2):(int((sl.default_PSF.shape[1]-sl.gridsize)//2)+sl.gridsize)+(-(sl.default_cutoff - int(sl.default_cutoff//2)))],jax.devices()[0])
+    sl.default_PSF_gpu_1 = jax.device_put(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True))))[int((sl.default_PSF.shape[0]-sl.gridsize)//2):int((sl.default_PSF.shape[0]-sl.gridsize)//2)+sl.gridsize,
+                      (int((sl.default_PSF.shape[1]-sl.gridsize)//2))+int(sl.default_cutoff//2):(int((sl.default_PSF.shape[1]-sl.gridsize)//2)+sl.gridsize)+(-(sl.default_cutoff - int(sl.default_cutoff//2)))],jax.devices()[1])
+    sl.corr_shifts_all_gpu_0 = jax.device_put(sl.corr_shifts_all_gpu_0,jax.devices()[0])
+    sl.tdelays_frac_gpu_0 = jax.device_put(sl.tdelays_frac_gpu_0,jax.devices()[0])
+    sl.corr_shifts_all_gpu_1 = jax.device_put(sl.corr_shifts_all_gpu_1,jax.devices()[1])
+    sl.tdelays_frac_gpu_1 = jax.device_put(sl.tdelays_frac_gpu_1,jax.devices()[1])
+    sl.full_boxcar_filter_gpu_0 = jax.device_put(sl.full_boxcar_filter_gpu_0,jax.devices()[0])
+    sl.full_boxcar_filter_gpu_1 = jax.device_put(sl.full_boxcar_filter_gpu_1,jax.devices()[1])
+    """
 
     #write DM and width trials to file for cand cutter
     np.save(cand_dir + "DMtrials.npy",np.array(sl.DM_trials))
@@ -644,6 +929,7 @@ def main(args):
     if args.initframes:
         printlog("Initializing previous frames...",output_file=processfile)
         sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps-sl.maxshift,args.nchans)
+        sl.init_last_frame(args.gridsize,args.gridsize,args.nsamps-sl.maxshift_slow,args.nchans,slow=True)
 
     #initialize noise stats
     if args.initnoise or args.initnoisezero:
@@ -673,40 +959,173 @@ def main(args):
             corr_shifts_all = sl.corr_shifts_all_no_append
             tdelays_frac = sl.tdelays_frac_no_append
 
-        if args.DMbatches > 1:
-            #subgridsize_DEC = subgridsize_RA = args.gridsize//args.DMbatches
-            subgridsize_DEC = args.gridsize//args.DMbatches
-            subgridsize_RA = (args.gridsize-sl.default_cutoff)//args.DMbatches
-            #subband_size = args.nchans//(args.DMbatches)#*args.DMbatches)
-            for i in range(args.DMbatches):
-                for j in range(args.DMbatches):
-                    jax_funcs.matched_filter_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]))
-
-
-                    jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+        if args.completeness:
+            #append (normal)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.default_PSF_gpu_0,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.corr_shifts_all_gpu_0,
                                                jax.device_put(corr_shifts_all,jax.devices()[0]),
+                                               #sl.tdelays_frac_gpu_0,
                                                jax.device_put(tdelays_frac,jax.devices()[0]),
-                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth,i=i,j=j)
-                    jax_funcs.dedisp_snr_fft_jit_0(jax.device_put(np.array(np.random.normal(size=(args.gridsize//args.DMbatches,args.gridsize//args.DMbatches,maxshift + args.nsamps,args.nchans)),dtype=np.float32),
-                                               jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
-                                               jax.device_put(tdelays_frac,jax.devices()[1]),
-                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
-                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=0.1,i=i,j=j)
-
-        else:
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
-                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),jax.device_put(corr_shifts_all,jax.devices()[0]),
-                                               jax.device_put(tdelays_frac,jax.devices()[0]),
+                                               #sl.full_boxcar_filter_gpu_0,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
-                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),jax.device_put(corr_shifts_all,jax.devices()[1]),
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.default_PSF_gpu_1,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.corr_shifts_all_gpu_1,
+                                               jax.device_put(corr_shifts_all,jax.devices()[1]),
+                                               #sl.tdelays_frac_gpu_1,
                                                jax.device_put(tdelays_frac,jax.devices()[1]),
+                                               #sl.full_boxcar_filter_gpu_1,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+
+            #no append (slow)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.default_PSF_gpu_0,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.corr_shifts_all_gpu_0,
+                                               jax.device_put(sl.corr_shifts_all_no_append_slow,jax.devices()[0]),
+                                               #sl.tdelays_frac_gpu_0,
+                                               jax.device_put(sl.tdelays_frac_no_append_slow,jax.devices()[0]),
+                                               #sl.full_boxcar_filter_gpu_0,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.default_PSF_gpu_1,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.corr_shifts_all_gpu_1,
+                                               jax.device_put(sl.corr_shifts_all_append,jax.devices()[1]),
+                                               #sl.tdelays_frac_gpu_1,
+                                               jax.device_put(sl.tdelays_frac_append,jax.devices()[1]),
+                                               #sl.full_boxcar_filter_gpu_1,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
 
 
+            #append (slow)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.default_PSF_gpu_0,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.corr_shifts_all_gpu_0,
+                                               jax.device_put(sl.corr_shifts_all_append_slow,jax.devices()[0]),
+                                               #sl.tdelays_frac_gpu_0,
+                                               jax.device_put(sl.tdelays_frac_append_slow,jax.devices()[0]),
+                                               #sl.full_boxcar_filter_gpu_0,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.default_PSF_gpu_1,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.corr_shifts_all_gpu_1,
+                                               jax.device_put(sl.corr_shifts_all_append_slow,jax.devices()[1]),
+                                               #sl.tdelays_frac_gpu_1,
+                                               jax.device_put(sl.tdelays_frac_append_slow,jax.devices()[1]),
+                                               #sl.full_boxcar_filter_gpu_1,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+
+
+            #no append, image differencing
+            jax_funcs.img_diff_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[0]),
+                                               #jax_funcs.PSF_1,#
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.img_diff_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[1]),
+                                               #jax_funcs.PSF_2,#
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+
+
+
+
+
+
+        else:
+            #append (normal)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.default_PSF_gpu_0,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.corr_shifts_all_gpu_0,
+                                               jax.device_put(corr_shifts_all,jax.devices()[0]),
+                                               #sl.tdelays_frac_gpu_0,
+                                               jax.device_put(tdelays_frac,jax.devices()[0]),
+                                               #sl.full_boxcar_filter_gpu_0,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.default_PSF_gpu_1,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.corr_shifts_all_gpu_1,
+                                               jax.device_put(corr_shifts_all,jax.devices()[1]),
+                                               #sl.tdelays_frac_gpu_1,
+                                               jax.device_put(tdelays_frac,jax.devices()[1]),
+                                               #sl.full_boxcar_filter_gpu_1,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+        
+            #no append (slow)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.default_PSF_gpu_0,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.corr_shifts_all_gpu_0,
+                                               jax.device_put(sl.corr_shifts_all_no_append_slow,jax.devices()[0]),
+                                               #sl.tdelays_frac_gpu_0,
+                                               jax.device_put(sl.tdelays_frac_no_append_slow,jax.devices()[0]),
+                                               #sl.full_boxcar_filter_gpu_0,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.default_PSF_gpu_1,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.corr_shifts_all_gpu_1,
+                                               jax.device_put(sl.corr_shifts_all_append,jax.devices()[1]),
+                                               #sl.tdelays_frac_gpu_1,
+                                               jax.device_put(sl.tdelays_frac_append,jax.devices()[1]),
+                                               #sl.full_boxcar_filter_gpu_1,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+
+
+            #append (slow)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.default_PSF_gpu_0,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               #sl.corr_shifts_all_gpu_0,
+                                               jax.device_put(sl.corr_shifts_all_append_slow,jax.devices()[0]),
+                                               #sl.tdelays_frac_gpu_0,
+                                               jax.device_put(sl.tdelays_frac_append_slow,jax.devices()[0]),
+                                               #sl.full_boxcar_filter_gpu_0,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.default_PSF_gpu_1,
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               #sl.corr_shifts_all_gpu_1,
+                                               jax.device_put(sl.corr_shifts_all_append_slow,jax.devices()[1]),
+                                               #sl.tdelays_frac_gpu_1,
+                                               jax.device_put(sl.tdelays_frac_append_slow,jax.devices()[1]),
+                                               #sl.full_boxcar_filter_gpu_1,
+                                               jax.device_put(sl.full_boxcar_filter,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+
+        
+            #no append, image differencing
+            jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[0]),
+                                               #jax_funcs.PSF_1,#
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
+                                               jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[0]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
+            jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[1]),
+                                               #jax_funcs.PSF_2,#
+                                               jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
+                                               jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[1]),
+                                               jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
+        
 
     printlog("USEFFT = " + str(args.usefft),output_file=processfile)
     #total expected number of bytes for each sub-band image
@@ -759,33 +1178,47 @@ def main(args):
             servSockD_list[ii].listen(args.maxconnect)
             printlog("Made connection",output_file=processfile)
             printlog("")
-            multiport_accepting[ii] = True
+            #multiport_accepting[ii] = True
 
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
     #if "DASKPORT" in os.environ.keys() and QSETUP:
     #    executor = QCLIENT
     #else:
-    executor = ThreadPoolExecutor(args.maxProcesses)
-    search_executor = ThreadPoolExecutor(args.maxProcesses)
+    if len(args.daskaddress)>0:
+        printlog("Using DASK scheduler",output_file=processfile)
+        executor = Client(args.daskaddress)#,serializers=["msgpack"],deserializers=["msgpack"])
+        #search_executor = Client(args.daskaddress)
+        #slowlock_ = Lock_DASK(client=executor)
+    else:
+        executor = ThreadPoolExecutor(args.maxProcesses)
+        search_executor = ThreadPoolExecutor(args.maxProcesses)
+        slowlock_ = Lock()
     #executor = Client(processes=False)#"10.41.0.254:8844")
 
     task_list = []
+    task_timing = []
     multiport_task_list = []
     multiport_num_list = []
+    dask_enabled = len(args.daskaddress)>0
+    printlog("DASK ENABLED FLAG = " + str(dask_enabled),output_file=processfile)
     while True: # want to keep accepting connections
         printlog("FULLIMG_DICTS---------------------------",output_file=processfile)
         printlog(fullimg_dict,output_file=processfile)
         printlog(slow_fullimg_dict,output_file=processfile)
+        printlog(imgdiff_fullimg_dict,output_file=processfile)
         printlog("----------------------------------------",output_file=processfile)
+        packet_dict = dict()
+        packet_dict["dropped"] = 0
         if len(args.multiport)==0: 
             ret = multiport_task(servSockD,-1,port,maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor)
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,slowlock_,args.forfeit)
             if type(ret) == int:
                 if ret == ECODE_CONT:
+                    packet_dict["dropped"] += 1
                     printlog("multiport task exited with error code " + str(ret),output_file=processfile)
                     printlog("--continuing",output_file=processfile)
                     continue
@@ -801,25 +1234,49 @@ def main(args):
                     break
             else:
                task_list += list(ret) 
+            ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
         else:
-            for ii in range(len(servSockD_list)):
-                #if multiport_accepting[ii]:
-                #printlog("TASK " + str(ii),output_file=processfile)
-                
-                #try submitting immediately then waiting for all tasks from this iteration to finish
-                multiport_task_list.append(executor.submit(multiport_task,servSockD_list[ii],ii,args.multiport[ii],maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
+            #SELECT
+            readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout)
+            printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
+            for ii in range(len(readsockets)):
+                #read data
+                ret=readcorrdata(readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
+                                    maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
+                                    args.offline)
+                if type(ret) != int:
+                    corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = ret
+                    if dask_enabled:
+                        multiport_task_list.append(multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+                                    ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,search_executor))
-                multiport_num_list.append(ii)
-            wait(multiport_task_list)
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,args.forfeit))
+                    else:
+                        multiport_task_list.append(executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+                                    ii,args.testh23,
+                                    args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
+                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
+                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,args.forfeit))
+                    multiport_num_list.append(ii)
+                else:
+                    packet_dict["dropped"] += 1
+            ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
+            #wait(multiport_task_list)
 
             #check if any have finished
             #donetasks = []
             for jj in range(len(multiport_task_list)):
                 #if multiport_task_list[jj].done():
-                ret = multiport_task_list[jj].result()
+                #if len(args.daskaddress)>0:
+                #    ret = multiport_task_list[jj]
+                #else:
+                if dask_enabled:
+                    ret = multiport_task_list[jj]
+                else:
+                    ret = multiport_task_list[jj].result()
                 if type(ret) == int:
                     if ret == ECODE_CONT:
                         printlog("multiport task exited with error code " + str(ret),output_file=processfile)
@@ -838,6 +1295,7 @@ def main(args):
                 else:
                     printlog("returned search tasks:" + str(ret),output_file=processfile)
                     task_list += list(ret)
+                    #task_timing += [time.time()]*len(ret)
                     #donetasks.append(jj)
             multiport_task_list = []
             multiport_num_list = []
@@ -850,9 +1308,22 @@ def main(args):
         #check if search tasks finished
         donetasks = []
         for i in range(len(task_list)):
-            if task_list[i].done(): donetasks.append(i)
+            if task_list[i].done(): 
+                donetasks.append(i)
+            """
+            elif args.realtime and (time.time()-task_timing[i] >= args.rttimeout) and task_list[i].cancel():
+                donetasks.append(i)
+                timing_dict = dict()
+                timing_dict["search_time"]=-1
+                timing_dict["search_tx_time"]=-1
+                timing_dict["search_completed"]=False
+                ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
+            """
+
+
         for i in np.sort(donetasks)[::-1]:
             task_list.pop(i)
+            #task_timing.pop(i)
 
     executor.shutdown()
     clientSocket.close()
@@ -891,7 +1362,7 @@ if __name__=="__main__":
     parser.add_argument('--samenoise',action='store_true',help='Assume the noise in each pixel is the same')
     parser.add_argument('--cuda',action='store_true',help='Uses PyTorch to accelerate computation with GPUs. The cuda flag overrides the multithreading option')
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
-    parser.add_argument('--PyTorchDedispersion',action='store_true',help='Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
+    parser.add_argument('--PyTorchDedispersion',action='store_true',help='[Deprecated] Uses GPU-accelerated dedispersion code from https://github.com/nkosogor/PyTorchDedispersion')
     parser.add_argument('--exportmaps',action='store_true',help='Output noise maps for each DM and width trial to the noise directory')
     parser.add_argument('--initframes',action='store_true',help='Initializes previous frames for dedispersion')
     parser.add_argument('--initnoise',action='store_true',help='Initializes noise statistics from fast vis data for S/N estimates')
@@ -910,8 +1381,21 @@ if __name__=="__main__":
     parser.add_argument('--realtime',action='store_true',help='Running in realtime system, puts image data in PSRDADA buffer')
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     parser.add_argument('--multiport',nargs='+',default=[],help='List of port numbers to listen on, default using single port specified in --port',type=int)
+    parser.add_argument('--imgdiffgulps',type=int,help='Number of gulps to search at a time with image differencing, default=' + str(config.ngulps_per_file),default=config.ngulps_per_file)
+    parser.add_argument('--slow',action='store_true',help='Activate slow search pipeline, which bins data by 5 samples and re-searches')
+    parser.add_argument('--imgdiff',action='store_true',help='Activate image differencing search pipeline, which bins data by 25 samples and searches 5-minute chunk at DM=0')
+    parser.add_argument('--daskaddress',type=str,help='tcp address of dask scheduler, default does not use scheduler',default="")
+    parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
+    parser.add_argument('--attachmode',action='store_true',help='in attached mode, search tasks for slow and image diff pipelines are combined with normal pipeline to minimize overheads')
+    parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
+    parser.add_argument('--forfeit',action='store_true',help='Forfeit searching base resolution data gulp to search slow/imgdiff data; forfeit searching slow data gulp to search imgdiff data; superceded by attach mode')
     args = parser.parse_args()
 
-
-    
+    """
+    if len(args.daskaddress)>0:
+        print("Connecting to dask scheduler "+args.daskaddress)
+        client = Client(args.daskaddress)
+        client.submit(main,args,pure=False) 
+    else:
+    """
     main(args)

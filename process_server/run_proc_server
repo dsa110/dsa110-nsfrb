@@ -1,7 +1,29 @@
 #!/bin/bash
-
+rt="false"
+completeness="false"
 #run this script to open server, attach to a dask worker, and receive 32x32x25x16 image data
-dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 10 --name process_server_WRKR > $PWD/.process_server_WRKR_log.txt 2>&1 &
+#dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 10 --name process_server_WRKR > $PWD/.process_server_WRKR_log.txt 2>&1 &
 > $PWD/process_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt 
-python run.py --spacefilter --usefft --samenoise --cuda --appendframe --usejax --offline -T --savesearch --etcd --SNRthresh 4 --noiseth 3 --nsamps 25 --initnoise --initnoisezero --gridsize 301 --port 8080 --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 "$@" #--initnoise --initnoisezero
-#python run.py --spacefilter --usefft --samenoise --cuda --appendframe --usejax --offline -T --savesearch --etcd --SNRthresh 20 "$@"
+if [ "$rt" = "true" ]; 
+then
+	echo "realtime process server active"
+	#main
+	#dada_db -k cada -b 144961600
+	#dada_db -k caea -b 28992320
+	#dada_db -k cafa -b 28992320
+	python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax -T --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --realtime --slow --imgdiff --forfeit #--daskaddress "tcp://10.42.0.228:8786"
+else
+	echo "offline process server active"
+	if [ "$completeness" = "true" ];
+	then
+		echo "--completeness test"
+		cp -r $NSFRBDIR-noise $NSFRBDIR-noise-backup 
+		cp -r $NSFRBDIR-frames $NSFRBDIR-frames-backup
+		#on exit, restore
+		trap 'rm -r $NSFRBDIR-noise; mv $NSFRBDIR-noise-backup $NSFRBDIR-noise; rm -r $NSFRBDIR-frames; mv $NSFRBDIR-frames-backup $NSFRBDIR-frames' EXIT
+		
+		python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --offline -T --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --completeness "$@" #--initnoise --initnoisezero
+	else
+		python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --offline -T --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --slow --imgdiff --forfeit "$@" #--initnoise --initnoisezero
+	fi
+fi

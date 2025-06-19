@@ -16,13 +16,34 @@ conda env create -f casa310nsfrb_env.yml
 conda activate casa310nsfrb_env.yml
 ```
 
-install `dsa110-nsfrb` by runnning:
+Before installing `dsa110-nsfrb`, first edit the `setup.py` script and set `CORR_INSTALL` to True if installing on a single corr node as a real-time imager, or False if installing as a process server and post-processing node. Then install by running:
 
 ```bash
 pip install .
 ```
 
-from the bash command line. The following sub-modules are defined:
+from the bash command line. Add the following lines to the `~/.bashrc` to initialize environment variables:
+
+```bash
+export NSFRBDIR=PATHTOREPO/dsa110-nsfrb/
+export NSFRBIP=... #public ip address of process server, contact administrator
+```
+
+The environment variables below are required only for `T4REMOTE_INSTALL` and `H24_INSTALL` modes:
+
+```bash
+export SLACK_TOKEN_DSA=... #slack token, contact administrator
+export NSFRBT4=/home/user/data/T4/
+export NSFRBDATA=/dataz/dsa110/nsfrb/
+export DSA110DIR=/mnt/dsa110/
+```
+
+Restart the terminal or run `source ~/.bashrc` to set the environment variables.
+
+
+For corr node installation, a service file is provided as `realtime/rt_imager.service`, which should be setup with paths correctly pointing to the current working directory. This can be copied to the e.g. `/etc/systemd/user/` directory to run the real-time imager as a service. 
+
+The following sub-modules are defined:
 
 - `nsfrb`: Helper functions used by the process server and imaging client to run the NSFRB pipeline.
 	- `imaging`

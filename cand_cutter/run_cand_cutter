@@ -1,8 +1,0 @@
-#!/bin/bash
-
-#run this script to start background candidate post-processor
-#> $PWD-logfiles/candcutter_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt 
-#dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 1 --name cand_cutter_WRKR > $PWD/.cand_cutter_WRKR_log.txt 2>&1 &
-
-#python run.py --cutout --cluster --classify --toslack --etcd "$@"  #normal operation
-python run.py --etcd --subimgpix 301 --SNRthresh 4 --useTOA --psfpercentile 70 --maxcands 100  --cluster --avgcluster --psfcluster --classify3D --clusteriters 2 --traininject --toslack --maxcand --model_weights3D "/dataz/dsa110/nsfrb/dsa110-nsfrb-training/NN_train/enhanced3dcnn_weights_final3.pth" --classcut "$@" #--cluster --psfcluster --classify3D

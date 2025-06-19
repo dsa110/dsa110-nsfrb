@@ -16,12 +16,61 @@ from scipy.stats import norm,uniform
 import copy
 from scipy.interpolate import interp1d
 from nsfrb.imaging import DSAelev_to_ASTROPYalt,get_ra,ASTROPYalt_to_DSAelev,uv_to_pix
-from nsfrb.config import plan_dir,table_dir,vis_dir,Lon,Lat,Height,az_offset,tsamp,nsamps
+from nsfrb.config import plan_dir,table_dir,Lon,Lat,Height,az_offset,tsamp,nsamps,T,pixsize
+try:
+    from nsfrb.config import vis_dir
+except Exception as exc:
+    print(exc)
 from nsfrb.pipeline import read_raw_vis
 import pickle as pkl
 """
 This module contains functions for observation planning, including making DSA-110 observing scripts giving desired elevation at subsequent timesteps.
 """
+
+
+def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000,pixperFWHM=3):
+    """
+    dec: current declination
+    T: integration time in milliseconds
+    """
+    if usefit:
+        srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
+        if len(srcs)>0:
+            print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
+            decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
+            idx = np.argmin(np.abs(decs-dec))
+            if np.abs(decs[idx]-dec)<1:
+
+                f = open(srcs[idx],"r")
+                table = json.load(f)
+                f.close()
+                if 'core_gulp_RA_drift_slope' in table.keys():
+                    print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
+                    cutoff_pix = -int((table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)*(pixperFWHM/3))
+                    print("New RA cutoff:",cutoff_pix)
+                    return cutoff_pix
+        else:
+            f = open(table_dir + "/NSFRB_astrocal.json","r")
+            table = json.load(f)
+            f.close()
+            if 'core_gulp_RA_drift_slope' in table.keys():
+                print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
+                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                print("New RA cutoff:",cutoff_pix)
+                return cutoff_pix
+
+
+        print("Fit cal not available, using pix estimate")
+    scale = offset_s*1000/T
+    cutoff_as = scale*(T/1000)*15*np.cos(dec*np.pi/180) #arcseconds
+    cutoff_pix = np.abs((cutoff_as/3600)/pixsize)#np.abs((cutoff_as/3600)//pixsize)
+    print("New RA cutoff:",cutoff_pix)
+    if asint: return int(np.ceil(cutoff_pix))
+    else: return cutoff_pix#int(np.ceil(cutoff_pix))
+
+
+
+
 
 
 def GP_curve(longitude,lat_offset=0):
@@ -961,6 +1010,38 @@ def generate_plane(mjd,elev,el_slew_rate=0.5368867455531618,resolution=1,subreso
     else:
         return mjd_steps,elev_steps
 
+def read_vlac(fname=table_dir + "VLA_CALIBRATORS_DICT.pkl"):
+    f = open(fname,"rb")
+    dat = pkl.load(f)
+    f.close()
+    coords = []
+    fluxs = []
+    for k in dat.keys():#range(len(k)):
+        #print(k)
+        if 'FLUX' in str(k) and dat[k]!=0:
+            coords.append(dat[str(k)[:8]])
+            fluxs.append(dat[k]*1000) #mJy
+    return SkyCoord(coords),np.array(fluxs)
+
+def vlac_cat(mjd,dd,sep=2.0*u.deg,decstrip=False):
+
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    coords,flux = read_vlac()
+
+    if decstrip:
+        d2d = np.abs(c.dec - coords.dec)
+    else:
+        d2d = c.separation(coords)
+    idx = np.arange(len(coords))
+
+    idxs = idx[d2d<sep]
+
+    c = coords[idxs]; f = flux[idxs]#; m = maxis[idxs]
+    return c[np.argsort(f)],f[np.argsort(f)]#,m[np.argsort(f)]
+
 
 
 # functions for parsing and using the VLA Calibrators Catalog
@@ -969,23 +1050,40 @@ def VLAC_data_to_dict(fname=table_dir+"VLA_CALIBRATORS.dat"):
     alldat_array = []
     alldat_RAs = []
     alldat_DECs = []
+    alldat_fluxs = []
     with open(fname,"r") as csvfile:
         rdr = csv.reader(csvfile,delimiter=' ')
         for row in rdr:
             if 'IAU' not in row and 'BAND' not in row and 'cm' not in ''.join(row) and row[0] != '=====================================================' and row[0] != '-----------------------------------------------------' and 'B1950' not in row and len(row)>2:
                 row2 = np.array(row)[np.array(row)!='']
-                print(row2)
-                print(row2[3],row2[4])
+                #print(row2)
+                #print(row2[3],row2[4])
                 alldat[row2[0]] = SkyCoord(row2[3]+('+' if '-' not in row2[4] else '')+row2[4],unit=(u.hourangle,u.deg),frame='icrs')
                 alldat_array.append(row2[3]+('+' if '-' not in row2[4] else '')+row2[4])
                 alldat_RAs.append(row2[3])
                 alldat_DECs.append(('+' if '-' not in row2[4] else '')+row2[4])
+                lastkey = row2[0]
+            elif '20cm' in ''.join(row) and '?' not in ''.join(row):
+                print(row)
+                row2 = np.array(row)[np.array(row)!='']#"".join(np.array(row)).split()
+                print('20cm',lastkey,row2,row2[6])#row2[0][row2[0].index("20cmL")+9:])
+                alldat_fluxs.append(float(row2[6]))
+                alldat[lastkey+"_20cmFLUX"] = float(row2[6])
+                """
+                if 'visplot' in row2[0]:
+                    alldat_fluxs.append(float(row2[0][row2[0].index("20cmL")+9:row2[0].index("visplot")]))
+                    alldat[lastkey+"_20cmFLUX"] = float(row2[0][row2[0].index("20cmL")+9:row2[0].index("visplot")])
+                else:
+                    alldat_fluxs.append(float(row2[0][row2[0].index("20cmL")+9:]))
+                    alldat[lastkey+"_20cmFLUX"] = float(row2[0][row2[0].index("20cmL")+9:])
+                """
     f = open(table_dir+"VLA_CALIBRATORS_DICT.pkl","wb")
     pkl.dump(alldat,f)
     f.close()
 
     np.save(table_dir + "VLA_CALIBRATORS_ARRAY_RA.npy",np.array(alldat_RAs))#SkyCoord(alldat_array,unit=(u.hourangle,u.deg),frame='icrs'))
     np.save(table_dir + "VLA_CALIBRATORS_ARRAY_DEC.npy",np.array(alldat_DECs))
+    np.save(table_dir + "VLA_CALIBRATORS_ARRAY_FLUX.npy",np.array(alldat_fluxs))
     return
 
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
@@ -1070,9 +1168,15 @@ def find_object_file(ra,dec,headersize=12,datasize=4,nsamps=2,nchan=2,Lon=Lon):
 
 #Vikram's functions to query NVSS sources
 # for NVSS stuff
-def read_nvss(fl="/home/ubuntu/vikram/browse_results.fits"):
+def read_nvss(fl=table_dir + "NVSS_FULL.fit"):#fl="/home/ubuntu/vikram/browse_results.fits",specfind=True,specfind_fl=table_dir + "SPECFINDV3.fit"):
 
     data = fits.open(fl)[1].data
+    ra = data["RAJ2000"]
+    dec = data["DEJ2000"]
+    flux = data["S1_4"]
+    maxis = data["MajAxis"]
+    coords = SkyCoord(ra,dec,unit=(u.deg,u.deg),frame='icrs')
+    """
     ra = data["RA"]
     dec = data["DEC"]
     flux = data["FLUX_20_CM"]
@@ -1080,6 +1184,39 @@ def read_nvss(fl="/home/ubuntu/vikram/browse_results.fits"):
 
     coords = SkyCoord(ra,dec,unit=(u.deg,u.deg))
 
+    if specfind and len(glob.glob(table_dir + "SPECFINDV3_xref.pkl"))==0:
+        data_S = fits.open(specfind_fl)[1].data
+        condition = data_S['nu'] == 1400
+        ra_S = data_S["RAJ2000"][condition]
+        dec_S = data_S['DEJ2000'][condition]
+        coords_S = SkyCoord(ra=ra_S*u.deg,dec=dec_S*u.deg,frame='icrs')
+        flux_S = data_S['S_nu_'][condition]
+        maxis_S = np.nan*np.ones(np.sum(condition))
+
+        #cross ref
+        idx_match,dist_match,tmp = coords_S.match_to_catalog_sky(coords)
+        condition = dist_match.to(u.arcsec).value>10
+        coords_S = coords_S[condition]
+        flux_S = flux_S[condition]
+        maxis_S = maxis_S[condition]
+
+        #save
+        f = open(table_dir + "SPECFINDV3_xref.pkl","wb")
+        datdict = dict()
+        datdict["coord"] =coords_S
+        datdict["flux"] = flux_S
+        pkl.dump(datdict,f)
+        f.close()
+    elif specfind:
+        f = open(table_dir + "SPECFINDV3_xref.pkl","rb")
+        datdict = pkl.load(f)
+        f.close()
+
+    if specfind:
+        coords = SkyCoord(np.concatenate([coords,datdict["coord"]]))
+        flux = np.concatenate([flux,datdict["flux"]])
+        maxis = np.concatenate([maxis,np.nan*np.ones(len(datdict["flux"]))])
+    """
     return coords,flux,maxis
 
 from nsfrb.config import Lat,Lon,Height
@@ -1102,10 +1239,46 @@ def nvss_cat(mjd,dd,sep=2.0*u.deg,decstrip=False):
     c = coords[idxs]; f = flux[idxs]; m = maxis[idxs]
     return c[np.argsort(f)],f[np.argsort(f)],m[np.argsort(f)]
 
-def read_atnf(fl=table_dir + "ATNF_CATALOG.csv"):
+
+def read_apertif(fl=table_dir + "APERTIF_CAT.fits"):
+    hdu = fits.open(fl)
+    idxs = hdu[1].data['SCode']=='S'
+    ras = hdu[1].data['RAdeg'][idxs]
+    decs = hdu[1].data['DEdeg'][idxs]
+    fluxs = hdu[1].data['Speak'][idxs]
+    return SkyCoord(ra=ras*u.deg,dec=decs*u.deg,frame='icrs'),fluxs
+
+def apertif_cat(mjd,dd,sep=2.0*u.deg,decstrip=False):
+
+    ra = (get_ra(mjd,dd))*u.deg
+    dec = dd*u.deg
+
+    c = SkyCoord(ra,dec)
+    coords,flux = read_apertif()
+
+
+    if decstrip:
+        d2d = np.abs(c.dec - coords.dec)
+    else:
+        d2d = c.separation(coords)
+    idx = np.arange(len(coords))
+
+    idxs = idx[d2d<sep]
+
+    c = coords[idxs]; f = flux[idxs]#; m = maxis[idxs]
+    return c[np.argsort(f)],f[np.argsort(f)]#,m[np.argsort(f)]
+
+
+
+
+def read_atnf(fl=table_dir + "ATNF_CATALOG_FULL.csv"):
     names = []
     ras = []
     decs = []
+    Ps = []
+    DMs = []
+    Ws = []
+    fluxs = []
     with open(fl,"r") as csvfile:
         rdr = csv.reader(csvfile,delimiter=';')
         for row in rdr:
@@ -1117,16 +1290,42 @@ def read_atnf(fl=table_dir + "ATNF_CATALOG.csv"):
                 coord = SkyCoord(row[2]+row[3],unit=(u.hourangle,u.deg),frame='icrs')
                 ras.append(coord.ra)
                 decs.append(coord.dec)
+
+
+            if '*' in row[4]:
+                Ps.append(np.nan)
+            else:
+                Ps.append(float(row[4]))
+
+            if '*' in row[5]:
+                DMs.append(np.nan)
+            else:
+                DMs.append(float(row[5]))
+
+            if '*' in row[6]:
+                Ws.append(np.nan)
+            else:
+                Ws.append(float(row[6]))
+
+            if '*' in row[7]:
+                fluxs.append(np.nan)
+            else:
+                fluxs.append(float(row[7]))
+
     coords = SkyCoord(ra=ras,dec=decs,frame='icrs')
     names = np.array(names)
-    return coords,names
+    Ps = np.array(Ps)
+    DMs = np.array(DMs)
+    Ws = np.array(Ws)
+    fluxs = np.array(fluxs)
+    return coords,names,Ps,DMs,Ws,fluxs
 
 def atnf_cat(mjd,dd,sep=2.0*u.deg):
     ra = (get_ra(mjd,dd))*u.deg
     dec = dd*u.deg
 
     c = SkyCoord(ra,dec)
-    coords,names = read_atnf()
+    coords,names,Ps,DMs,Ws,fluxs = read_atnf()
     idx = np.arange(len(coords))
     
     d2d = c.separation(coords)
@@ -1134,7 +1333,11 @@ def atnf_cat(mjd,dd,sep=2.0*u.deg):
 
     c = coords[idxs]
     n = names[idxs]
-    return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)]
+    p = Ps[idxs]
+    dm = DMs[idxs]
+    w = Ws[idxs]
+    f = fluxs[idxs]
+    return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)],p,dm,w,f
 
 def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
     names = []
@@ -1282,7 +1485,8 @@ def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path='',return_dec=False):
             #print((mjd-mjd)*86400/60, (tsamp*nsamps*90/1000/60))
             found=1
             break
-        elif i == 0 and mjd < mjd_f: return -1, -1, -1
+        elif i == 0 and mjd < mjd_f and return_dec: return -1, -1, -1
+        elif i == 0 and mjd < mjd_f and not return_dec: return -1, -1 
     if found == 1:
         if return_dec:
             return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp)),dec_f
@@ -1290,6 +1494,41 @@ def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path='',return_dec=False):
             return visfile[visfile.index("nsfrb_sb")+11:visfile.index(".out")],int(np.floor((mjd-mjd_f)*86400*1000/tsamp))
     else:
         if return_dec:
-            return -1,-1,-1,-1
-        else:
             return -1,-1,-1
+        else:
+            return -1,-1
+
+
+
+#DM trials
+def gen_dm(dm1,dm2,tol,nu,nchan,tsamp,B,nsamps,ZERO=True):
+    #tol = 1.25 # S/N loss tolerance
+    #nu = 1.405 # center frequency (GHz)
+    #nchan = 1024 # number of channels
+    #tsamp = 262.144 # sampling time (microseconds)
+    #B = 250./nchan # bandwidth per channel (MHz)
+
+    ndms = 1
+    dm_prev = dm1
+    dm = 0.
+    dms = []
+    while dm<dm2:
+
+        n2 = nchan**2.
+        alp = 1./(16.+n2)
+        bet = tsamp**2.
+        dm = n2*alp*dm_prev + np.sqrt(16.*alp*(tol**2.-n2*alp)*dm_prev**2.+16.*alp*bet*(tol**2.-1.)*(nu**3./8.3/B)**2.)
+        dm_prev = dm
+        ndms += 1
+        #print(dm)
+        dms.append(dm)
+    dms = np.array(dms)
+    #limit maximum DM using the number of samples
+    fmin=nu - (B*nchan*1e-3/2) #GHz
+    fmax=nu + (B*nchan*1e-3/2)
+    tdms = np.ceil((4.15)*np.array(dms)*((1/fmin)**2 - (1/fmax)**2)/tsamp) #samps
+    dms = dms[tdms<nsamps]
+
+    #print('DM trials:',ndms)
+    if ZERO: return [0] +list(dms)
+    else: return dms

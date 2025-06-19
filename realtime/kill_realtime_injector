@@ -1,0 +1,4 @@
+#!/bin/bash
+
+kill -9 -"$(pgrep run_realtime_injector)"
+

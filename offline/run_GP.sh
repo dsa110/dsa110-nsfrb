@@ -8,9 +8,9 @@ maxrun=$2
 ngulp=$3
 gulpoffset=$4
 inject=$5
-injectflag=" "
+injectflaginit=" "
 if ([[ $inject > 0 ]]); then
-	injectflag=" --inject"
+	injectflaginit=" --inject"
 fi
 
 gpisot=$6
@@ -21,6 +21,7 @@ echo "here"
 donefiles=() #"00-00-00T00:00:00.000")
 linenumber=1
 fname="${filedir}vis_files.csv"
+tally=0
 cat $fname | while read l
 do
 	echo $l
@@ -59,8 +60,18 @@ do
 			fi
 		done
 		if (( $prerun==0 )); then
-			python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8 --filedir $filedir$injectflag --num_inject $inject --inject_noiseless --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --robust -2 --bmin 20 --maxProcesses 32 --port 8080 --multiimage --stagger_multisend 0.5 --multisend --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --briggs --search #--multisend --stagger_multisend 0
+			injectflag=" "
+			if (( $tally % 5 ==0 )); then
+				injectflag=$injectflaginit
+			fi
+			
+			slowinjectflag=""
+			if (( $tally % 25 ==0 )); then
+				slowinjectflag=" --slowinject"
+			fi      
+			python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8 --filedir $filedir$injectflag$slowinjectflag --num_inject $inject --inject_noiseless --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --robust -2 --bmin 20 --maxProcesses 32 --port 8080 --multiimage --stagger_multisend 0 --multisend --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --briggs --search --primarybeam #--multisend --stagger_multisend 0
 
+			tally=$((tally+1))
 			donefiles+=($label)
 			count=$((count + 1))
 			

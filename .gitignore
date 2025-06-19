@@ -183,3 +183,7 @@ cand_cutter/.*log*txt
 realtime/realtime_imager_log.txt
 offline/tmp1.txt
 offline/newfile.csv
+scripts/x11display.png
+scripts/x11size.txt
+scripts/x11alertmessage.txt
+scripts/hdrtestnew.txt
