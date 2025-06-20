@@ -458,6 +458,91 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
 
     plt.figure(figsize=(12,12))
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
+        plt.plot(pfunc(faxis),pfunc(faxis),color='red')
+        plt.fill_between(pfunc(faxis),pfunc_down(faxis),pfunc_up(faxis),color='red',alpha=0.5)
+        plt.plot(pfunc(faxis),pfunc_fit(faxis),color='grey')
+        plt.fill_between(pfunc(faxis),pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
+
+    violinfluxes = []
+    uniquenvssfluxes = []
+    for i in range(len(uniquesrcnames)):
+        uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
+        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]]))
+    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    #plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
+    plt.xlabel("Calibrated Flux (mJy)")
+    plt.ylabel("NVSS or VLAC Flux (mJy)")
+    plt.title("Last Updated: " + Time.now().isot)
+    #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
+    #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
+
+    if not badsoln and not np.isnan(Smin_search):
+        plt.axvline(Smin,color='purple',linestyle='--')
+        plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
+        plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+
+        plt.axvline(Smin_search,color='black',linestyle='--')
+        plt.axvspan(Smin_search-Smin_loerr_search,Smin_search+Smin_uperr_search,color='black',alpha=0.25)
+        plt.text(Smin_search,2,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
+    plt.axhline(NSFRBsens,color='blue',linestyle='--')
+    plt.text(pfunc(5),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    #plt.ylim(NSFRBsens/2)
+    plt.yscale("log")
+    plt.xscale("log")
+    plt.ylim(0.7,3e3)
+    plt.xlim(pfunc(2e-4),pfunc(300))
+    #plt.yscale("log")
+    #plt.xscale("log")
+    #plt.colorbar(label="Normalized Flux Offset from Noise Floor")
+    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibrated_violin.png")
+    plt.close()
+
+
+    plt.figure(figsize=(12,12))
+    if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
+        plt.plot(pfunc(faxis),pfunc(faxis),color='red')
+        plt.fill_between(pfunc(faxis),pfunc_down(faxis),pfunc_up(faxis),color='red',alpha=0.5)
+        plt.plot(pfunc(faxis),pfunc_fit(faxis),color='grey')
+        plt.fill_between(pfunc(faxis),pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
+    """
+    violinfluxes = []
+    uniquenvssfluxes = []
+    for i in range(len(uniquesrcnames)):
+        uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
+        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]]))
+    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes,alpha=0.2)
+    """
+    plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.15,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
+    plt.xlabel("Calibrated Flux (mJy)")
+    plt.ylabel("NVSS or VLAC Flux (mJy)")
+    plt.title("Last Updated: " + Time.now().isot)
+    #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
+    #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
+
+    if not badsoln and not np.isnan(Smin_search):
+        plt.axvline(Smin,color='purple',linestyle='--')
+        plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
+        plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+
+        plt.axvline(Smin_search,color='black',linestyle='--')
+        plt.axvspan(Smin_search-Smin_loerr_search,Smin_search+Smin_uperr_search,color='black',alpha=0.25)
+        plt.text(Smin_search,2,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
+    plt.axhline(NSFRBsens,color='blue',linestyle='--')
+    plt.text(pfunc(5),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    #plt.ylim(NSFRBsens/2)
+    plt.yscale("log")
+    plt.xscale("log")
+    plt.ylim(0.7,3e3)
+    plt.xlim(pfunc(2e-4),pfunc(300))
+    #plt.yscale("log")
+    #plt.xscale("log")
+    plt.colorbar(label="Normalized Flux Offset from Noise Floor")
+    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibrated_scatter.png")
+    plt.close()
+
+
+    plt.figure(figsize=(12,12))
+    if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
         plt.plot(pfunc(faxis)/Smin_search,pfunc(faxis)/NSFRBsens,color='red')
         plt.fill_between(pfunc(faxis)/Smin_search,pfunc_down(faxis)/NSFRBsens,pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
         plt.plot(pfunc_fit(faxis)/Smin_search,pfunc_fit(faxis)/NSFRBsens,color='grey')

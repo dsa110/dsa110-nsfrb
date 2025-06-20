@@ -187,6 +187,15 @@ def main(args):
     #read and reshape into np array (25 times x 4656 baselines x 8 chans x 2 pols, complex)
     gulp_counter = 0
     tasklist = []
+
+
+    #set the dec, sb, and mjd
+    Dec = args.dec
+    sb = args.sb
+    f = open(args.mjdfile,"r")
+    mjd_init = float(f.read())
+    f.close()
+    print("STARTUP PARAMS:",sb,Dec,mjd_init)
     while True:
         dat = None
         while (dat is None) or dat.shape[0]<args.num_time_samples:
@@ -194,10 +203,10 @@ def main(args):
             #if args.testh23:
             #    dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_TESTKEYS[args.sb],nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
             #else:
-            if gulp_counter == 0:
-                dat_i,mjd_init,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
-            else:
-                dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
+            #if gulp_counter == 0:
+            #    dat_i,mjd_init,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
+            #else:
+            dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
            
            
             #printlog(str((mjd,sb,Dec)),output_file=logfile)
@@ -476,7 +485,8 @@ if __name__=="__main__":
     parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
     parser.add_argument('--primarybeam',action='store_true',help='Apply a primary beam correction')
     parser.add_argument('--failsafe',action='store_true',help='Shutdown if real-time limit is exceeded')
-
+    parser.add_argument('--dec',type=float,help='Pointing declination',default=71.6)
+    parser.add_argument('--mjdfile',type=str,help='MJD file',default='/home/ubuntu/tmp/mjd.dat')
     args = parser.parse_args()
     main(args)
 
