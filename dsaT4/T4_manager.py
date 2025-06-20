@@ -1303,6 +1303,9 @@ def main(args):
         searched_image = rtread_cand(key=rtkey2,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])
         TOAs = (rtread_cand(key=rtkey3,gridsize_dec=img_search_shape[0],gridsize_ra=img_search_shape[1],nsamps=img_search_shape[2],nchans=img_search_shape[3])).astype(int)
         """
+        if args.remote:
+            #update injections
+            os.system("scp h24.pro.pvt:/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-injections/injections.csv " + inject_dir)
         if not args.testtrigger:
             try:
                 #if remote, copy from h24

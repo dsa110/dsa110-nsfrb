@@ -29,7 +29,7 @@ do
 
 		echo ""
 		echo ">>>>>>>>>>>>>>> journalctl.txt"
-		journalctl --user --since today -r -n $2 > ${cwd}-logfiles/journalctl.txt
+		journalctl --user --since today -r -u T4manager.service -n $2 > ${cwd}-logfiles/journalctl.txt
 		cat ${cwd}-logfiles/journalctl.txt
 		echo ">>>>>>>>>>>>>>>"
 
