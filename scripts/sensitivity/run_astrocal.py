@@ -96,7 +96,7 @@ def init_table(outriggers=False,astrocal_table=table_dir + "/NSFRB_astrocal.json
     f.close()
     return
 
-def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0,gridsize=IMAGE_SIZE,robust=-2,exactposition=False,ngulps=1,completeness_perc=90,completeness=False):
+def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,speccal_table=table_dir + "/NSFRB_speccal.json",init=False,exclude_table=table_dir + "/NSFRB_excludecal.json",nsamps=nsamps,image_flux=False,fitresid_th = 0.1,target='',targetMJD=0.0,target_timerange=5,target_decrange=0.5,flagants=[],flagcorrs=[],bmin=0,gridsize=IMAGE_SIZE,robust=-2,exactposition=False,ngulps=1,completeness_perc=90,completeness=False,nchans=16,nchans_per_node=8):
     """
     This function updates the flux calibration table with the most
     recent NVSS observations.
@@ -127,12 +127,16 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     print(bright_measfluxerrs)
     print(bright_nvssfluxes)
     for i in range(len(bright_nvssnames)):
-        if bright_measfluxs[i]==-1: continue
+        if type(bright_measfluxs[i]) != list and bright_measfluxs[i]==-1: continue
         if bright_nvssnames[i] not in tab[arraykey].keys():
             tab[arraykey][bright_nvssnames[i]] = dict()
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]] = dict()
-        tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["meas_flux"] = float(bright_measfluxs[i]/nsamps)
-        tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["meas_flux_error"] = float(bright_measfluxerrs[i]/nsamps)
+        if type(bright_measfluxs[i]) == list:
+            tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["meas_flux"] = [float(bright_measfluxs[i][ii]) for ii in range(len(bright_measfluxs[i]))]
+        else:
+            tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["meas_flux"] = [float(bright_measfluxs[i])]
+        #tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["meas_flux"] = float(bright_measfluxs[i]/nsamps)
+        tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["meas_flux_error"] = float(bright_measfluxerrs[i]) #/nsamps)
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["flux_mJy"] = float(bright_nvssfluxes[i])
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["nvss_ra"] = bright_nvsscoords[i].ra.value
         tab[arraykey][bright_nvssnames[i]][bright_fnames[i]]["nvss_dec"] = bright_nvsscoords[i].dec.value
@@ -166,16 +170,19 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
                 #if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' in tab[arraykey][k][kk].keys()) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))):
                 
                 #if a target is given, check that sources are within range
-                if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["nvss_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
-                    print("Including ",k)
-                    allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
-                    allfluxerrs.append(tab[arraykey][k][kk]['meas_flux_error'])
-                    allnvssfluxes.append(tab[arraykey][k][kk]['flux_mJy'])
-                    allresids.append(tab[arraykey][k][kk]['resid'])
+                if len(tab[arraykey][k][kk]['meas_flux'])>0 and (len(target)==0 or (len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["nvss_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange))):
+                    #print("Including ",k)
+                    #allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
+                    allfluxs = np.concatenate([allfluxs,tab[arraykey][k][kk]['meas_flux']])
+                    allfluxerrs = np.concatenate([allfluxerrs,[tab[arraykey][k][kk]['meas_flux_error']]*len(tab[arraykey][k][kk]['meas_flux'])])
+                    allnvssfluxes = np.concatenate([allnvssfluxes,[tab[arraykey][k][kk]['flux_mJy']]*len(tab[arraykey][k][kk]['meas_flux'])])
+                    allresids = np.concatenate([allresids,[tab[arraykey][k][kk]['resid']]*len(tab[arraykey][k][kk]['meas_flux'])])
                     if 'complete_detected' in tab[arraykey][k][kk].keys():
-                        alldets.append(tab[arraykey][k][kk]['complete_detected'])
+                        alldets = np.concatenate([alldets,[tab[arraykey][k][kk]['complete_detected']]*len(tab[arraykey][k][kk]['meas_flux'])])
                     else:
-                        alldets.append(-1)
+                        alldets = np.concatenate([alldets,[-1]*len(tab[arraykey][k][kk]['meas_flux'])])
+                    allsrcnames = np.concatenate([allsrcnames,[str(k)]*len(tab[arraykey][k][kk]['meas_flux'])])
+                """
                 elif len(target)==0:
                     allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
                     allfluxerrs.append(tab[arraykey][k][kk]['meas_flux_error'])
@@ -185,7 +192,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
                     else:
                         alldets.append(-1)
                     allresids.append(tab[arraykey][k][kk]['resid'])
+            
                 allsrcnames.append(str(k))
+                """
     allsrcnames = np.array(allsrcnames)
     allfluxs = np.array(allfluxs)
     allfluxerrs = np.array(allfluxerrs)
@@ -264,16 +273,18 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             stat_noise = json.load(noisef)
             noisef.close()
             Smin = stat_noise["image_noise_median_full"]*popt[0] + popt[1]
-            Smin_uperr = (stat_noise["image_noise_median_full"]*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
-            Smin_loerr = Smin - (stat_noise["image_noise_median_full"]*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
-            """
-            noisef = open(noise_dir + "noise_301x301.pkl","rb")
-            stat_noise = pkl.load(noisef)[0][1]
-            noisef.close()
-            Smin = (stat_noise[1]/np.sqrt(nchans))*popt[0] + popt[1]
-            Smin_uperr = ((stat_noise[1]/np.sqrt(nchans))*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
-            Smin_loerr = Smin - ((stat_noise[1]/np.sqrt(nchans))*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
-            """
+            Smin_uperr = ((stat_noise["image_noise_median_full"]+stat_noise["image_noise_error_full"])*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
+            Smin_loerr = Smin - ((stat_noise["image_noise_median_full"]-stat_noise["image_noise_error_full"])*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
+            
+            noisef_search = open(noise_dir + "noise_301x301.pkl","rb")
+            stat_noise_d = pkl.load(noisef_search)
+            stat_noise_count = stat_noise_d[0][1][0]
+            stat_noise_search = stat_noise_d[0][1][1]#/np.sqrt(nchans*nchans_per_node)
+            noisef_search.close()
+            print("from pkl file:",stat_noise_d[0][1])
+            Smin_search = (stat_noise_search)*popt[0] + popt[1]
+            Smin_uperr_search = ((stat_noise_search)*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin_search
+            Smin_loerr_search = Smin_search - ((stat_noise_search)*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
             if len(target)>0:
                 target_table[arraykey + "_Smin"] = Smin
                 target_table[arraykey + "_Smin_uperr"] = Smin_uperr
@@ -327,7 +338,13 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     
         plt.plot(faxis,pfunc_fit(faxis),color='grey')
         plt.fill_between(faxis,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
-    plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90))
+    violinfluxes = []
+    uniquenvssfluxes = []
+    for i in range(len(uniquesrcnames)):
+        uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
+        violinfluxes.append(allfluxs[allsrcnames==uniquesrcnames[i]])
+    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     """
     for i in range(len(uniquesrcnames)):
         plt.errorbar(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]]),allnvssfluxes[allsrcnames==uniquesrcnames[i]][0],#pfunc(np.nanmedian(allfluxs[allsrcnames==uniquesrcnames[i]])),
@@ -337,7 +354,8 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     """
     plt.xlabel("Mean Pixel Value per Time Sample (arb. units)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
-    plt.ylim(1,1e4)
+    plt.ylim(0.7,3e3)
+    plt.xlim(2e-4,300)
     plt.title("Last Updated: " + Time.now().isot)
     #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
@@ -351,7 +369,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.text(stat_noise[1]/np.sqrt(nchans),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
         """
         plt.axvline(stat_noise["image_noise_median_full"],color='purple',linestyle='--')
-        plt.text(stat_noise["image_noise_median_full"],3,"Measured: " + str(np.around(Smin))+" mJy",fontsize=15)
+        plt.axvspan(stat_noise["image_noise_median_full"]-stat_noise["image_noise_error_full"],stat_noise["image_noise_median_full"]+stat_noise["image_noise_error_full"],color='purple',alpha=0.25)
+        plt.axvline(stat_noise_search,color='black',linestyle='--')
+        
+        #plt.axvline(stat_noise_search*np.sqrt(stat_noise_count),color='black',linestyle=':')
+        #plt.axvline(stat_noise_search*stat_noise_count,color='black',linestyle=':')
+
+        
+        plt.text(stat_noise["image_noise_median_full"],1,"Measured: " + str(np.around(Smin))+" mJy",fontsize=15)
+        plt.text(stat_noise_search,2,"Searched: " + str(np.around(Smin_search))+" mJy",fontsize=15)
         print("Estimated sensitivity:",Smin,"mJy")
     #estimate and plot theoretical sensitivity
     SEFD=7000
@@ -372,11 +398,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     NSFRBsens = 2*SEFD*1000/np.sqrt((2*Nbase)*BW*tsamp_ms*2/1000) #mJy
     print("Comparing to theoretical sensitivity:",NSFRBsens,"mJy")
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
-    plt.text(1e-6,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    plt.text(5,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     #plt.ylim(NSFRBsens/2)
     plt.yscale("log")
     plt.xscale("log")
-    plt.ylim(1,1e4)
+    #plt.xlim(0,10)
+    #plt.ylim(0,2000)
+    
+    #plt.ylim(0,2000)
+    #plt.xlim(0,0.15)
     #plt.yscale("log")
     #plt.xscale("log")
     plt.colorbar(label="Normalized Flux Offset from Noise Floor")
@@ -391,7 +421,13 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.plot(pfunc(faxis),pfunc_fit(faxis),color='grey')
         plt.fill_between(pfunc(faxis),pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
 
-    plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90))
+    violinfluxes = []
+    uniquenvssfluxes = []
+    for i in range(len(uniquesrcnames)):
+        uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
+        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]]))
+    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Calibrated Flux (mJy)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
     plt.title("Last Updated: " + Time.now().isot)
@@ -405,14 +441,16 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         #plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
         plt.text(pfunc(stat_noise[1]/np.sqrt(nchans)),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
         """
-        plt.axvline(pfunc(stat_noise["image_noise_median_full"]),color='purple',linestyle='--')
-        plt.text(pfunc(stat_noise["image_noise_median_full"]),3,"Measured: "+str(np.around(Smin))+" mJy",fontsize=15)
+        plt.axvline(Smin,color='purple',linestyle='--')
+        plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
+        plt.text(pfunc(stat_noise["image_noise_median_full"]),2,"Measured: "+str(np.around(Smin))+" mJy",fontsize=15)
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
-    plt.text(pfunc(1e-6),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    plt.text(pfunc(5),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     #plt.ylim(NSFRBsens/2)
     plt.yscale("log")
     plt.xscale("log")
-    plt.ylim(1,1e4)
+    plt.ylim(0.7,3e3)
+    plt.xlim(pfunc(2e-4),pfunc(300))
     #plt.yscale("log")
     #plt.xscale("log")
     plt.colorbar(label="Normalized Flux Offset from Noise Floor")
@@ -425,8 +463,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.fill_between(pfunc(faxis)/Smin,pfunc_down(faxis)/NSFRBsens,pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
         plt.plot(pfunc_fit(faxis)/Smin,pfunc_fit(faxis)/NSFRBsens,color='grey')
         plt.fill_between(pfunc_fit(faxis)/Smin,pfunc_down_fit(faxis)/NSFRBsens,pfunc_up_fit(faxis)/NSFRBsens,color='grey',alpha=0.5)
-
-    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90))
+    violinfluxes = []
+    uniquenvssfluxes = []
+    print(NSFRBsens,Smin,Smin_search)
+    for i in range(len(uniquesrcnames)):
+        uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])/NSFRBsens)
+        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin)
+    print(violinfluxes)
+    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Measured S/N")
     plt.ylabel("Predicted S/N")
     plt.title("Last Updated: " + Time.now().isot)
@@ -438,9 +483,41 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     plt.axhline(1,color='blue',linestyle='--')
     plt.yscale("log")
     plt.xscale("log")
-    plt.ylim(1/NSFRBsens,1e4/NSFRBsens)
+    plt.ylim(0.7/NSFRBsens,3e3/NSFRBsens)
+    plt.xlim(pfunc(2e-4)/Smin,pfunc(300)/Smin)
     plt.colorbar(label="Normalized Flux Offset from Noise Floor")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibratedSNR.png")
+    plt.close()
+
+    plt.figure(figsize=(12,12))
+    if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
+        plt.plot(pfunc(faxis)/Smin,pfunc(faxis),color='red')
+        plt.fill_between(pfunc(faxis)/Smin,pfunc_down(faxis),pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
+        plt.plot(pfunc_fit(faxis)/Smin,pfunc_fit(faxis),color='grey')
+        plt.fill_between(pfunc_fit(faxis)/Smin,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
+    violinfluxes = []
+    uniquenvssfluxes = []
+    for i in range(len(uniquesrcnames)):
+        uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0]))
+        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin)
+    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
+    plt.xlabel("Measured S/N")
+    plt.ylabel("NVSS or VLAC Flux (mJy)")
+    plt.title("Last Updated: " + Time.now().isot)
+    #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
+    #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
+
+    if not badsoln and not np.isnan(Smin):
+        plt.axvline(1,color='purple',linestyle='--')
+    plt.axhline(NSFRBsens,color='blue',linestyle='--')
+    plt.text(pfunc(10)/Smin,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    plt.yscale("log")
+    plt.xscale("log")
+    plt.ylim(0.7,1e4)
+    plt.xlim(pfunc(2e-4)/Smin,pfunc(300)/Smin)
+    plt.colorbar(label="Normalized Flux Offset from Noise Floor")
+    plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibratedSNRFLUX.png")
     plt.close()
 
 
@@ -1429,7 +1506,7 @@ def speccal(args):
     if len(vis_nvsscoords)==0:
         print("no more sources to calibrate")
         if not args.no_update:
-            update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
+            update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness,nchans_per_node=nchans_per_node)
         return
     #single nvss source
     if len(args.nvss)>0:
@@ -1922,15 +1999,24 @@ def speccal(args):
             else:
                 bright_dynspec = full_img[bright_pixel[0],bright_pixel[1],:,:]
         if args.singlesample:
-            bright_measfluxs.append(np.nanmean(bright_dynspec[0,:]))
-            bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1)))
+            samps = np.random.choice(np.arange(bright_dynspec.shape[0],dtype=int),args.nummeasure,replace=False)
+            bright_measfluxs.append(list(np.nansum(bright_dynspec,1)[samps]))
+            bright_measfluxerrs.append(np.nanstd(np.nansum(bright_dynspec,1)))
         else:
-            bright_measfluxs.append(np.nanmean(bright_dynspec))
-            bright_measfluxerrs.append(np.nanstd(np.nanmean(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
-        if bright_measfluxs[-1]<0:
+            bright_measfluxs.append(np.nansum(bright_dynspec))
+            bright_measfluxerrs.append(np.nanstd(np.nansum(bright_dynspec,1))/np.sqrt(bright_dynspec.shape[0]))
+        if (not args.singlesample and bright_measfluxs[-1]<0):
             bright_measfluxs[-1] = -1
             bright_measfluxerrs[-1] = -1
             continue
+        elif args.singlesample and np.any(bright_measfluxs[-1])<0:
+            if np.all(bright_measfluxs[-1])<0:
+                bright_measfluxs[-1] = -1
+                bright_measfluxerrs[-1] = -1
+                continue
+            else:
+                goodidx = np.arange(len(bright_measfluxs[-1]))[np.array(bright_measfluxs[-1])==0]
+                bright_measfluxs[-1] = list(np.array(bright_measfluxs[-1])[goodidx])
         print("Beamformed flux arb. units:",bright_measfluxs[-1]," +- ",bright_measfluxerrs[-1])
         print("-"*20)
         print("")
@@ -2029,7 +2115,7 @@ def speccal(args):
         brightdetected = None
 
     if not args.no_update:
-        update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
+        update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright_measfluxs,bright_measfluxerrs,bright_nvssfluxes,brightdetected,bright_resid,outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,flagants=args.flagants,flagcorrs=args.flagcorrs,bmin=args.bmin,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness,nchans_per_node=nchans_per_node)
     return
 
 
@@ -2122,8 +2208,8 @@ def noiseest(args):
                                                    U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    image_size,robust=args.robust,
-                                                   pixel_resolution=pixel_resolution)/nchans_per_node
-            full_img += (tmp - np.nanmedian(tmp,2,keepdims=True))/len(corrs)
+                                                   pixel_resolution=pixel_resolution)#/nchans_per_node
+            full_img += (tmp - np.nanmedian(tmp,2,keepdims=True))#/len(corrs)
         noisearr[g] = np.nanmedian(np.nanstd(full_img-np.nanmedian(full_img,2,keepdims=True),2))
         print("gulp",gulp,"noise:",noisearr[g])
         g+=1
@@ -2151,6 +2237,7 @@ def noiseest(args):
     noiseall = np.concatenate([noiseall,noisearr])
     #visnoiseall = np.concatenate([visnoiseall,visnoisearr])
     noisestats["image_noise_median_full"] = np.nanmedian(noiseall)
+    noisestats["image_noise_error_full"] = np.nanstd(noiseall)/np.sqrt(len(noiseall))
     #noisestats["vis_noise_median_full"] = np.nanmedian(visnoiseall)
 
     np.save(noise_dir+"/"+"all_imagenoise.npy",noiseall)
@@ -2173,7 +2260,7 @@ def main(args):
                 astrocal(args)
         if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
             if args.update_only:
-                update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness)
+                update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness,nchans_per_node=args.nchans_per_node)
             else:
                 speccal(args)
     return
@@ -2245,5 +2332,6 @@ if __name__=="__main__":
     parser.add_argument('--noisefnum',type=int,help='filenum to run noise estimation with',default=-1)
     parser.add_argument('--init_noise',action='store_true',help='initialize noise stats')
     parser.add_argument('--randgulps',action='store_true',help='random gulps for noise estimate')
+    parser.add_argument('--nummeasure',type=int,help='number of single-sample measurements to sample from each gulp, between 1-25',default=1)
     args = parser.parse_args()
     main(args)

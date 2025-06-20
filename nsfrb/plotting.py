@@ -1,4 +1,6 @@
 import matplotlib
+import pickle as pkl
+import json
 from scipy.interpolate import interp1d
 from nsfrb.outputlogging import printlog
 import matplotlib.animation as animation
@@ -8,7 +10,7 @@ from dsamfs import utils as pu
 from astropy.time import Time
 from astropy import units as u
 from nsfrb.planning import nvss_cat,atnf_cat,find_fast_vis_label
-from nsfrb.config import tsamp_slow,tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS,fmin,fmax,tsamp_imgdiff,T
+from nsfrb.config import tsamp_slow,tsamp,CH0,CH_WIDTH , AVERAGING_FACTOR,nsamps,NUM_CHANNELS,fmin,fmax,tsamp_imgdiff,T,noise_dir,table_dir
 import time
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -496,6 +498,56 @@ def binary_plot(image_tesseract,SNRthresh,timestep_isot,RA_axis,DEC_axis,binary_
 """
 Grafana doesn't like nsfrb, so I made my own 
 """
+def noisestatusplot(gridsize=301,plotfile_noise=img_dir +"noisestatusfile.txt",update_time=T*5/1000,fluxcaltable=table_dir + "NSFRB_speccal.json"):
+    while True:
+        f = open(noise_dir + "noise_"+str(gridsize)+"x"+str(gridsize)+".pkl","rb") 
+        p = pkl.load(f) 
+        f.close()
+
+        f = open(fluxcaltable,"r")
+        speccal_table = json.load(f)
+        f.close()
+
+        n_levels = np.linspace(0,200,30)
+        allnoise = []
+        allwidths = []
+        allcounts = []
+        alllevels = []
+        for k in p[0].keys():
+            n_mJy = speccal_table["core_image_exact_slope"]*(p[0][k][1]/int(k))
+            allnoise.append(n_mJy)
+            alllevels.append(np.argmin(np.abs(n_levels-n_mJy)))
+            allwidths.append(int(k)*tsamp)
+            allcounts.append(p[0][k][0])
+        allnoise = np.array(allnoise)[np.argsort(allwidths)]
+        alllevels = np.array(alllevels)[np.argsort(allwidths)]
+        allcounts = np.array(allcounts)[np.argsort(allwidths)]
+        allwidths = np.sort(allwidths)
+
+        f = open(plotfile_noise,"w")
+        f.write("Noise Statistics (mJy)\n")
+        buff = 20
+        for i in np.arange(len(n_levels),dtype=int)[::-1]:
+            lev = np.array([" "]*len(allnoise)*buff)
+            idxs = np.arange(buff//2,buff//2 + buff*(len(allnoise)),buff,dtype=int)
+            idxs = idxs[allnoise>=n_levels[i]]
+            if len(idxs)>0:
+                lev[idxs] = "-"
+            lev = list(lev)
+            f.write(f"{n_levels[i]:03.2f}|" + "".join(lev)+"\n")
+        baseline = np.array(["_"]*len(allnoise)*buff)
+        baseline[np.arange(buff//2,buff//2 + buff*(len(allnoise)),buff,dtype=int)] = "|"
+        baseline = list(baseline)
+        f.write(" "*len(f"{n_levels[i]:03.2f}|") + "".join(baseline)+"\n")
+        axlabel = []#[" "]*(buff//2)
+        for i in range(len(allnoise)):
+            axlabel.append(" "*(buff-4-(1 if allwidths[i]>1000 else 0)) + f"{allwidths[i]:02.2f}")
+        f.write(" "*len(f"{n_levels[i]:03.2f}|") + "".join(axlabel)+"\n")
+        f.write(" "*len(f"{n_levels[i]:03.2f}|") + " "*2*buff + "Trial Width (ms)")
+        f.close()
+        time.sleep(update_time)
+    return
+
 def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"timestatusfile.txt"):
     """
     Pulls data from etcd in realtime and plots time for 
@@ -629,4 +681,5 @@ def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"
         #os.system("cat "+plotfile)
         time.sleep(update_time)
     return
+
 

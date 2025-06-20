@@ -1,4 +1,5 @@
 import argparse
+import json
 from dsacalib import constants as ct
 from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor,wait
 import glob
@@ -40,7 +41,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,timelogfile
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,timelogfile,table_dir,noise_dir
 
 
 """
@@ -459,9 +460,27 @@ def main(args):
                 wait(task_list)
                 for t in task_list:
                     dirty_img[:,:,:,t.result()[1]] = t.result()[0]
+                
                 ftime = open(timelogfile,"a")
                 ftime.write("[image] " + str(time.time()-timage)+"\n")
                 ftime.close()
+
+
+                nmeas = np.nanmedian(np.nanstd(np.nansum(dirty_img-np.nanmedian(dirty_img,3,keepdims=True),2),2))
+
+                fluxcaltable = table_dir + "NSFRB_speccal.json"
+                f = open(fluxcaltable,"r")
+                speccal_table = json.load(f)
+                f.close()
+                
+                nmjy =speccal_table["core_image_exact_slope"]*(nmeas)
+                
+                offlinenoisefile = noise_dir + "noiseoffline.txt"
+                fnoise = open(offlinenoisefile,"a")
+                fnoise.write(str(nmeas) + " | " + str(nmjy)+"\n")
+                fnoise.close()
+
+
             else:
                 for j in range(args.num_chans):
                     for jj in range(args.nchans_per_node):
