@@ -275,10 +275,12 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             Smin = stat_noise["image_noise_median_full"]*popt[0] + popt[1]
             Smin_uperr = ((stat_noise["image_noise_median_full"]+stat_noise["image_noise_error_full"])*(popt[0]+popterrs[0]) + (popt[1]+popterrs[1]))-Smin
             Smin_loerr = Smin - ((stat_noise["image_noise_median_full"]-stat_noise["image_noise_error_full"])*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
-            
+            stat_noise_time_im = (len(stat_noise.keys())-2)*ngulps*nsamps*tsamp_ms/1000/3600
+
             noisef_search = open(noise_dir + "noise_301x301.pkl","rb")
             stat_noise_d = pkl.load(noisef_search)
             stat_noise_count = stat_noise_d[0][1][0]
+            stat_noise_time = stat_noise_count*tsamp_ms*nsamps/1000/3600
             stat_noise_search = stat_noise_d[0][1][1]#/np.sqrt(nchans*nchans_per_node)
             noisef_search.close()
             print("from pkl file:",stat_noise_d[0][1])
@@ -371,14 +373,13 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.axvline(stat_noise["image_noise_median_full"],color='purple',linestyle='--')
         plt.axvspan(stat_noise["image_noise_median_full"]-stat_noise["image_noise_error_full"],stat_noise["image_noise_median_full"]+stat_noise["image_noise_error_full"],color='purple',alpha=0.25)
         plt.axvline(stat_noise_search,color='black',linestyle='--')
-        
         #plt.axvline(stat_noise_search*np.sqrt(stat_noise_count),color='black',linestyle=':')
         #plt.axvline(stat_noise_search*stat_noise_count,color='black',linestyle=':')
 
         
-        plt.text(stat_noise["image_noise_median_full"],1,"Measured: " + str(np.around(Smin))+" mJy",fontsize=15)
-        plt.text(stat_noise_search,2,"Searched: " + str(np.around(Smin_search))+" mJy",fontsize=15)
-        print("Estimated sensitivity:",Smin,"mJy")
+        plt.text(stat_noise["image_noise_median_full"],1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+        plt.text(stat_noise_search,2,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
+        print("Estimated sensitivity:",Smin_search,"mJy")
     #estimate and plot theoretical sensitivity
     SEFD=7000
     N=97 - int(0 if outriggers else len(outrigger_antennas)) - len(bad_antennas)
@@ -434,16 +435,14 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
-    if not badsoln and not np.isnan(Smin):
-        """
-        plt.axvline(pfunc(stat_noise[1]/np.sqrt(nchans)),color='purple',linestyle='--')
-        #plt.axhline(Smin,color='purple',linestyle='--')
-        #plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
-        plt.text(pfunc(stat_noise[1]/np.sqrt(nchans)),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
-        """
+    if not badsoln and not np.isnan(Smin_search):
         plt.axvline(Smin,color='purple',linestyle='--')
         plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
-        plt.text(pfunc(stat_noise["image_noise_median_full"]),2,"Measured: "+str(np.around(Smin))+" mJy",fontsize=15)
+        plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+
+        plt.axvline(Smin_search,color='black',linestyle='--')
+        plt.axvspan(Smin_search-Smin_loerr_search,Smin_search+Smin_uperr_search,color='black',alpha=0.25)
+        plt.text(Smin_search,2,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
     plt.text(pfunc(5),NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     #plt.ylim(NSFRBsens/2)
@@ -459,63 +458,69 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
 
     plt.figure(figsize=(12,12))
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
-        plt.plot(pfunc(faxis)/Smin,pfunc(faxis)/NSFRBsens,color='red')
-        plt.fill_between(pfunc(faxis)/Smin,pfunc_down(faxis)/NSFRBsens,pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
-        plt.plot(pfunc_fit(faxis)/Smin,pfunc_fit(faxis)/NSFRBsens,color='grey')
-        plt.fill_between(pfunc_fit(faxis)/Smin,pfunc_down_fit(faxis)/NSFRBsens,pfunc_up_fit(faxis)/NSFRBsens,color='grey',alpha=0.5)
+        plt.plot(pfunc(faxis)/Smin_search,pfunc(faxis)/NSFRBsens,color='red')
+        plt.fill_between(pfunc(faxis)/Smin_search,pfunc_down(faxis)/NSFRBsens,pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
+        plt.plot(pfunc_fit(faxis)/Smin_search,pfunc_fit(faxis)/NSFRBsens,color='grey')
+        plt.fill_between(pfunc_fit(faxis)/Smin_search,pfunc_down_fit(faxis)/NSFRBsens,pfunc_up_fit(faxis)/NSFRBsens,color='grey',alpha=0.5)
     violinfluxes = []
     uniquenvssfluxes = []
     print(NSFRBsens,Smin,Smin_search)
     for i in range(len(uniquesrcnames)):
         uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])/NSFRBsens)
-        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin)
-    print(violinfluxes)
+        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin_search)
     plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
-    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
+    plt.scatter(pfunc(allfluxs)/Smin_search,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Measured S/N")
     plt.ylabel("Predicted S/N")
     plt.title("Last Updated: " + Time.now().isot)
     #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
-    if not badsoln and not np.isnan(Smin):
-        plt.axvline(1,color='purple',linestyle='--')
+    if not badsoln and not np.isnan(Smin_search):
+        plt.axvline(1,color='black',linestyle='--')
+        plt.text(1,2/NSFRBsens,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
+        plt.axvline(Smin/Smin_search,color='purple',linestyle='--')
+        plt.text(Smin/Smin_search,1/NSFRBsens,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
     plt.axhline(1,color='blue',linestyle='--')
+    plt.text(pfunc(5)/Smin_search,1,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     plt.yscale("log")
     plt.xscale("log")
     plt.ylim(0.7/NSFRBsens,3e3/NSFRBsens)
-    plt.xlim(pfunc(2e-4)/Smin,pfunc(300)/Smin)
+    plt.xlim(pfunc(2e-4)/Smin_search,pfunc(300)/Smin_search)
     plt.colorbar(label="Normalized Flux Offset from Noise Floor")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibratedSNR.png")
     plt.close()
 
     plt.figure(figsize=(12,12))
     if not badsoln:#str('outriggers' if outriggers else 'core') + "_slope" in tab.keys():
-        plt.plot(pfunc(faxis)/Smin,pfunc(faxis),color='red')
-        plt.fill_between(pfunc(faxis)/Smin,pfunc_down(faxis),pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
-        plt.plot(pfunc_fit(faxis)/Smin,pfunc_fit(faxis),color='grey')
-        plt.fill_between(pfunc_fit(faxis)/Smin,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
+        plt.plot(pfunc(faxis)/Smin_search,pfunc(faxis),color='red')
+        plt.fill_between(pfunc(faxis)/Smin_search,pfunc_down(faxis),pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
+        plt.plot(pfunc_fit(faxis)/Smin_search,pfunc_fit(faxis),color='grey')
+        plt.fill_between(pfunc_fit(faxis)/Smin_search,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
     violinfluxes = []
     uniquenvssfluxes = []
     for i in range(len(uniquesrcnames)):
         uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0]))
-        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin)
+        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin_search)
     plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
-    plt.scatter(pfunc(allfluxs)/Smin,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
+    plt.scatter(pfunc(allfluxs)/Smin_search,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Measured S/N")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
     plt.title("Last Updated: " + Time.now().isot)
     #plt.xlim(np.nanmin(allfluxs)/10,np.nanmax(allfluxs)*1.2)
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
-    if not badsoln and not np.isnan(Smin):
-        plt.axvline(1,color='purple',linestyle='--')
+    if not badsoln and not np.isnan(Smin_search):
+        plt.axvline(1,color='black',linestyle='--')
+        plt.text(1,2,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
+        plt.axvline(Smin/Smin_search,color='purple',linestyle='--')
+        plt.text(Smin/Smin_search,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
-    plt.text(pfunc(10)/Smin,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
+    plt.text(pfunc(10)/Smin_search,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     plt.yscale("log")
     plt.xscale("log")
     plt.ylim(0.7,1e4)
-    plt.xlim(pfunc(2e-4)/Smin,pfunc(300)/Smin)
+    plt.xlim(pfunc(2e-4)/Smin_search,pfunc(300)/Smin_search)
     plt.colorbar(label="Normalized Flux Offset from Noise Floor")
     plt.savefig(img_dir+str(target.replace(" ","") + "_" if len(target)>0 else "") + "NVSStotal_"+ str("image_" if image_flux else "") + str("outriggers_" if outriggers else "") + str("exact_" if exactposition else "") + "speccal_calibratedSNRFLUX.png")
     plt.close()
@@ -922,7 +927,7 @@ def astrocal(args):
     bright_fnames = []
     bright_offsets = []
     for i in range(len(bright_coords)):
-        timeax = Time(int(reftime.mjd) - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
+        timeax = Time(reftime.mjd - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
         DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
         name = str('RFC J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_coords[i].ra.hms.h),
                                                                RM=int(bright_coords[i].ra.hms.m),
@@ -1559,7 +1564,7 @@ def speccal(args):
     bright_fnames = []
     bright_offsets = []
     for i in range(len(bright_nvsscoords)):
-        timeax = Time(int(reftime.mjd) - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
+        timeax = Time(reftime.mjd - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
         DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
         if brightpsr[i]:
             name = "PSR " + brightpsrnames[i]
