@@ -1210,7 +1210,7 @@ def main(args):
         printlog(slow_fullimg_dict,output_file=processfile)
         printlog(imgdiff_fullimg_dict,output_file=processfile)
         printlog("----------------------------------------",output_file=processfile)
-        packet_dict = dict()
+        packet_dict = ETCD.get_dict(ETCDKEY_PACKET) #dict()
         packet_dict["dropped"] = 0
         if len(args.multiport)==0: 
             ret = multiport_task(servSockD,-1,port,maxbytes,maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
@@ -1241,6 +1241,8 @@ def main(args):
             #SELECT
             readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout)
             printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
+            if len(readsockets)>0:
+                tread = time.time()
             for ii in range(len(readsockets)):
                 #read data
                 ret=readcorrdata(readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
@@ -1249,25 +1251,30 @@ def main(args):
                 if type(ret) != int:
                     corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = ret
                     if dask_enabled:
-                        multiport_task_list.append(multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+                        #multiport_task_list.append(
+                        executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
                                     ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit))
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit)#)
                     else:
-                        multiport_task_list.append(executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+                        #multiport_task_list.append(
+                        executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
                                     ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit))
-                    multiport_num_list.append(ii)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit)#)
+                    #multiport_num_list.append(ii)
                 else:
                     packet_dict["dropped"] += 1
+            if len(readsockets)>0:
+                packet_dict["read_time"] = time.time()-tread
             ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
+            """
             #wait(multiport_task_list)
 
             #check if any have finished
@@ -1296,9 +1303,9 @@ def main(args):
                         printlog("multiport task exited with error code " + str(ret),output_file=processfile)
                         printlog("--unknown error code, aborting",output_file=processfile)
                         break
-                else:
-                    printlog("returned search tasks:" + str(ret),output_file=processfile)
-                    task_list += list(ret)
+                #else:
+                #    printlog("returned search tasks:" + str(ret),output_file=processfile)
+                #    task_list += list(ret)
                     #task_timing += [time.time()]*len(ret)
                     #donetasks.append(jj)
             multiport_task_list = []
@@ -1307,28 +1314,20 @@ def main(args):
             #for jj in donetasks:
             #    multiport_task_list.pop(jj)
             #    multiport_num_list.pop(jj)
-
+            """
 
         #check if search tasks finished
+        """
         donetasks = []
         for i in range(len(task_list)):
             if task_list[i].done(): 
                 donetasks.append(i)
-            """
-            elif args.realtime and (time.time()-task_timing[i] >= args.rttimeout) and task_list[i].cancel():
-                donetasks.append(i)
-                timing_dict = dict()
-                timing_dict["search_time"]=-1
-                timing_dict["search_tx_time"]=-1
-                timing_dict["search_completed"]=False
-                ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
-            """
 
 
         for i in np.sort(donetasks)[::-1]:
             task_list.pop(i)
             #task_timing.pop(i)
-
+        """
     executor.shutdown()
     clientSocket.close()
 

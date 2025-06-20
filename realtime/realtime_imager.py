@@ -78,7 +78,7 @@ def realtime_image_task(dat, tidx, U_wavs, V_wavs, i_indices_all, j_indices_all,
                                             clipuv=False,keeptime=True,wstack_parallel=wstack_parallel)/(1 if PB_all is None else PB_all[:,:,np.newaxis])
     return outimage,tidx
 
-def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,timeout,failsafe):
+def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,timeout,failsafe,timage):
     """
     task to send data to the process server; this is only required for testing, the 
     real implementation will only send data for one corr node in the foreground process
@@ -95,6 +95,7 @@ def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,tim
     timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
     if timing_dict is None: timing_dict = dict()
     timing_dict["tx_time"] = txtime
+    timing_dict["tot_time"] = time.time()-timage
     ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
     return txtime
 
@@ -379,7 +380,7 @@ def main(args):
                 tasklist = []
                 for sbi in range(len(corrs)):
                     print("TIME LEFT",(args.rttimeout - (time.time()-timage)))
-                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe))
+                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe,timage))
                     #time.sleep(T/1000)#/32)
                     """
                     ttx = time.time()
@@ -415,6 +416,7 @@ def main(args):
                 timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
                 if timing_dict is None: timing_dict = dict()
                 timing_dict["tx_time"] = txtime
+                timing_dict["tot_time"] = time.time()-timage
                 ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
             ftime = open(rttx_file,"a")
             ftime.write(str(txtime)+"\n")
@@ -470,7 +472,7 @@ if __name__=="__main__":
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
     parser.add_argument('-T','--testh23',action='store_true')
     parser.add_argument('--inject_interval',type=int,help='Number of gulps between injections',default=90)
-    parser.add_argument('--inject_delay',type=int,help='Number of gulps to delay injection',default=0)
+    parser.add_argument('--inject_delay',type=float,help='Number of gulps to delay injection',default=0)
     parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
     parser.add_argument('--primarybeam',action='store_true',help='Apply a primary beam correction')
     parser.add_argument('--failsafe',action='store_true',help='Shutdown if real-time limit is exceeded')
