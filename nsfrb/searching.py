@@ -72,7 +72,7 @@ from nsfrb.config import *
 from nsfrb.noise import noise_update,noise_dir,noise_update_all
 from nsfrb import jax_funcs
 
-from nsfrb.config import cwd,frame_dir,psf_dir,noise_dir,output_file,timelogfile,processfile,error_file,freq_axis,srchtx_file,srchtime_file,minDM,maxDM
+from nsfrb.config import cwd,frame_dir,psf_dir,noise_dir,output_file,timelogfile,processfile,error_file,freq_axis,srchtx_file,srchtime_file,minDM,maxDM,run_file
 
 try:
     from nsfrb.config import cand_dir
@@ -1622,7 +1622,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     if imgdiff:
         prev_noise,prev_noise_N = np.zeros((len(widthtrials),len(DM_trials))),0
     else:
-        prev_noise,prev_noise_N = current_noise #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
+        prev_noise,prev_noise_N = copy.deepcopy(current_noise) #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
         if slow:
             prev_noise /= np.sqrt(config.bin_slow)
 
@@ -1698,7 +1698,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         if attach[k]['imgdiff']:
             attach[k]['prev_noise'],attach[k]['prev_noise_N'] = np.zeros((len(widthtrials),len(DM_trials))),0
         else:
-            attach[k]['prev_noise'],attach[k]['prev_noise_N'] = current_noise #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
+            attach[k]['prev_noise'],attach[k]['prev_noise_N'] = copy.deepcopy(current_noise) #noise_update_all(None,gridsize_RA,gridsize_DEC,DM_trials,widthtrials,readonly=True)
             if attach[k]['slow']:
                 attach[k]['prev_noise'] /= np.sqrt(config.bin_slow)
 
@@ -1837,7 +1837,10 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
 #CONTEXTSETUP = False
-def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False):
+def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False):
+    searchlock.acquire()
+    global current_noise
+    printlog("CURRENT NOISE:"+str((current_noise[0][0,0],current_noise[1])),run_file)
     if forfeit:
         printlog("FORFEIT MODE",output_file=processfile)
     timing1 = time.time()
@@ -1960,8 +1963,8 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
 
 
     #update noise
-    if not slow and not imgdiff and total_noise is not None:
-        global current_noise
+    if (not slow) and (not imgdiff) and (total_noise is not None):
+        #global current_noise
         current_noise = (noise_update_all(total_noise,gridsize,gridsize,DM_trials,widthtrials,writeonly=True),current_noise[1] + 1)
 
     #update last frame
@@ -1976,6 +1979,7 @@ def search_task(fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster
     if cuda and (attach_fullimg_slow is not None) and attach['slow']['append_frame']:
         save_last_frame(last_frame_slow,full=True,slow=True)
         printlog("Writing to last_frame_slow.npy",output_file=processfile)
+    searchlock.release()
 
     srchtime = time.time()-timing1
     srchtxtime = time.time()

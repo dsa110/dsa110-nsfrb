@@ -2,6 +2,7 @@
 #test
 cwd=$(cat ../metadata.txt)
 
+
 while :
 do
 
@@ -28,12 +29,21 @@ do
 
 		echo ""
 		echo ">>>>>>>>>>>>>>> journalctl.txt"
-		journalctl --user --since today -r -n $2 > ${cwd}-logfiles/journalctl.txt
+		journalctl --user --since today -r -u T4manager.service -n $2 > ${cwd}-logfiles/journalctl.txt
 		cat ${cwd}-logfiles/journalctl.txt
 		echo ">>>>>>>>>>>>>>>"
 
 
 	else
+		for f in "${@:4}"
+                do
+                        echo ""
+                        echo  ">>>>>>>>>>>>>>> ${cwd}-logfiles/$f.txt"
+                        tail -$2 ${cwd}-logfiles/$f.txt
+                        echo  ">>>>>>>>>>>>>>>"
+
+                done
+
 		echo ""
                 echo ">>>>>>>>>>>>>>> $3.txt"
                 tail -$2 ${cwd}-logfiles/$3.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt
