@@ -369,10 +369,11 @@ def main(args):
             #timing_dict[args.sb]["tx_time"] = -1
         #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
 
+        """
         ftime = open(rtbench_file,"a")
         ftime.write(str(rtime)+"\n")
         ftime.close()
-        
+        """
         if args.failsafe and rtime>args.rttimeout:
             
             
@@ -427,10 +428,11 @@ def main(args):
                 timing_dict["tx_time"] = txtime
                 timing_dict["tot_time"] = time.time()-timage
                 ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
+            """
             ftime = open(rttx_file,"a")
             ftime.write(str(txtime)+"\n")
             ftime.close()
-
+            """
             if args.failsafe and time.time()-timage>args.rttimeout:
                 executor.shutdown()
                 print("Realtime exceeded, shutting down imager")
