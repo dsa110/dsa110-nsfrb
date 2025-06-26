@@ -96,7 +96,7 @@ if 'NSFRBDATA' in os.environ:
 remote_cand_dir = cwd +"-tmp-candidates/"
 sslogfile = cwd + "-logfiles/srchstartstoptime_log.txt"
 inject_dir = inject_file = cwd + "-injections/"
-local_inject_dir = cwd + "-injections/realtime_staging_sb/"
+local_inject_dir = cwd + "/inject/realtime_staging_sb/"
 noise_dir = cwd + "-noise/"
 imgpath = cwd + "-images"
 plan_dir = cwd + "-plans/"
