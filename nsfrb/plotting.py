@@ -508,7 +508,7 @@ def noisestatusplot(gridsize=301,plotfile_noise=img_dir +"noisestatusfile.txt",u
         speccal_table = json.load(f)
         f.close()
 
-        n_levels = np.linspace(0,200,30)
+        n_levels = np.linspace(0,500,30)
         allnoise = []
         allwidths = []
         allcounts = []

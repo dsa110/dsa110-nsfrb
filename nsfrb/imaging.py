@@ -414,7 +414,49 @@ def dec_to_m(dec0,dec_offset,d=1,Lat=Lat):
     m[dec0+dec_offset==0] = np.sqrt((2*d*np.sin(dec_offset*np.pi/180/2))**2)[dec0+dec_offset==0]
     return m
 
+from antpos.utils import get_baselines
+import casatools as cc
+def corrected_baseline_uvw(antenna_order,pt_dec,mjd,autocorrs=True, casa_order=False):
+    """
+    Revision of dsamfs.utils baseline_uvw() to minimize astrometric errors
+    """
+
+
+    df_bls = get_baselines(
+        antenna_order, autocorrs=autocorrs, casa_order=casa_order)
+    bname = df_bls['bname']
+    blen = np.array([df_bls['x_m'], df_bls['y_m'], df_bls['z_m']]).T
+    me = cc.measures()
+    qa = cc.quanta()
+    me.doframe(me.observatory("OVRO_MMA"))
+    me.doframe(
+            me.direction(
+                "J2000",
+                qa.quantity(get_ra(mjd,pt_dec*180/np.pi)*u.deg, "deg"),
+                qa.quantity(pt_dec*180*u.deg/np.pi, "deg"),
+            )
+        )
+    me.doframe(me.epoch("UTC", qa.quantity(mjd, "d")))
+
+    nb = blen.shape[0]
+    bu = np.zeros((1,blen.shape[0]))
+    bv = np.zeros((1,blen.shape[0]))
+    bw = np.zeros((1,blen.shape[0]))
+    for j in range(nb):
+        bl = me.baseline(
+            "itrf",
+            qa.quantity(blen[j, 0], "m"),
+            qa.quantity(blen[j, 1], "m"),
+            qa.quantity(blen[j, 2], "m"),
+        )
+        # Get the uvw coordinates
+        uvw = me.touvw(bl)[1]["value"]
+        bu[0,j], bv[0,j], bw[0,j] = uvw[0], uvw[1], uvw[2]
     
+
+    uvw = np.array([bu, bv, bw]).transpose((1,2,0))
+    return bname, blen, uvw
+
 #revision of uv_to_pix to be consistent with FRB search code
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
 def uv_to_pix(mjd_obs,image_size,Lat=Lat,Lon=Lon,Height=Height,timerangems=1000,maxtries=5,output_file="",elev=None,RA=None,DEC=None,flagged_antennas=flagged_antennas,uv_diag=None,az=az_offset,ref_wav=0.20,fl=False,two_dim=False,manual=False,manual_RA_offset=0,pixperFWHM=pixperFWHM):

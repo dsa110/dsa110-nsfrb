@@ -1,4 +1,6 @@
 import numpy as np
+import glob
+import json
 from multiprocessing import Manager
 from nsfrb.planning import get_RA_cutoff
 from threading import Lock
@@ -73,7 +75,7 @@ from nsfrb import jax_funcs
 """s
 Directory for output data
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff,sslogfile
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff,sslogfile,table_dir
 
 """
 NSFRB modules
@@ -651,7 +653,8 @@ multiport_accepting = dict()
 def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,ii,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,attachmode,completeness,slowlock,searchlock,forfeit):
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,
+                                    attachmode,completeness,slowlock,searchlock,forfeit,rtastrocal):
     """
     This task sets up the given socket to accept connections, reads
     data when a client connects, and submits a search task
@@ -677,6 +680,33 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
         thash = hex(random.getrandbits(32))
         f.write("[start] [" + thash + "] " + str(time.time()))
         f.close()
+
+
+        #save data for flux and astrometric cal
+        if rtastrocal:
+            reftime = Time(int(np.floor(img_id_mjd)),format='mjd')
+            if len(glob.glob(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json"))>0:
+                printlog(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json",output_file=processfile)
+                f = open(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json","r")
+                speccaldict = json.load(f)
+                f.close()
+                for k in speccaldict.keys():
+                    printlog(k,output_file=processfile)
+                    if 0< (img_id_mjd-speccaldict[k])<(config.T/1000/86400):
+                        printlog(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",output_file=processfile)
+                        np.save(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",fullimg_dict[img_id_isot].image_tesseract)
+            if len(glob.glob(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json"))>0:
+                printlog(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json",output_file=processfile)
+                f = open(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json","r")
+                astrocaldict = json.load(f)
+                f.close()
+                for k in astrocaldict.keys():
+                    printlog(k,output_file=processfile)
+                    if 0<(img_id_mjd-astrocaldict[k])<(15*config.T/1000/86400):
+                        printlog(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",output_file=processfile)
+                        np.save(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",fullimg_dict[img_id_isot].image_tesseract)
+
+
         
         #submit a search task to the process pool
         printlog(socksuffix+"Submitting new task for image " + str(img_id_isot),output_file=processfile)
@@ -712,6 +742,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
                 k = img_id_isot
             slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
+
             slowlock.release()
         else:
             slowsearch_now = False
@@ -1217,7 +1248,7 @@ def main(args):
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit)
+                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal)
             if type(ret) == int:
                 if ret == ECODE_CONT:
                     packet_dict["dropped"] += 1
@@ -1258,7 +1289,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit)#)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal)#)
                     else:
                         #multiport_task_list.append(
                         executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
@@ -1267,7 +1298,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit)#)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal)#)
                     #multiport_num_list.append(ii)
                 else:
                     packet_dict["dropped"] += 1
@@ -1392,6 +1423,7 @@ if __name__=="__main__":
     parser.add_argument('--attachmode',action='store_true',help='in attached mode, search tasks for slow and image diff pipelines are combined with normal pipeline to minimize overheads')
     parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
     parser.add_argument('--forfeit',action='store_true',help='Forfeit searching base resolution data gulp to search slow/imgdiff data; forfeit searching slow data gulp to search imgdiff data; superceded by attach mode')
+    parser.add_argument('--rtastrocal',action='store_true',help='Save data for astrometric and flux calibration')
     args = parser.parse_args()
 
     """

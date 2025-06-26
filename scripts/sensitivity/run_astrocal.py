@@ -123,6 +123,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     print("sources to exclude:",ex_table)
 
     #add new sources to table (or update if already there)
+    print(bright_nvssnames)
     print(bright_measfluxs)
     print(bright_measfluxerrs)
     print(bright_nvssfluxes)
@@ -966,6 +967,7 @@ def astrocal(args):
     vis_DECerrs_mas = allDEC_errs_mas[condition]
     
     #single RFC source
+    rtcalflag=False
     if len(args.rfc)>0:
         idxs = []
         idxnames = []
@@ -985,6 +987,19 @@ def astrocal(args):
         bright_RAerrs_mas = vis_RAerrs_mas[idxs]
         bright_DECerrs_mas = vis_DECerrs_mas[idxs]
         print("Running astrometric calibration pipeline with RFC sources ",idxnames)
+    elif args.userealtimecals and len(glob.glob(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json"))>0:
+        rtcalflag = True
+        f = open(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json","r")
+        rtdict = json.load(f)
+        f.close()
+
+        rtcoords = SkyCoord([str(rtkey)[4:] for rtkey in rtdict.keys()],unit=(u.hourangle,u.deg),frame='icrs')
+        idxs, d2d_match, d3d_match = rtcoords.match_to_catalog_sky(vis_coords)
+        #idxs = idxs[d2d_match.to(u.arcminute).value<1]
+        bright_coords = vis_coords[idxs]
+        bright_Sfluxes = vis_Sfluxes[idxs]
+        bright_RAerrs_mas = vis_RAerrs_mas[idxs]
+        bright_DECerrs_mas = vis_DECerrs_mas[idxs]
     else:
         
         if args.minsrc_RFC<len(vis_Sfluxes):
@@ -1005,16 +1020,39 @@ def astrocal(args):
         """
         print("Running astrometric calibration pipeline with " + str(len(bright_coords)) + " brightest RFC sources at dec=" + str(search_dec) + ":")
 
-   
-    #find the files within the timestamp
-    besttime = []
-    bright_names = []
-    bright_fnames = []
-    bright_offsets = []
-    for i in range(len(bright_coords)):
-        timeax = Time(reftime.mjd - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
-        DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
-        name = str('RFC J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_coords[i].ra.hms.h),
+    if rtcalflag:
+        besttime = Time([rtdict[k] for k in rtdict.keys()],format='mjd')
+        bright_names = list(rtdict.keys())
+
+        bright_fnames = []
+        bright_fnamedict = dict()
+        for i in range(len(bright_names)):
+            fs= np.sort(glob.glob(vis_dir + bright_names[i].replace(" ","") + "/image_*npy"))
+            found=False
+            for f in fs:
+                fisot=f[6:-4]
+                if 86400*(np.abs(Time(fisot,format='isot').mjd-besttime[i].mjd))<=(ngulps*config.T/1000):
+                    if bright_names[i] not in bright_fnamedict.keys():
+                        bright_fnames.append(f)
+                        bright_fnamedict[bright_names[i]] = []
+                    bright_fnamedict[bright_names[i]].append(f)
+                    print(f)
+                    found=True
+            if not found:
+                bright_fnames.append(-1)
+        bright_offsets = [-1]*len(besttime)
+
+        print("checkpoint",bright_names,bright_fnames)
+    else:
+        #find the files within the timestamp
+        besttime = []
+        bright_names = []
+        bright_fnames = []
+        bright_offsets = []
+        for i in range(len(bright_coords)):
+            timeax = Time(reftime.mjd - np.linspace(0,(-1 if args.getrealtimecals else 1)*args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
+            DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
+            name = str('RFC J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_coords[i].ra.hms.h),
                                                                RM=int(bright_coords[i].ra.hms.m),
                                                                RS=int(bright_coords[i].ra.hms.s)) +
                            str("+" if bright_coords[i].dec>=0 else "-") +
@@ -1022,61 +1060,84 @@ def astrocal(args):
                                                                DM=int(bright_coords[i].dec.dms.m),
                                                                DS=int(bright_coords[i].dec.dms.s)))
 
-        bright_names.append(name)
+            bright_names.append(name)
 
-        if name in ex_table and (ex_times[list(ex_table).index(name)]==-1):
-            besttime.append(-1)
-            print("Excluding " + name)
-            print("")
-            bright_fnames.append(-1)
-            bright_offsets.append(-1)
-            continue
+            if name in ex_table and (ex_times[list(ex_table).index(name)]==-1):
+                besttime.append(-1)
+                print("Excluding " + name)
+                print("")
+                bright_fnames.append(-1)
+                bright_offsets.append(-1)
+                continue
 
-        hourvis = SkyCoord(bright_coords[i],location=DSA,obstime=timeax)
+            hourvis = SkyCoord(bright_coords[i],location=DSA,obstime=timeax)
 
-        #narrow to best minute
-        antpos = hourvis.transform_to(AltAz)
-        timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1,1,24)/24,format='mjd')
-        minvis = SkyCoord(bright_coords[i],location=DSA,obstime=timeax)
+            #narrow to best minute
+            antpos = hourvis.transform_to(AltAz)
+            timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1,1,24)/24,format='mjd')
+            minvis = SkyCoord(bright_coords[i],location=DSA,obstime=timeax)
 
-        #narrow to best second
-        antpos = minvis.transform_to(AltAz)
-        timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1/60,1/60,24)/24,format='mjd')
-        secvis = SkyCoord(bright_coords[i],location=DSA,obstime=timeax)
+            #narrow to best second
+            antpos = minvis.transform_to(AltAz)
+            timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1/60,1/60,24)/24,format='mjd')
+            secvis = SkyCoord(bright_coords[i],location=DSA,obstime=timeax)
 
-        antpos = secvis.transform_to(AltAz)
-        besttime.append(timeax[np.argmax(antpos.alt.value)] + (args.shiftbytime*u.second))
-        if args.shiftbytime!=0:
-            print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
-        ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
-
-
-        oldsrcflag = (args.newsources and intable(name,str(ffvl[0]),table_dir + "NSFRB_astrocal.json",args.outriggers,False,False))
-        if oldsrcflag:
-            print(name,ffvl[0],"already in table")
-            bright_names = bright_names[:-1]
-            continue
+            antpos = secvis.transform_to(AltAz)
+            besttime.append(timeax[np.argmax(antpos.alt.value)] + (args.shiftbytime*u.second))
+            if args.shiftbytime!=0:
+                print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
+            if not args.getrealtimecals:
+                ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
 
 
-        if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime[-1].mjd)<(5*60/86400):
-            
-            print("Excluding " + name)
-            print("")
-            bright_fnames.append(-1)
-            bright_offsets.append(-1)
-            continue
-        if ffvl[0] != -1 and int(ffvl[-1])==int(search_dec):
-            print(name)
-            print(besttime[-1].isot)
-            print(ffvl)
-            print("")
-            bright_fnames.append(ffvl[0])
-            bright_offsets.append(ffvl[1])
-        else:
-            print("Excluding " + name)
-            print("")
-            bright_fnames.append(-1)
-            bright_offsets.append(-1)
+                oldsrcflag = (args.newsources and intable(name,str(ffvl[0]),table_dir + "NSFRB_astrocal.json",args.outriggers,False,False))
+                if oldsrcflag:
+                    print(name,ffvl[0],"already in table")
+                    bright_names = bright_names[:-1]
+                    continue
+
+
+                if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime[-1].mjd)<(5*60/86400):
+                    
+                    print("Excluding " + name)
+                    print("")
+                    bright_fnames.append(-1)
+                    bright_offsets.append(-1)
+                    continue
+                if ffvl[0] != -1 and int(ffvl[-1])==int(search_dec):
+                    print(name)
+                    print(besttime[-1].isot)
+                    print(ffvl)
+                    print("")
+                    bright_fnames.append(ffvl[0])
+                    bright_offsets.append(ffvl[1])
+                else:
+                    print("Excluding " + name)
+                    print("")
+                    bright_fnames.append(-1)
+                    bright_offsets.append(-1)
+        if args.getrealtimecals:
+
+            #f = open(table_dir + "/astrocal_timestamps_"+reftime.isot+".csv","w")
+            if len(glob.glob(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json"))>0:
+                f = open(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json","r")
+                outdir = json.load(f)
+                f.close()
+            else:
+                outdir = dict()
+            print("-"*20)
+            print(reftime.isot + " Astrometric Calibrators")
+            for i in range(len(bright_names)):
+                if besttime[i] != -1:
+                    #f.write(bright_names[i]+","+str(besttime[i].mjd)+"\n")
+                    outdir[bright_names[i]]=besttime[i].mjd
+                    print(bright_names[i]+","+str(besttime[i].mjd))
+                    os.system("mkdir " + vis_dir + "/"+bright_names[i].replace(" ",""))
+            print("-"*20)
+            f = open(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json","w")
+            json.dump(outdir,f)
+            f.close()
+            return
 
     print(bright_fnames)
 
@@ -1109,168 +1170,30 @@ def astrocal(args):
             bright_gulpoffset_times.append(-1)
             print("Excluding " + bright_names[bright_idx])
             continue
-
-
-        print("Reading data for "+ bright_names[bright_idx])
-        fnum = int(bright_fnames[bright_idx])
-        gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
-        if len(gulps)<args.ngulps:
-            gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
-            gulps = np.unique(gulps)
-        ngulps = len(gulps)
-        """if len(bright_poserrs)==0 and ngulps>=5:
-            bright_gulpoffsets = []
-            bright_gulpoffset_times = []
-        elif np.all(np.array(bright_poserrs)==-1) and ngulps>=5:
-            bright_gulpoffsets = [-1]*len(bright_poserrs)
-            bright_gulpoffset_times = [-1]*len(bright_poserrs)"""
-        print(bright_idx,fnum,gulps)
-       
-        g=0
-        
-        #get RA cutoff
-        """
-        if ngulps>1:
-            copydir = vis_dir + bright_names[bright_idx].replace(" ","") + "/"
-            if len(glob.glob(copydir + "nsfrb_sb00_" + str(fnum) + ".out")) == 0:
-                sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110h03/nsfrb_sb00_" + str(fnum) + ".out",get_header=True)
-            else:
-                sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb00_" + str(fnum) + ".out",get_header=True)
-            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False)
-        
-            racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[0,1]-ra_grid_2D[0,0]))
-            print("RA cutoff:",racutoff_,"pixels")
-            min_gridsize = int(gridsize - racutoff_*(args.ngulps - 1))
-            full_img = np.zeros((image_size,min_gridsize))
-        else:
-        """
-        min_gridsize = image_size
-        full_img = np.zeros((image_size,image_size,ngulps))#,gulpsize,16*nchan_per_node))
-        #full_img[:,:,:,:] = 0
-        if ngulps >= 5:
-            full_img = np.zeros((image_size,image_size,ngulps))
-            RAs_for_fit = []
-            DECs_for_fit = []
-        else:
-            full_img = np.zeros((image_size,image_size,ngulps))
-        print("Image shape:",full_img.shape)
-        buff = args.buff_astrocal#50
-
-        for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
-
-            dat = None
-            sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-            corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
-            copydir = vis_dir + bright_names[bright_idx].replace(" ","") + "/"
-            os.system("mkdir " + copydir)
-            for i in range(16):
-                try:
-                    if len(glob.glob(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")) == 0:
-                        os.system("cp " + vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out " + copydir)
-                        dat_i,sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
-                    else:
-                        print(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")
-                        dat_i,sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
-
-                    print(mjd,dec,sb)
-                    print(dat_i.shape)
-
-                    if dat is None:
-                        dat = np.nan*np.ones(dat_i.shape,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
-                    dat[:,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat_i
-
-
-                except Exception as exc:
-                    print(exc)
-
-            if dat is None or int(dec) != int(search_dec):
-                bright_poserrs.append(-1)
-                bright_raerrs.append(-1)
-                bright_decerrs.append(-1)
-                bright_pixcoords.append(-1)
-                bright_pixs.append(-1)
-                close_pixs.append(-1)
-                bright_resid.append(-1)
-                print("Excluding " + bright_names[bright_idx])
-                continue
-
-            print("Getting UVW params...")
+    
+        if rtcalflag:
+            print("RT MODE Loading ",bright_fnames[bright_idx])
+            ngulps = len(bright_fnamedict[bright_names[bright_idx]])
+            gulps = np.arange(ngulps,dtype=int)
+            full_img = np.zeros((image_size,image_size,ngulps)) #np.load(bright_fnames[bright_idx])
+            bmin=20
             test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
-            pt_dec = dec*np.pi/180.
+            pt_dec = args.search_dec*np.pi/180.
             bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-            #ff = 1.53-np.arange(8192)*0.25/8192
-            #fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
-            fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
 
-
-            #flagging andd baseline cut
-            fcts = []
-            if args.flagSWAVE:
-                fcts.append(fct_SWAVE)
-            if args.flagBPASS:
-                fcts.append(fct_BPASS)
-            if args.flagFRCBAND:
-                fcts.append(fct_FRCBAND)
-            if args.flagBPASSBURST:
-                fcts.append(fct_BPASSBURST)
-
-            dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+            tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((25,len(bname),nchans_per_node,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates=[])
             U = UVW[0,:,1]
             V = UVW[0,:,0]
             W = UVW[0,:,2]
 
             uv_diag=np.max(np.sqrt(U**2 + V**2))
             pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
-            dat[np.isnan(dat)] = 0
-            
-            
-            if len(gulps) >1 and g == 0:
-                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
-                decidx = np.argmin(np.abs(dec_grid_2D[:,0]-dec))
-                print("Estimated pixel size:",np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
-                if ngulps >= 5:
-                    racutoff_ = 0
-                    print("Running linear fit for RA cutoff")
-                else:
-                    racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
-                    print("Estimating RA cutoff:",racutoff_,"pixels")
-                min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
-                if ngulps >= 5:
-                    full_img = np.zeros((image_size,min_gridsize,ngulps))
-                else:
-                    full_img = np.zeros((image_size,min_gridsize))
-                print("Updated image size:",full_img.shape)
-            
-            #for i in range(dat.shape[0]):
-            for j in range(len(corrs)):
-                for k in range(dat.shape[-1]):
-                    for jj in range(nchans_per_node):
-                        if ngulps>=5:
-                            full_img[:,:,g] +=  revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
-                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
-                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
-                                                    image_size,robust=args.robust,pixel_resolution=pixel_resolution)[:,g*racutoff_:g*racutoff_ + min_gridsize]
-                        elif ngulps>1:
-                            full_img += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
-                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
-                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
-                                                    image_size,robust=args.robust,pixel_resolution=pixel_resolution)[:,g*racutoff_:g*racutoff_ + min_gridsize]#[:,image_size-min_gridsize - racutoff_*(ngulps - 1 - g):image_size-racutoff_*(ngulps- 1 - g)]
-                        else:
-                            full_img += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
-                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
-                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
-                                                   image_size,robust=args.robust,pixel_resolution=pixel_resolution)
-                        #full_img[:,:,(g*gulpsize) + i,(j*nchans_per_node) + jj]  += tmpimg
-            
 
-            #run fit on single gulp 
-            if ngulps>=5:
-                #use the trimmed ra and dec axes so this correction will be appended to RA_cutoff
-                """
-                ra_grid_2D_g,dec_grid_2D_g,elev = uv_to_pix(mjd + (gulps[g]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
-                ra_grid_2D_g = ra_grid_2D_g[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)]
-                dec_grid_2D_g = dec_grid_2D_g[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)]
-                """
+
+            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=args.search_dec,two_dim=True,manual=False,uv_diag=uv_diag)
+            g = 0
+            for gulp in gulps:
+                full_img[:,:,gulp] = np.load(bright_fnamedict[bright_names[bright_idx]][gulp])
                 ra_grid_2D_g = ra_grid_2D
                 dec_grid_2D_g = dec_grid_2D
                 closepix = np.unravel_index(np.argmin(bright_coords[bright_idx].separation(SkyCoord(ra_grid_2D_g*u.deg,
@@ -1316,7 +1239,185 @@ def astrocal(args):
                 print("Errors:",np.sqrt(pcov[np.arange(pcov.shape[0]),np.arange(pcov.shape[1])]))
                 RAs_for_fit.append(bright_pixcoord.ra.value)
                 DECs_for_fit.append(bright_pixcoord.dec.value)
-            g += 1
+
+        else:
+            print("Reading data for "+ bright_names[bright_idx])
+            fnum = int(bright_fnames[bright_idx])
+            gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
+            if len(gulps)<args.ngulps:
+                gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
+                gulps = np.unique(gulps)
+            ngulps = len(gulps)
+            print(bright_idx,fnum,gulps)
+       
+            g=0
+        
+            min_gridsize = image_size
+            full_img = np.zeros((image_size,image_size,ngulps))#,gulpsize,16*nchan_per_node))
+            #full_img[:,:,:,:] = 0
+            if ngulps >= 5:
+                full_img = np.zeros((image_size,image_size,ngulps))
+                RAs_for_fit = []
+                DECs_for_fit = []
+            else:
+                full_img = np.zeros((image_size,image_size,ngulps))
+            print("Image shape:",full_img.shape)
+            buff = args.buff_astrocal#50
+
+            for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
+    
+                dat = None
+                sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+                copydir = vis_dir + bright_names[bright_idx].replace(" ","") + "/"
+                os.system("mkdir " + copydir)
+                for i in range(16):
+                    try:
+                        if len(glob.glob(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")) == 0:
+                            os.system("cp " + vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out " + copydir)
+                            dat_i,sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
+                        else:
+                            print(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")
+                            dat_i,sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
+
+                        print(mjd,dec,sb)
+                        print(dat_i.shape)
+
+                        if dat is None:
+                            dat = np.nan*np.ones(dat_i.shape,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
+                        dat[:,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat_i
+
+
+                    except Exception as exc:
+                        print(exc)
+
+                if dat is None or int(dec) != int(search_dec):
+                    bright_poserrs.append(-1)
+                    bright_raerrs.append(-1)
+                    bright_decerrs.append(-1)
+                    bright_pixcoords.append(-1)
+                    bright_pixs.append(-1)
+                    close_pixs.append(-1)
+                    bright_resid.append(-1)
+                    print("Excluding " + bright_names[bright_idx])
+                    continue
+
+                print("Getting UVW params...")
+                test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+                pt_dec = dec*np.pi/180.
+                bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+                #ff = 1.53-np.arange(8192)*0.25/8192
+                #fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+                fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
+
+
+                #flagging andd baseline cut
+                fcts = []
+                if args.flagSWAVE:
+                    fcts.append(fct_SWAVE)
+                if args.flagBPASS:
+                    fcts.append(fct_BPASS)
+                if args.flagFRCBAND:
+                    fcts.append(fct_FRCBAND)
+                if args.flagBPASSBURST:
+                    fcts.append(fct_BPASSBURST)
+
+                dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+                U = UVW[0,:,1]
+                V = UVW[0,:,0]
+                W = UVW[0,:,2]
+
+                uv_diag=np.max(np.sqrt(U**2 + V**2))
+                pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
+                dat[np.isnan(dat)] = 0
+            
+            
+                if len(gulps) >1 and g == 0:
+                    ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+                    decidx = np.argmin(np.abs(dec_grid_2D[:,0]-dec))
+                    print("Estimated pixel size:",np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
+                    if ngulps >= 5:
+                        racutoff_ = 0
+                        print("Running linear fit for RA cutoff")
+                    else:
+                        racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
+                        print("Estimating RA cutoff:",racutoff_,"pixels")
+                    min_gridsize = int(gridsize - racutoff_*(ngulps - 1))
+                    if ngulps >= 5:
+                        full_img = np.zeros((image_size,min_gridsize,ngulps))
+                    else:
+                        full_img = np.zeros((image_size,min_gridsize))
+                    print("Updated image size:",full_img.shape)
+                
+                #for i in range(dat.shape[0]):
+                for j in range(len(corrs)):
+                    for k in range(dat.shape[-1]):
+                        for jj in range(nchans_per_node):
+                            if ngulps>=5:
+                                full_img[:,:,g] +=  revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                    image_size,robust=args.robust,pixel_resolution=pixel_resolution)[:,g*racutoff_:g*racutoff_ + min_gridsize]
+                            elif ngulps>1:
+                                full_img += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                    image_size,robust=args.robust,pixel_resolution=pixel_resolution)[:,g*racutoff_:g*racutoff_ + min_gridsize]#[:,image_size-min_gridsize - racutoff_*(ngulps - 1 - g):image_size-racutoff_*(ngulps- 1 - g)]
+                            else:
+                                full_img += revised_robust_image(dat[:,:,(j*nchans_per_node) + jj,k],
+                                                   U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                   V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                                   image_size,robust=args.robust,pixel_resolution=pixel_resolution)
+            
+
+                #run fit on single gulp 
+                if ngulps>=5:
+                    ra_grid_2D_g = ra_grid_2D
+                    dec_grid_2D_g = dec_grid_2D
+                    closepix = np.unravel_index(np.argmin(bright_coords[bright_idx].separation(SkyCoord(ra_grid_2D_g*u.deg,
+                                                                                        dec_grid_2D_g*u.deg,frame='icrs'))),ra_grid_2D_g.shape)
+                    bbox = (max([closepix[0]-buff,0]),
+                        min([closepix[0]+buff+1,image_size]),
+                        max([closepix[1]-buff,0]),
+                        min([closepix[1]+buff+1,min_gridsize]))
+                    input_img = (full_img[:,image_size-min_gridsize - racutoff_*(ngulps- 1 - g):image_size-racutoff_*(ngulps - 1 - g)])[bbox[0]:bbox[1],bbox[2]:bbox[3],g]#.mean((2,3))
+                    print(input_img)
+                    input_img[np.isnan(input_img)] = np.nanmedian(input_img)
+
+                    peakpix = np.unravel_index(np.argmax(input_img),(bbox[1]-bbox[0],bbox[3]-bbox[2]))
+                    bright_pix = (peakpix[0] + bbox[0] ,peakpix[1] + bbox[2])
+                    bright_pixcoord = SkyCoord(ra_grid_2D_g[bright_pix[0],bright_pix[1]]*u.deg,dec_grid_2D_g[bright_pix[0],bright_pix[1]]*u.deg,frame='icrs')
+
+
+                    #fit with an ellipse
+                    input_ra_grid_2D = ra_grid_2D_g[bbox[0]:bbox[1],bbox[2]:bbox[3]]
+                    input_dec_grid_2D = dec_grid_2D_g[bbox[0]:bbox[1],bbox[2]:bbox[3]]
+                    input_sigma = 1/np.sqrt(np.clip(input_img,1e-10,np.inf))
+                    p0 = (bright_pixcoord.ra.value,bright_pixcoord.dec.value,
+                        pixel_resolution*pixperFWHM*2,pixel_resolution*pixperFWHM*2,
+                        np.pi/2,np.max(input_img))
+                    bounds = ([np.nanmin(input_ra_grid_2D),np.nanmin(input_dec_grid_2D),
+                            pixel_resolution*pixperFWHM,
+                            pixel_resolution*pixperFWHM,
+                            0,np.nanmax(input_img)*0.9],
+                        [np.nanmax(input_ra_grid_2D),np.nanmax(input_dec_grid_2D),
+                            max([np.max(input_ra_grid_2D)-np.min(input_ra_grid_2D),np.max(input_dec_grid_2D)-np.min(input_dec_grid_2D)]),
+                            max([np.max(input_ra_grid_2D)-np.min(input_ra_grid_2D),np.max(input_dec_grid_2D)-np.min(input_dec_grid_2D)]),
+                            2*np.pi,np.nanmax(input_img)*2])
+                    popt,pcov = curve_fit(fit_function,np.concatenate([input_ra_grid_2D[:,:,np.newaxis],
+                                                                input_dec_grid_2D[:,:,np.newaxis]],2),
+                                                                input_img.flatten(),p0=p0,bounds=bounds,sigma=input_sigma.flatten())
+                    bright_pixcoord = SkyCoord(popt[0]*u.deg,popt[1]*u.deg,frame='icrs')
+                    param_errs=np.sqrt(pcov[np.arange(pcov.shape[0]),np.arange(pcov.shape[1])])
+                    print("Gulp " + str(g) + "  Optimal Parameters:")
+                    print("Position:",bright_pixcoord.ra.to(u.hourangle),r'+-',(param_errs[0]*u.deg).to(u.arcsecond),bright_pixcoord.dec,r'+-',(param_errs[1]*u.deg).to(u.arcsecond))
+                    print("Semimajor axis:",(0.5*popt[2]*u.deg).to(u.arcmin))
+                    print("Semiminor axis:",(0.5*popt[3]*u.deg).to(u.arcmin))
+                    print("Angle (counterclockwise from vertical):",(-popt[4]*u.rad).to(u.deg))
+                    print("Errors:",np.sqrt(pcov[np.arange(pcov.shape[0]),np.arange(pcov.shape[1])]))
+                    RAs_for_fit.append(bright_pixcoord.ra.value)
+                    DECs_for_fit.append(bright_pixcoord.dec.value)
+                g += 1
 
         full_img /= (gulpsize*ngulps)
         if dat is None or int(dec) != int(search_dec):
@@ -1524,6 +1625,7 @@ def intable(name,fnum,table,outriggers,image_flux,exactposition):
     return (name in tab[arraykey].keys()) and fnum in tab[arraykey][name].keys() 
 
 def speccal(args):
+
     # find brightest continuum sources at the current declination # dec 16 continuum sources
     if len(args.reftimeISOT) == 0:
         reftime = Time.now()#Time(args.UTCday + "T12:00:00",format='isot')
@@ -1547,6 +1649,7 @@ def speccal(args):
     allnvsscoords = SkyCoord(np.concatenate([allnvsscoords,allvlacoords]))
     allnvssfluxes = np.concatenate([allnvssfluxes,allvlafluxes])
     """
+
     allnvsscoords,allnvssfluxes,allnvssms = read_nvss()
     allpsr = np.array([False]*len(allnvsscoords))
     allpsrnames = np.array([""]*len(allnvsscoords))
@@ -1598,6 +1701,7 @@ def speccal(args):
         if not args.no_update:
             update_speccal_table([],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=exclude_table,image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness,nchans_per_node=nchans_per_node)
         return
+    rtcalflag = False
     #single nvss source
     if len(args.nvss)>0:
         idxs = []
@@ -1620,6 +1724,19 @@ def speccal(args):
         #bright_nvssms = vis_nvssms[idxs]
         #bright_catflags = vis_catflags[idxs]
         print("Running astrometric calibration pipeline with NVSS sources ",idxnames)
+    elif args.userealtimecals and len(glob.glob(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json"))>0:
+        rtcalflag = True
+        f = open(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json","r")
+        rtdict = json.load(f)
+        f.close()
+        
+        rtcoords = SkyCoord([str(rtkey)[5:] for rtkey in rtdict.keys()],unit=(u.hourangle,u.deg),frame='icrs')
+        idxs, d2d_match, d3d_match = rtcoords.match_to_catalog_sky(vis_nvsscoords) 
+        #idxs = idxs[d2d_match.to(u.arcminute).value<1]
+        bright_nvsscoords = vis_nvsscoords[idxs]
+        bright_nvssfluxes = vis_nvssfluxes[idxs]
+        brightpsr = vispsr[idxs]
+        brightpsrnames = vispsrnames[idxs]
     else:
 
         if args.randomsources:
@@ -1642,19 +1759,39 @@ def speccal(args):
             brightpsrnames = vispsrnames[useidxs]
             print("Running flux calibration pipeline with " + str(len(bright_nvsscoords)) + " brightest NVSS sources at dec=" + str(search_dec) + ":")
 
+    if rtcalflag:
+        besttime = Time([rtdict[k] for k in rtdict.keys()],format='mjd')
+        bright_nvssnames = list(rtdict.keys())
+        
+        bright_fnames = []
+        for i in range(len(bright_nvssnames)):
+            fs= glob.glob(vis_dir + bright_nvssnames[i].replace(" ","") + "/image_*npy")
+            found=False
+            for f in fs:
+                fisot=f[6:-4]
+                if 86400*(np.abs(Time(fisot,format='isot').mjd-besttime[i].mjd))<=(config.T/1000):
+                    bright_fnames.append(f)
+                    print(f)
+                    found=True
+                    break
+            if not found:
+                bright_fnames.append(-1)
+        bright_offsets = [-1]*len(besttime)
 
-    #find the files within the timestamp
-    besttime = []
-    bright_nvssnames = []
-    bright_fnames = []
-    bright_offsets = []
-    for i in range(len(bright_nvsscoords)):
-        timeax = Time(reftime.mjd - np.linspace(0,args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
-        DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
-        if brightpsr[i]:
-            name = "PSR " + brightpsrnames[i]
-        else:
-            name = str('NVSS J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_nvsscoords[i].ra.hms.h),
+        print("checkpoint",bright_nvssnames,bright_fnames)
+    else:
+        #find the files within the timestamp
+        besttime = []
+        bright_nvssnames = []
+        bright_fnames = []
+        bright_offsets = []
+        for i in range(len(bright_nvsscoords)):
+            timeax = Time(reftime.mjd - np.linspace(0,(-1 if args.getrealtimecals else 1)*args.maxtime,int(args.maxtime))[::-1]/24,format='mjd')
+            DSA = EarthLocation(lat=Lat*u.deg,lon=Lon*u.deg,height=Height*u.m)
+            if brightpsr[i]:
+                name = "PSR " + brightpsrnames[i]
+            else:
+                name = str('NVSS J{RH:02d}{RM:02d}{RS:02d}'.format(RH=int(bright_nvsscoords[i].ra.hms.h),
                                                                RM=int(bright_nvsscoords[i].ra.hms.m),
                                                                RS=int(bright_nvsscoords[i].ra.hms.s)) +
                            str("+" if bright_nvsscoords[i].dec>=0 else "-") +
@@ -1662,61 +1799,86 @@ def speccal(args):
                                                                DM=int(bright_nvsscoords[i].dec.dms.m),
                                                                DS=int(bright_nvsscoords[i].dec.dms.s)))
 
-        bright_nvssnames.append(name)
+            bright_nvssnames.append(name)
 
-        if name in ex_table and (ex_times[list(ex_table).index(name)]==-1):
-            besttime.append(-1)
-            print("Excluding " + name)
-            print("")
-            bright_fnames.append(-1)
-            bright_offsets.append(-1)
-            continue
+            if name in ex_table and (ex_times[list(ex_table).index(name)]==-1):
+                besttime.append(-1)
+                print("Excluding " + name)
+                print("")
+                bright_fnames.append(-1)
+                bright_offsets.append(-1)
+                continue
 
-        hourvis = SkyCoord(bright_nvsscoords[i],location=DSA,obstime=timeax)
+            hourvis = SkyCoord(bright_nvsscoords[i],location=DSA,obstime=timeax)
 
-        #narrow to best minute
-        antpos = hourvis.transform_to(AltAz)
-        timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1,1,24)/24,format='mjd')
-        minvis = SkyCoord(bright_nvsscoords[i],location=DSA,obstime=timeax)
+            #narrow to best minute
+            antpos = hourvis.transform_to(AltAz)
+            timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1,1,24)/24,format='mjd')
+            minvis = SkyCoord(bright_nvsscoords[i],location=DSA,obstime=timeax)
 
-        #narrow to best second
-        antpos = minvis.transform_to(AltAz)
-        timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1/60,1/60,24)/24,format='mjd')
-        secvis = SkyCoord(bright_nvsscoords[i],location=DSA,obstime=timeax)
+            #narrow to best second
+            antpos = minvis.transform_to(AltAz)
+            timeax = Time(timeax[np.argmax(antpos.alt.value)].mjd + np.linspace(-1/60,1/60,24)/24,format='mjd')
+            secvis = SkyCoord(bright_nvsscoords[i],location=DSA,obstime=timeax)
 
-        antpos = secvis.transform_to(AltAz)
-        besttime.append(timeax[np.argmax(antpos.alt.value)] + (args.shiftbytime*u.second))
-        if args.shiftbytime!=0:
-            print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
-        ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
-        oldsrcflag = (args.newsources and intable(name,str(ffvl[0]),table_dir + "NSFRB_speccal.json",args.outriggers,True,args.exactposition))
-        if oldsrcflag:
-            print(name,ffvl[0],"already in table")
-            bright_nvssnames = bright_nvssnames[:-1]
-            continue
+            antpos = secvis.transform_to(AltAz)
+            besttime.append(timeax[np.argmax(antpos.alt.value)] + (args.shiftbytime*u.second))
+            if args.shiftbytime!=0:
+                print("Imaging " + str(args.shiftbytime) + " seconds past meridian")
+            if not args.getrealtimecals:
+                ffvl = find_fast_vis_label(besttime[-1].mjd,return_dec=True)
+                oldsrcflag = (args.newsources and intable(name,str(ffvl[0]),table_dir + "NSFRB_speccal.json",args.outriggers,True,args.exactposition))
+                if oldsrcflag:
+                    print(name,ffvl[0],"already in table")
+                    bright_nvssnames = bright_nvssnames[:-1]
+                    continue
+    
+                if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime.mjd)<(5*60/86400):
+                    besttime.append(-1)
+                    print("Excluding " + name)
+                    print("")
+                    bright_fnames.append(-1)
+                    bright_offsets.append(-1)
+                    continue
 
-        if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime.mjd)<(5*60/86400):
-            besttime.append(-1)
-            print("Excluding " + name)
-            print("")
-            bright_fnames.append(-1)
-            bright_offsets.append(-1)
-            continue
+                if ffvl[0] != -1 and int(ffvl[-1])==int(search_dec):
+                    print(name)
+                    print(besttime[-1].isot)
+                    print(ffvl)
+                    print("")
+                    bright_fnames.append(ffvl[0])
+                    bright_offsets.append(ffvl[1])
+                else:
+                    print("Excluding " + name)
+                    print("")
+                    bright_fnames.append(-1)
+                    bright_offsets.append(-1)
+        if args.getrealtimecals:
+            if len(glob.glob(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json"))>0:
+                f = open(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json","r")
+                outdir = json.load(f)
+                f.close()
+            else:
+                outdir = dict()
+            #f = open(table_dir + "/speccal_timestamps_"+reftime.isot+".csv","w")
+            print("-"*20)
+            print(reftime.isot + " Flux Calibrators")
+            for i in range(len(bright_nvssnames)):
+                if besttime[i] != -1:
+                    #f.write(bright_nvssnames[i]+","+str(besttime[i].mjd)+"\n")
+                    outdir[bright_nvssnames[i]] = besttime[i].mjd
+                    print(bright_nvssnames[i]+","+str(besttime[i].mjd))
+                    os.system("mkdir " + vis_dir + "/"+bright_nvssnames[i].replace(" ",""))
+            print("-"*20)
+            f = open(table_dir + "/rt_speccal_timestamps_"+reftime.isot+".json","w")
+            json.dump(outdir,f)
+            f.close()
+            return
 
-        if ffvl[0] != -1 and int(ffvl[-1])==int(search_dec):
-            print(name)
-            print(besttime[-1].isot)
-            print(ffvl)
-            print("")
-            bright_fnames.append(ffvl[0])
-            bright_offsets.append(ffvl[1])
-        else:
-            print("Excluding " + name)
-            print("")
-            bright_fnames.append(-1)
-            bright_offsets.append(-1)
 
-    print(bright_fnames)
+        print(bright_fnames)
+    
+    
     #Run imaging pipeline
 
     bright_poserrs = []
@@ -1742,6 +1904,7 @@ def speccal(args):
     
     
     
+    print("about to start loop",len(bright_fnames))
     if args.checknumsources:
         cnt = 0
         print("-"*20)
@@ -1757,7 +1920,9 @@ def speccal(args):
     
     
     for bright_idx in range(len(bright_fnames)):
+        
         if bright_fnames[bright_idx] == -1:
+            print(">>",bright_nvssnames[bright_idx])
             bright_poserrs.append(-1)
             bright_raerrs.append(-1)
             bright_decerrs.append(-1)
@@ -1769,215 +1934,235 @@ def speccal(args):
             bright_resid.append(-1)
             print("Excluding " + bright_nvssnames[bright_idx])
             continue
-
-
-        print("Reading data for "+ bright_nvssnames[bright_idx])
-        fnum = int(bright_fnames[bright_idx])
-        if not args.singlesample:
-            gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
-            if len(gulps)<args.ngulps:
-                gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
-                gulps = np.unique(gulps)
-            ngulps = len(gulps)
-            if ngulps>1:
-                #get RA cutoffs for each gulp
-                racutoffs = []
-                for g in range(ngulps):
-                    racutoffs.append(get_RA_cutoff(bright_nvsscoords[bright_idx].dec.value,usefit=True,asint=True,offset_s=g*tsamp_ms*gulpsize/1000))
-                print("RA CUTOFFS:",racutoffs)
-            else:
-                racutoffs = [0]
-        else:
-            gulps = [bright_offsets[bright_idx]//gulpsize]
+        
+        if rtcalflag:
+            print("RT MODE Loading ",bright_fnames[bright_idx])
+            full_img = np.load(bright_fnames[bright_idx])
+            gulps = [0]
             ngulps = 1
-        print(bright_idx,fnum,gulps)
-        if args.completeness:
-            if fnum not in completeness_searchdict.keys():
-                completeness_searchdict[fnum] = []
-            if gulps[0] not in completeness_searchdict[fnum]:
-                completeness_searchdict[fnum].append(gulps[0])
-        
-        g=0
-        buff = args.buff_speccal
-        min_gridsize = image_size
-        copydir = vis_dir + bright_nvssnames[bright_idx].replace(" ","") + "/"
-        sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-        corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+            bmin=20
+            test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+            pt_dec = args.search_dec*np.pi/180.
+            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
 
-        if args.uselastimage and ((len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0) or (len(glob.glob(vis_dir + "/lxd110" + corrs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out"))>0)):
-            if len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0:
-                sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
-            else:
-                print(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")
-                sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
+            tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((25,len(bname),nchans_per_node,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates=[])
+            U = UVW[0,:,1]
+            V = UVW[0,:,0]
+            W = UVW[0,:,2]
 
-            if glob.glob(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy"):
-                print("Using image at " + copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy")
-                full_img = np.load(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy")
-
-                test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
-                pt_dec = dec*np.pi/180.
-                bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-                #ff = 1.53-np.arange(8192)*0.25/8192
-                #fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
-                fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
+            uv_diag=np.max(np.sqrt(U**2 + V**2))
+            pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
 
 
-                #flagging andd baseline cut
-                fcts = []
-                if args.flagSWAVE:
-                    fcts.append(fct_SWAVE)
-                if args.flagBPASS:
-                    fcts.append(fct_BPASS)
-                if args.flagFRCBAND:
-                    fcts.append(fct_FRCBAND)
-                if args.flagBPASSBURST:
-                    fcts.append(fct_BPASSBURST)
-
-                tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((25,len(bname),nchans_per_node,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
-                U = UVW[0,:,1]
-                V = UVW[0,:,0]
-                W = UVW[0,:,2]
-
-                uv_diag=np.max(np.sqrt(U**2 + V**2))
-                pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
-                
-                ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
-                image_size,min_gridsize = full_img.shape[:2]
-                ra_grid_2D = ra_grid_2D[:,-min_gridsize:]
-                dec_grid_2D = dec_grid_2D[:,-min_gridsize:]
-            
+            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=args.search_dec,two_dim=True,manual=False,uv_diag=uv_diag)
         else:
-
-            full_img = np.zeros((image_size,image_size,int(gulpsize*ngulps/args.timebin),16*nchan_per_node),dtype=float) #,gulpsize,16*nchan_per_node))
-            print("Image shape:",full_img.shape)
-            for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
-
-
-
-
-
-                dat = None
-                sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
-                os.system("mkdir " + copydir)
-                for i in range(16):
-                    try:
-                        if len(glob.glob(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")) == 0:
-                            os.system("cp " + vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out " + copydir)
-                            dat_i,sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
-                        else:
-                            print(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")
-                            dat_i,sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
-
-                        print(mjd,dec,sb)
-
-                        if dat is None:
-                            dat = np.nan*np.ones(dat_i.shape,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
-                    
-                        dat[:,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat_i
-
-                    except Exception as exc:
-                        print(exc)
-
-                if dat is None or int(dec) != int(search_dec):
-                    bright_poserrs.append(-1)
-                    bright_raerrs.append(-1)
-                    bright_decerrs.append(-1)
-                    bright_pixcoords.append(-1)
-                    bright_pixs.append(-1)
-                    close_pixs.append(-1)
-                    bright_measfluxs.append(-1)
-                    bright_measfluxerrs.append(-1)
-                    bright_resid.append(-1)
-                    print("Excluding " + bright_nvssnames[bright_idx])
-                    continue
-
-                #FLUX CAL
+            print("Reading data for "+ bright_nvssnames[bright_idx])
+            fnum = int(bright_fnames[bright_idx])
+            if not args.singlesample:
+                gulps = np.arange(bright_offsets[bright_idx]//gulpsize,min([(bright_offsets[bright_idx]//gulpsize)+args.ngulps,90]),dtype=int)
+                if len(gulps)<args.ngulps:
+                    gulps = np.concatenate([np.arange(max([0,bright_offsets[bright_idx]//gulpsize - (args.ngulps-len(gulps))]),bright_offsets[bright_idx]//gulpsize),gulps])
+                    gulps = np.unique(gulps)
+                ngulps = len(gulps)
+                if ngulps>1:
+                    #get RA cutoffs for each gulp
+                    racutoffs = []
+                    for g in range(ngulps):
+                        racutoffs.append(get_RA_cutoff(bright_nvsscoords[bright_idx].dec.value,usefit=True,asint=True,offset_s=g*tsamp_ms*gulpsize/1000))
+                    print("RA CUTOFFS:",racutoffs)
+                else:
+                    racutoffs = [0]
+            else:
+                gulps = [bright_offsets[bright_idx]//gulpsize]
+                ngulps = 1
+            print(bright_idx,fnum,gulps)
+            if args.completeness:
+                if fnum not in completeness_searchdict.keys():
+                    completeness_searchdict[fnum] = []
+                if gulps[0] not in completeness_searchdict[fnum]:
+                    completeness_searchdict[fnum].append(gulps[0])
         
-                print("Getting UVW params...")
-                test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
-                pt_dec = dec*np.pi/180.
-                bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-                #ff = 1.53-np.arange(8192)*0.25/8192
-                #fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
-                fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
+            g=0
+            buff = args.buff_speccal
+            min_gridsize = image_size
+            copydir = vis_dir + bright_nvssnames[bright_idx].replace(" ","") + "/"
+            sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+            corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+
+            if args.uselastimage and ((len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0) or (len(glob.glob(vis_dir + "/lxd110" + corrs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out"))>0)):
+                if len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0:
+                    sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
+                else:
+                    print(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")
+                    sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
+
+                if glob.glob(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy"):
+                    print("Using image at " + copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy")
+                    full_img = np.load(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy")
+
+                    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+                    pt_dec = dec*np.pi/180.
+                    bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+                    #ff = 1.53-np.arange(8192)*0.25/8192
+                    #fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+                    fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
 
 
-                #flagging andd baseline cut
-                fcts = []
-                if args.flagSWAVE:
-                    fcts.append(fct_SWAVE)
-                if args.flagBPASS:
-                    fcts.append(fct_BPASS)
-                if args.flagFRCBAND:
-                    fcts.append(fct_FRCBAND)
-                if args.flagBPASSBURST:
-                    fcts.append(fct_BPASSBURST)
+                    #flagging andd baseline cut
+                    fcts = []
+                    if args.flagSWAVE:
+                        fcts.append(fct_SWAVE)
+                    if args.flagBPASS:
+                        fcts.append(fct_BPASS)
+                    if args.flagFRCBAND:
+                        fcts.append(fct_FRCBAND)
+                    if args.flagBPASSBURST:
+                        fcts.append(fct_BPASSBURST)
 
-                dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
-                U = UVW[0,:,1]
-                V = UVW[0,:,0]
-                W = UVW[0,:,2]
+                    tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((25,len(bname),nchans_per_node,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+                    U = UVW[0,:,1]
+                    V = UVW[0,:,0]
+                    W = UVW[0,:,2]
 
-                uv_diag=np.max(np.sqrt(U**2 + V**2))
-                pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
-                dat[np.isnan(dat)] = 0
-                if g == 0:
+                    uv_diag=np.max(np.sqrt(U**2 + V**2))
+                    pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
+                
                     ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+                    image_size,min_gridsize = full_img.shape[:2]
+                    ra_grid_2D = ra_grid_2D[:,-min_gridsize:]
+                    dec_grid_2D = dec_grid_2D[:,-min_gridsize:]
+            
+            else:
+    
+                full_img = np.zeros((image_size,image_size,int(gulpsize*ngulps/args.timebin),16*nchan_per_node),dtype=float) #,gulpsize,16*nchan_per_node))
+                print("Image shape:",full_img.shape)
+                for gulp in gulps:#[77,78,79,80,81]:##0,45,75]:#range(3):
 
-                if (bright_nvsscoords[bright_idx].ra.value < np.min(ra_grid_2D) or
+
+
+
+
+                    dat = None
+                    sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+                    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+                    os.system("mkdir " + copydir)
+                    for i in range(16):
+                        try:
+                            if len(glob.glob(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")) == 0:
+                                os.system("cp " + vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out " + copydir)
+                                dat_i,sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110" + corrs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
+                            else:
+                                print(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out")
+                                dat_i,sb,mjd,dec = pipeline.read_raw_vis(copydir + "nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
+
+                            print(mjd,dec,sb)
+
+                            if dat is None:
+                                dat = np.nan*np.ones(dat_i.shape,dtype=dat_i.dtype).repeat(len(corrs),axis=2)
+                    
+                            dat[:,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat_i
+
+                        except Exception as exc:
+                            print(exc)
+
+                    if dat is None or int(dec) != int(search_dec):
+                        bright_poserrs.append(-1)
+                        bright_raerrs.append(-1)
+                        bright_decerrs.append(-1)
+                        bright_pixcoords.append(-1)
+                        bright_pixs.append(-1)
+                        close_pixs.append(-1)
+                        bright_measfluxs.append(-1)
+                        bright_measfluxerrs.append(-1)
+                        bright_resid.append(-1)
+                        print("Excluding " + bright_nvssnames[bright_idx])
+                        continue
+
+                    #FLUX CAL
+        
+                    print("Getting UVW params...")
+                    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+                    pt_dec = dec*np.pi/180.
+                    bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+                    #ff = 1.53-np.arange(8192)*0.25/8192
+                    #fobs = ff[1024:1024+int(len(corrs)*NUM_CHANNELS/2)]
+                    fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
+
+
+                    #flagging andd baseline cut
+                    fcts = []
+                    if args.flagSWAVE:
+                        fcts.append(fct_SWAVE)
+                    if args.flagBPASS:
+                        fcts.append(fct_BPASS)
+                    if args.flagFRCBAND:
+                        fcts.append(fct_FRCBAND)
+                    if args.flagBPASSBURST:
+                        fcts.append(fct_BPASSBURST)
+
+                    dat, bname, blen, UVW, antenna_order = flag_vis(dat, bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates = fcts)
+                    U = UVW[0,:,1]
+                    V = UVW[0,:,0]
+                    W = UVW[0,:,2]
+
+                    uv_diag=np.max(np.sqrt(U**2 + V**2))
+                    pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
+                    dat[np.isnan(dat)] = 0
+                    if g == 0:
+                        ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+
+                    if (bright_nvsscoords[bright_idx].ra.value < np.min(ra_grid_2D) or
                         bright_nvsscoords[bright_idx].ra.value > np.max(ra_grid_2D) or
                         bright_nvsscoords[bright_idx].dec.value < np.min(dec_grid_2D) or
                         bright_nvsscoords[bright_idx].dec.value > np.max(dec_grid_2D)):
-                    bright_poserrs.append(-1)
-                    bright_raerrs.append(-1)
-                    bright_decerrs.append(-1)
-                    bright_pixcoords.append(-1)
-                    bright_pixs.append(-1)
-                    close_pixs.append(-1)
-                    bright_measfluxs.append(-1)
-                    bright_measfluxerrs.append(-1)
-                    bright_resid.append(-1)
-                    print("Excluding " + bright_nvssnames[bright_idx])
-                    continue
+                        bright_poserrs.append(-1)
+                        bright_raerrs.append(-1)
+                        bright_decerrs.append(-1)
+                        bright_pixcoords.append(-1)
+                        bright_pixs.append(-1)
+                        close_pixs.append(-1)
+                        bright_measfluxs.append(-1)
+                        bright_measfluxerrs.append(-1)
+                        bright_resid.append(-1)
+                        print("Excluding " + bright_nvssnames[bright_idx])
+                        continue
 
-                for i in range(int(dat.shape[0]/args.timebin)):
-                    for j in range(len(corrs)):
-                        for k in range(dat.shape[-1]):
-                            for jj in range(nchans_per_node):
-                                if args.primarybeam:
-                                    PB = multivariate_normal.pdf(np.concatenate([ra_grid_2D[:,:,np.newaxis],
+                    for i in range(int(dat.shape[0]/args.timebin)):
+                        for j in range(len(corrs)):
+                            for k in range(dat.shape[-1]):
+                                for jj in range(nchans_per_node):
+                                    if args.primarybeam:
+                                        PB = multivariate_normal.pdf(np.concatenate([ra_grid_2D[:,:,np.newaxis],
                                                                 dec_grid_2D[:,:,np.newaxis]],2),
                                                         mean=(ra_grid_2D[image_size//2,image_size//2],dec_grid_2D[image_size//2,image_size//2]),
                                                         cov=ellipse_to_covariance(1.22*((ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj])/4.65)*180/np.pi/2.3548,
                                                                                   1.22*((ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj])/4.65)*180/np.pi/2.3548,0))
-                                    print("primary beam",PB.shape)
-                                    PB /= np.nanmax(PB)
-                                else:
-                                    PB = 1
-                                #np.save("PB_"+str(j) +  ".npy",PB)
-                                if ngulps>1:
-                                    full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
+                                        print("primary beam",PB.shape)
+                                        PB /= np.nanmax(PB)
+                                    else:
+                                        PB = 1
+                                    #np.save("PB_"+str(j) +  ".npy",PB)
+                                    if ngulps>1:
+                                        full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    image_size,robust=args.robust,
                                                    pixel_resolution=pixel_resolution)/PB
                                                      
-                                else:
-                                    full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
+                                    else:
+                                        full_img[:,:,int(g*gulpsize/args.timebin) + i,(j*nchans_per_node) + jj] += revised_robust_image(dat[i*args.timebin:(i+1)*args.timebin,:,(j*nchans_per_node) + jj,k],
                                                    U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                    image_size,robust=args.robust,
                                                    pixel_resolution=pixel_resolution)/PB
                          
-                g += 1
+                    g += 1
 
-            if dat is None or int(dec) != int(search_dec):
-                continue
+                if dat is None or int(dec) != int(search_dec):
+                    continue
         
         
-            np.save(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
+                np.save(copydir+bright_nvssnames[bright_idx].replace(" ","")+"_" +str(Time(mjd,format='mjd').isot) + "_" + str(fnum) + "_" + str("outriggers_" if outriggers else "") + "image.npy",full_img)
 
         
         #find the expected source position based on astrometric cal offsets and errors...somehow...then get brightest pixel
@@ -2423,5 +2608,8 @@ if __name__=="__main__":
     parser.add_argument('--init_noise',action='store_true',help='initialize noise stats')
     parser.add_argument('--randgulps',action='store_true',help='random gulps for noise estimate')
     parser.add_argument('--nummeasure',type=int,help='number of single-sample measurements to sample from each gulp, between 1-25',default=1)
+    parser.add_argument('--getrealtimecals',action='store_true',help='creates a table of calibrators to observe over the next 24 hours')
+    parser.add_argument('--userealtimecals',action='store_true',help='uses table with reference isot provided') 
+   
     args = parser.parse_args()
     main(args)
