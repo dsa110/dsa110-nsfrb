@@ -20,7 +20,7 @@ setup(name='dsa110-nsfrb',
 H24_INSTALL=0 #set INSTALLMODE=H24_INSTALL for full server installation on h24
 CORR_INSTALL=1 #set INSTALLMODE=CORR_INSTALL if installing realtime imager on the corr nodes
 T4REMOTE_INSTALL=2 #set INSTALLMODE=T4REMOTE_INSTALL if installing T4 candidate post-processor on a remote server (e.g. h20)
-INSTALLMODE = H24_INSTALL
+INSTALLMODE = CORR_INSTALL
 
 
 #get local nsfrb directory
@@ -33,6 +33,7 @@ os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
 if INSTALLMODE == CORR_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-injections")
     os.system("mkdir ../dsa110-nsfrb-injections/realtime_staging_sb")
+    """
     os.system("mkdir ../dsa110-nsfrb-logfiles")
     logfiles = ["rttimes_log.txt",
                 "rttx_log.txt"]
@@ -40,6 +41,7 @@ if INSTALLMODE == CORR_INSTALL:
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
         os.system("> ../dsa110-nsfrb-logfiles/" + l)
+    """
 elif INSTALLMODE == T4REMOTE_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-injections")
     with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:

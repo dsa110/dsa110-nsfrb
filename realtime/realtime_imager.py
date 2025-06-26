@@ -20,7 +20,6 @@ from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
-from tqdm import tqdm
 import time
 from scipy.stats import norm,multivariate_normal
 from nsfrb import pipeline
@@ -187,6 +186,15 @@ def main(args):
     #read and reshape into np array (25 times x 4656 baselines x 8 chans x 2 pols, complex)
     gulp_counter = 0
     tasklist = []
+
+
+    #set the dec, sb, and mjd
+    Dec = args.dec
+    sb = args.sb
+    f = open(args.mjdfile,"r")
+    mjd_init = float(f.read())
+    f.close()
+    print("STARTUP PARAMS:",sb,Dec,mjd_init)
     while True:
         dat = None
         while (dat is None) or dat.shape[0]<args.num_time_samples:
@@ -194,10 +202,10 @@ def main(args):
             #if args.testh23:
             #    dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_TESTKEYS[args.sb],nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
             #else:
-            if gulp_counter == 0:
-                dat_i,mjd_init,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
-            else:
-                dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
+            #if gulp_counter == 0:
+            #    dat_i,mjd_init,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
+            #else:
+            dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
            
            
             #printlog(str((mjd,sb,Dec)),output_file=logfile)
@@ -360,10 +368,11 @@ def main(args):
             #timing_dict[args.sb]["tx_time"] = -1
         #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
 
+        """
         ftime = open(rtbench_file,"a")
         ftime.write(str(rtime)+"\n")
         ftime.close()
-        
+        """
         if args.failsafe and rtime>args.rttimeout:
             
             
@@ -418,10 +427,11 @@ def main(args):
                 timing_dict["tx_time"] = txtime
                 timing_dict["tot_time"] = time.time()-timage
                 ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
+            """
             ftime = open(rttx_file,"a")
             ftime.write(str(txtime)+"\n")
             ftime.close()
-
+            """
             if args.failsafe and time.time()-timage>args.rttimeout:
                 executor.shutdown()
                 print("Realtime exceeded, shutting down imager")
@@ -476,7 +486,8 @@ if __name__=="__main__":
     parser.add_argument('--rttimeout',type=float,help='time to wait for search task to complete before cancelling, default=3 seconds',default=3)
     parser.add_argument('--primarybeam',action='store_true',help='Apply a primary beam correction')
     parser.add_argument('--failsafe',action='store_true',help='Shutdown if real-time limit is exceeded')
-
+    parser.add_argument('--dec',type=float,help='Pointing declination',default=71.6)
+    parser.add_argument('--mjdfile',type=str,help='MJD file',default='/home/ubuntu/tmp/mjd.dat')
     args = parser.parse_args()
     main(args)
 

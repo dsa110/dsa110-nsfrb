@@ -508,7 +508,7 @@ def noisestatusplot(gridsize=301,plotfile_noise=img_dir +"noisestatusfile.txt",u
         speccal_table = json.load(f)
         f.close()
 
-        n_levels = np.linspace(0,200,30)
+        n_levels = np.linspace(0,500,30)
         allnoise = []
         allwidths = []
         allcounts = []
@@ -525,7 +525,7 @@ def noisestatusplot(gridsize=301,plotfile_noise=img_dir +"noisestatusfile.txt",u
         allwidths = np.sort(allwidths)
 
         f = open(plotfile_noise,"w")
-        f.write("Noise Statistics (mJy)\n")
+        f.write("Noise Statistics (mJy) from " + str(np.max(allcounts)) + "Gulps (" + str(np.around(np.max(allcounts)*T/1000/3600,2)) + " hours)\n")
         buff = 20
         for i in np.arange(len(n_levels),dtype=int)[::-1]:
             lev = np.array([" "]*len(allnoise)*buff)
