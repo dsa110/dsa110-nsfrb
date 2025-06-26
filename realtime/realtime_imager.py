@@ -205,18 +205,23 @@ def main(args):
             #if gulp_counter == 0:
             #    dat_i,mjd_init,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
             #else:
-            dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
+            try:
+                dat_i = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
            
            
-            #printlog(str((mjd,sb,Dec)),output_file=logfile)
-            assert(sb==args.sb)
-            print(Dec,pt_dec*180/np.pi)
-            assert(np.abs((Dec*np.pi/180) - pt_dec)<1e-2)
-            if dat is None:
-                dat = dat_i
-            else:
-                dat = np.concatenate([dat,dat_i])
-            #printlog(dat.shape,output_file=logfile)
+                #printlog(str((mjd,sb,Dec)),output_file=logfile)
+                assert(sb==args.sb)
+                print(Dec,pt_dec*180/np.pi)
+                assert(np.abs((Dec*np.pi/180) - pt_dec)<1e-2)
+                if dat is None:
+                    dat = dat_i
+                else:
+                    dat = np.concatenate([dat,dat_i])
+                #printlog(dat.shape,output_file=logfile)
+            except Exception as exc:
+                print("Trying to connect to ring buffer...")
+                print(exc)
+                time.sleep(1)
         mjd = mjd_init + (gulp_counter*T/1000/86400)
         gulp_counter += 1
         print(">>",mjd,"<<")

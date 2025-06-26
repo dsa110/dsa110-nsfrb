@@ -31,8 +31,9 @@ os.system("pwd > metadata.txt")
 os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
 
 if INSTALLMODE == CORR_INSTALL:
-    os.system("mkdir ../dsa110-nsfrb-injections")
-    os.system("mkdir ../dsa110-nsfrb-injections/realtime_staging_sb")
+    pass
+    #os.system("mkdir ../dsa110-nsfrb-injections")
+    #os.system("mkdir ../dsa110-nsfrb-injections/realtime_staging_sb")
     """
     os.system("mkdir ../dsa110-nsfrb-logfiles")
     logfiles = ["rttimes_log.txt",

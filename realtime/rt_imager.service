@@ -2,11 +2,11 @@
 
 [Unit]
 
-Description=rt_imager
+Description=rtimager
 
 [Service]
 
-# Command to execute when service start
+# Command to execute when service started
 WorkingDirectory=/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime
 ExecStart=/bin/bash -i /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/run_realtime_imager
 ExecStop=/bin/bash -i /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/kill_realtime_imager
@@ -25,37 +25,3 @@ Restart=on-failure
 
 # Automatically start service on boot
 WantedBy=default.target
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-~                                                                                                                                      
-"/etc/systemd/user/procserver.service" 27L, 878C                                                                     1,1           All
-
