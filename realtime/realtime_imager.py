@@ -443,7 +443,7 @@ def main(args):
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Form and send dirty images extracting visibilities from raw data (.out) file.')
-    parser.add_argument('sb',type=int)
+    parser.add_argument('--sb',type=int,help="sb num",default=0)
     parser.add_argument('--timestamp',type=str,help='Timestamp in ISOT format (e.g. 2024-06-12T21:35:49); if not given, timestamp is retrieved from sb00 file with os.path.getctime() or from time of rsync',default='')
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
     parser.add_argument('--datasize',type=int,help='Data size in bytes, default=4',default=raw_datasize)

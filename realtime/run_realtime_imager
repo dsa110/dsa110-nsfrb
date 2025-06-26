@@ -1,9 +1,9 @@
 #!/bin/bash
 #dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 10 --name rt_imager_WRKR > $PWD/.rt_imager_WRKR_log.txt 2>&1 &
-> $PWD/realtime_imager_log.txt
+#> $PWD/realtime_imager_log.txt
 
 #create psrdada buffer
-dada_db -k caba -b 14899200
+#dada_db -k caba -b 14899200
 
-python $NSFRBDIR/realtime/realtime_imager.py 1 --num_time_samples 25 --nchans_per_node 8 --gridsize 301 --briggs --robust -2 --verbose --maxProcesses 8 --inject_interval 90 --inject_delay 0 --inject --testh23 "$@"
+taskset -c 23 python $NSFRBDIR/realtime/realtime_imager.py --num_time_samples 25 --nchans_per_node 8 --gridsize 301 --briggs --robust -2 --verbose --maxProcesses 8 --inject_interval 90 --inject_delay 0 --inject --search "$@"
 
