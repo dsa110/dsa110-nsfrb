@@ -5,5 +5,5 @@
 #create psrdada buffer
 #dada_db -k caba -b 14899200
 
-taskset -c 23 python $NSFRBDIR/realtime/realtime_imager.py --num_time_samples 25 --nchans_per_node 8 --gridsize 301 --briggs --robust -2 --verbose --maxProcesses 8 --inject_interval 90 --inject_delay 0 --inject --search "$@"
+taskset -c 23 python $NSFRBDIR/realtime/realtime_imager.py --num_time_samples 25 --nchans_per_node 8 --gridsize 301 --briggs --robust -2 --verbose --maxProcesses 8 --inject_interval 270 --inject_delay 0 --inject --search "$@"
 
