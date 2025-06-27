@@ -282,15 +282,19 @@ def main(args):
                     #if verbose: printlog("Injection" + injection_params['ID'] + "found",output_file=logfile)
                     fname = "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy"
                     #copy
+                    """
                     if args.testh23:
                         os.system("cp " + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
                     else:
                         os.system("scp h24.pro.pvt:" + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
+                    """
+                    fname = injection_params['fname'] + str(args.sb) + ".npy"
                     
-                    
+                    print(fname)
                     #read
                     try:
                         inject_img = np.load(local_inject_dir + fname)
+                        assert(inject_img.shape==(args.gridsize,args.gridsize,dat.shape[0]))
                     except Exception as exc:
                         inject_flat = False
                         inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))

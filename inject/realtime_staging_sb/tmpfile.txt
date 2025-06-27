@@ -1,0 +1,1 @@
+This is a placeholder file so ensure the realtime staging directory is included in git commits

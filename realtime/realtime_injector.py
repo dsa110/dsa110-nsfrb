@@ -83,6 +83,9 @@ from multiprocessing import Process, Queue
 ETCD = ds.DsaStore()
 ETCDKEY = f'/mon/nsfrb/inject'
 
+from nsfrb.searching import DM_trials as default_DMtrials
+from nsfrb.searching import widthtrials as default_widthtrials
+from nsfrb.searching import maxshift
 """
 This service will run on h24 and create injections thqt can be rsynced to each corr node for use in the realtime system.
 """
@@ -158,6 +161,9 @@ def main(args):
         t_now = Time.now()
         mjd = t_now.mjd
         time_start_isot = t_now.isot
+        cleardataflag = args.solo_inject or args.flat_field or args.gauss_field
+        injectflatflag = args.point_field or args.gauss_field or args.flat_field
+        """
         RA_axis,Dec_axis,elev = uv_to_pix(mjd,args.gridsize,two_dim=False,manual=False)
         HA_axis = RA_axis - RA_axis[int(args.gridsize//2)]
         cleardataflag = args.solo_inject or args.flat_field or args.gauss_field
@@ -165,7 +171,7 @@ def main(args):
         HA = 0
         RA = RA_axis[int(args.gridsize//2)]
         Dec = Dec_axis[int(args.gridsize//2)]
-
+        
         #creating injection
         offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(Time.now().isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=args.num_time_samples,nchans=args.num_chans,tsamp=tsamp,SNRmin=args.snr_min_inject,SNRmax=args.snr_max_inject)
         #offsetRA = offsetDEC = 0
@@ -195,16 +201,22 @@ def main(args):
             inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
         #report injection in log file
         """
+        """
         with open(inject_file,"a") as csvfile:
             wr = csv.writer(csvfile,delimiter=',')
             wr.writerow([time_start_isot,DM,width,SNR])
         csvfile.close()
         """
+        DM = np.random.choice(default_DMtrials)
+        width = np.random.choice(default_widthtrials)
+        Dec=args.dec
+        SNR=args.snr_inject
+
         #generate random 10 digit identifier
-        printlog("finished injection" + str(inject_img.shape),output_file=inject_log_file)
+        printlog("finished injection",output_file=inject_log_file)
         ID = str(random.randint(10**10,10**(11) - 1))
-        for j in range(args.num_chans):
-            np.save(inject_dir + "realtime_staging/" + "injection_" + str(ID) + "_sb" +str("0" if j<10 else "")+ str(j) + ".npy",inject_img[:,:,:,j])
+        #for j in range(args.num_chans):
+        #    np.save(inject_dir + "realtime_staging/" + "injection_" + str(ID) + "_sb" +str("0" if j<10 else "")+ str(j) + ".npy",inject_img[:,:,:,j])
         
         if args.continuous or args.intermittent:
             #put injection in queue
@@ -213,6 +225,7 @@ def main(args):
                               "SNR":SNR})
             INJECT_TIMES.append(time.time())
             INJECT_QUEUE.append({"ID":ID,
+                               "fname":"injection_DM"+str(DM)+"_W"+str(width)+"_DEC"+str(args.dec)+"_SB",
                                "dec":Dec,
                                "injected":[False]*args.num_chans,
                                "ack":[False]*args.num_chans,
@@ -227,6 +240,7 @@ def main(args):
             #push injection parameters to etcd
             ETCD.put_dict(ETCDKEY,{"ID":ID,
                                "dec":Dec,
+                               "fname":"injection_DM"+str(DM)+"_W"+str(width)+"_DEC"+str(args.dec)+"_SB",
                                "injected":[False]*args.num_chans,
                                "ack":[False]*args.num_chans,
                                "inject_only":cleardataflag,
@@ -249,7 +263,7 @@ def main(args):
                         printlog("Injection" + injection_dict['ISOT'] + " missing channels:" + str(np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))]),output_file=inject_log_file)
                     #delete injection
                     printlog("Removing injection " + str(ID),output_file=inject_log_file)
-                    os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
+                    #os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
                     break
 
         
@@ -260,11 +274,11 @@ if __name__=="__main__":
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
-    parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=-1)
-    parser.add_argument('--dm_inject',type=float,help='DM of injection; default -1 which chooses a random DM',default=-1)
-    parser.add_argument('--width_inject',type=int,help='Width of injection in samples; default -1 which chooses a random width',default=-1)
-    parser.add_argument('--offsetRA_inject',type=int,help='Offset RA of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
-    parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
+    parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=1E7)
+    #parser.add_argument('--dm_inject',type=float,help='DM of injection; default -1 which chooses a random DM',default=-1)
+    #parser.add_argument('--width_inject',type=int,help='Width of injection in samples; default -1 which chooses a random width',default=-1)
+    #parser.add_argument('--offsetRA_inject',type=int,help='Offset RA of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
+    #parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')
     parser.add_argument('--inject_noiseonly',action='store_true',default=False,help='Only inject noise; for use with false positive testing')
     parser.add_argument('--inject_noiseless',action='store_true',default=False,help='Only inject signal')
@@ -282,5 +296,6 @@ if __name__=="__main__":
     parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=bmin)
     parser.add_argument('--continuous',action='store_true',help='Continuously make injections')
     parser.add_argument('--intermittent',action='store_true',help='Continuously make injections for --waittime minutes, then stop for --waittime minutes')
+    parser.add_argument('--dec',type=float,help='Declination',default=71.6)
     args = parser.parse_args()
     main(args)
