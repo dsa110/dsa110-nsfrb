@@ -478,7 +478,7 @@ def main(args):
                                                     None if not args.primarybeam else PB_all[j,:,:],dsaXmode))
             else:
                 dirty_img += realtime_image_task(dat[:,:,j,:],
-                                                    0,
+                                                    0,j,
                                                     U_wavs[:,jj],
                                                     V_wavs[:,jj],
                                                     i_indices_all[:,jj],

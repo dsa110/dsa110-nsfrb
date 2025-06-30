@@ -5,12 +5,12 @@ dsaX_nsfrb_test: dsaX_nsfrb_test.c $(CDEPS1)
 	$(CC) -o $@ $< $(CFLAGS1) $(LIBS)
 	
 dada_setup:
-	dada_db -k caba -b 14899200 -n 8
-	#dada_db -k caea -b 28606464 -n 300
+	#dada_db -k caba -b 14899200 -n 8
+	dada_db -k caea -b 28606464 -n 300
 	#dada_db -k caea -b 143032320 -n 300
 	#dada_db -k cafa -b 28606464 -n 300
 dada_shutdown:
-	dada_db -k caba -d
+	#dada_db -k caba -d
 	dada_db -k caea -d
 	#dada_db -k cafa -d
 
