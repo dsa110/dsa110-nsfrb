@@ -259,6 +259,7 @@ def find_id(img_id_isot,fullimg_array):
 """
 Dictionary that maps corr nodes to ip addresses
 """
+"""
 corraddrs = {'10.41.0.91' : 0, #sb00/corr03
             '10.41.0.117' : 1, #sb01/corr04
             '10.41.0.79' : 2, #sb02/corr05
@@ -275,6 +276,47 @@ corraddrs = {'10.41.0.91' : 0, #sb00/corr03
             '10.41.0.103' : 13, #sb13/corr19
             '10.41.0.82' : 14, #sb14/corr21
             '10.41.0.71' : 15, #sb15/corr22
+            '10.41.0.5' : 0, #182' : 0, #h23, placeholder
+            '10.42.0.115' : 0,#'10.41.0.94' : 0 #corr20
+            '10.42.0.232' : 0,
+            '10.41.0.254' : 0, #h24
+            '10.42.0.228' : 0
+}
+
+
+    inet 10.41.0.224/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.138/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.206/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.203/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.208/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.209/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.211/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.216/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.218/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.212/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.223/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.220/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.228/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.227/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.250/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+    inet 10.41.0.233/24 brd 10.41.0.255 scope global dynamic enp129s0f0
+"""
+corraddrs = {'10.41.0.224' : 0, #sb00/corr03
+            '10.41.0.138' : 1, #sb01/corr04
+            '10.41.0.206' : 2, #sb02/corr05
+            '10.41.0.203' : 3, #sb03/corr06
+            '10.41.0.208' : 4, #sb04/corr07
+            '10.41.0.209' : 5, #sb05/corr08
+            '10.41.0.211' : 6, #sb06/corr10
+            '10.41.0.216' : 7, #sb07/corr11
+            '10.41.0.218' : 8, #sb08/corr12
+            '10.41.0.212' : 9, #sb09/corr14
+            '10.41.0.223' : 10, #sb10/corr15
+            '10.41.0.220' : 11, #sb11/corr16
+            '10.41.0.228' : 12, #sb12/corr18
+            '10.41.0.227' : 13, #sb13/corr19
+            '10.41.0.250' : 14, #sb14/corr21
+            '10.41.0.233' : 15, #sb15/corr22
             '10.41.0.5' : 0, #182' : 0, #h23, placeholder
             '10.42.0.115' : 0,#'10.41.0.94' : 0 #corr20
             '10.42.0.232' : 0,
@@ -445,11 +487,17 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
 
     #delete from array
     if slow:
+        printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
         del slow_fullimg_dict[timestepisot]
+        printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
     elif imgdiff:
+        printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
         del imgdiff_fullimg_dict[timestepisot]
+        printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
     else:
+        printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
         del fullimg_dict[timestepisot]
+        printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
     f = open(sslogfile,"a")
     f.write("[stop] [" + thash +"] " + str(time.time()))
     f.close()
@@ -654,7 +702,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,
-                                    attachmode,completeness,slowlock,searchlock,forfeit,rtastrocal):
+                                    attachmode,completeness,slowlock,searchlock,forfeit,rtastrocal,testsinglenode):
     """
     This task sets up the given socket to accept connections, reads
     data when a client connects, and submits a search task
@@ -670,7 +718,12 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
 
     printlog(socksuffix+"IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
     #add image and update flags
-    fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
+    if testsinglenode:
+        for corr_node_ in range(16):
+            fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node_,testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
+        time.sleep(1)
+    else:
+        fullimg_dict[img_id_isot].add_corr_img(arrData,corr_node,testh23) #fullimg_array[idx].add_corr_img(arrData,corr_node,args.testh23)
     #if the image is complete, start the search
     printlog(socksuffix+"corrstatus:",output_file=processfile,end='')
     printlog(fullimg_dict[img_id_isot].corrstatus,output_file=processfile)
@@ -1289,7 +1342,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal)#)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode)
                     else:
                         #multiport_task_list.append(
                         executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
@@ -1298,7 +1351,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal)#)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode)
                     #multiport_num_list.append(ii)
                 else:
                     packet_dict["dropped"] += 1
@@ -1424,6 +1477,7 @@ if __name__=="__main__":
     parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
     parser.add_argument('--forfeit',action='store_true',help='Forfeit searching base resolution data gulp to search slow/imgdiff data; forfeit searching slow data gulp to search imgdiff data; superceded by attach mode')
     parser.add_argument('--rtastrocal',action='store_true',help='Save data for astrometric and flux calibration')
+    parser.add_argument('--testsinglenode',action='store_true',help='Receive data from only one corr node and duplicate across 16 nodes')
     args = parser.parse_args()
 
     """

@@ -61,7 +61,8 @@ do
 		done
 		if (( $prerun==0 )); then
 			echo ${label: 1:6}
-			python ffa_search.py ${label: 1:6} --path $filedir --flagBPASS --flagBPASSBURST --bmin 20 --outriggers --mingulp $4 --ngulps $ngulp --periods 5 10 15 20 25 30 --flagchans 7 23 33 34 35 64 72 91 92 93 94 105 106 107 108 113 120 121 122 123 124 125 126 --flagcorrs 14 15
+			python ffa_search.py ${label: 1:6} --path $filedir --bmin 0 --outriggers --mingulp $4 --ngulps $ngulp --widthtrials $(seq 1 50) --periods $(seq 50 600) --ignoreSNR --flagchans 63 64 65 24 23 84 92 101 106 107 108 110 111 114 115 116 118 119 120 121 122 124 125 126 51 --showprofiles 1 --finePrange 1 --nfinePtrials 50 --usecache #--flagchans 7 23 33 34 35 64 72 91 92 93 94 105 106 107 108 113 120 121 122 123 124 125 126 --flagcorrs 14 15 --flagBPASS --flagBPASSBURST 
+
 
 			#python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/offline/offline_imager.py $label --verbose --offline --num_gulps $ngulp --gulp_offset $4 --num_time_samples 25 --sb --nchans_per_node 8 --filedir $filedir$injectflag$slowinjectflag --num_inject $inject --inject_noiseless --gridsize 301 --flagBPASS --flagBPASSBURST --sleeptime 0 --offsetRA_inject 0 --offsetDEC_inject 0 --robust -2 --bmin 20 --maxProcesses 32 --port 8080 --multiimage --stagger_multisend 0 --multisend --multiport 8810 8811 8812 8813 8814 8815 8816 8817 8818 8819 8820 8821 8822 8823 8824 8825 --briggs --search --primarybeam #--multisend --stagger_multisend 0
 
