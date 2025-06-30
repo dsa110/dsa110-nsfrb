@@ -16,7 +16,7 @@ from collections import OrderedDict
 my_cnf = cnf.Conf(use_etcd=True)
 
 
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T,bad_antennas,flagged_antennas,Lon,Lat,Height,maxrawsamps,flagged_corrs,inject_dir,local_inject_dir
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T,bad_antennas,flagged_antennas,Lon,Lat,Height,maxrawsamps,flagged_corrs,inject_dir,local_inject_dir,DSAX_PSRDADA_KEY,DSAX_FSTOPDADA_KEY
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
@@ -56,8 +56,10 @@ ETCDKEY_TIMING_LIST = [f'/mon/nsfrbtiming/'+str(i+1) for i in range(len(corrs))]
 
 #flagged antennas/
 TXtask_list = []
-def realtime_image_task(dat, tidx, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, jj, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None,  Nlayers_w=18,pixperFWHM=pixperFWHM,wstack_parallel=False,PB_all=None):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
-
+def realtime_image_task(dat, tidx, j, U_wavs, V_wavs, i_indices_all, j_indices_all, i_conj_indices_all, j_conj_indices_all, bweights_all, gridsize,  pixel_resolution, nchans_per_node, fobs_j, jj, briggs=False, robust= 0.0, return_complex=False, inject_img=None, inject_flat=False, wstack=False, W_wavs=None,  Nlayers_w=18,pixperFWHM=pixperFWHM,wstack_parallel=False,PB_all=None,dsaXmode=False):#,port=-1,ipaddress="",time_start_isot="", uv_diag=-1, Dec=-1, TXexecutor=None, stagger=0):
+    #if dsaXmode:
+    #    dat = dat.result()[:,:,j,:]
+    #    dat[np.isnan(dat)]= 0
     outimage = revised_robust_image(dat.mean(2),#.transpose((0,2,1)),#dat[i:i+1, :, jj, k],
                                             U_wavs,
                                             V_wavs,
@@ -119,6 +121,11 @@ def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
     return cmatrix
 
 
+def fstoptask(dat,fstable_dat,nsamps,nchans_per_node,keep,fchans):
+    outdata=np.nansum((dat*fstable_dat).reshape((nsamps,len(keep),nchans_per_node,(NUM_CHANNELS//2)//nchans_per_node,2)),3)
+    outdata[:,:,fchans,:]= np.nan
+    #outdata[np.isnan(outdata)] =np.nan
+    return outdata
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
 
@@ -200,25 +207,108 @@ def main(args):
     startuperr = False
 
 
+
+    #if dsaX, get fstable
+    dsaXmode = args.dsaX and len(glob.glob(args.fstable))>0
+    if dsaXmode:
+        try:
+            fstable_dat = pipeline.read_raw_vis(args.fstable,nchan=NUM_CHANNELS//2,nsamps=args.num_time_samples,gulp=0,headersize=0)
+            print("dsaX mode enabled",fstable_dat.shape)
+
+        except Exception as exc:
+            #fstable_dat = np.zeros((args.num_time_samples,args.nbase,NUM_CHANNELS//2,2),dtype=np.complex64)
+            print("Error reading fringestopping table:")
+            print(exc)
+
+            dsaXmode = False
+        
+
+
+
     #create reader
     print("Initializing reader...")
     reader_connected=False
     while not reader_connected:
         try:
-            reader = Reader(NSFRB_PSRDADA_KEY)
+            reader = Reader(DSAX_PSRDADA_KEY if dsaXmode else NSFRB_PSRDADA_KEY)
             reader_connected=True
         except Exception as exc:
             print("Trying to connect to ring buffer...")
             print(exc)
             print("")
             continue
+    """
+    if dsaXmode:
+        fstop_reader_connected = False
+        #create reader
+        print("Initializing fstop reader...")
+        while not fstop_reader_connected:
+            try:
+                fstop_reader = Reader(DSAX_FSTOPDADA_KEY)
+                fstop_reader_connected=True
+            except Exception as exc:
+                print("Trying to connect to ring buffer...")
+                print(exc)
+                print("")
+                continue
+    """
     print("Ready for data")
-
+    fchans = np.array(args.flagchans,dtype=int)[np.logical_and(np.array(args.flagchans)>=args.sb*args.nchans_per_node,np.array(args.flagchans)<args.sb*args.nchans_per_node)]-(args.sb*args.nchans_per_node)
+    dat = np.zeros((args.num_time_samples,len(keep),args.nchans_per_node,2),dtype=np.complex64)
+    subintsize = args.num_time_samples//args.subints
     while True:
         tbuffer = time.time()
+
+        #if dsaX, get fstable
+        """
+        if dsaXmode:
+            try:
+                fstable_dat = pipeline.read_raw_vis(args.fstable,nchan=NUM_CHANNELS//2,nsamps=args.num_time_samples,gulp=0,headersize=0)
+                print("dsaX mode enabled",fstable_dat.shape)
+
+            except Exception as exc:
+                #fstable_dat = np.zeros((args.num_time_samples,args.nbase,NUM_CHANNELS//2,2),dtype=np.complex64)
+                print("Error reading fringestopping table:")
+                print(exc)
+                mjd = mjd_init + (gulp_counter*T/1000/86400)
+                gulp_counter += 1
+                continue
+
+        """
+
+
         #dat = None
         #try:
-        dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True)
+        if args.sb in list(flagged_corrs) + list(args.flagcorrs):
+            dat[:] = np.nan#*np.ones((args.num_time_samples,args.nbase,args.nchans_per_node,2),dtype=np.complex64)
+        elif dsaXmode:
+            #dat = None
+            #dat = np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)[:,keep,:,:]*fstable_dat[:,keep,:,:]).reshape((args.num_time_samples,len(keep),args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
+            subintsize = 1#args.num_time_samples
+            subints = args.num_time_samples
+            if args.multifstop:
+                dsaXtasks = []
+                for i in range(subints):#args.num_time_samples):
+                    dsaXtasks.append(executor.submit(fstoptask,rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=subintsize,readheader=False,reader=reader,verbose=False)[:,keep,:,:],
+                                      fstable_dat[i*subintsize:(i+1)*subintsize,keep,:,:],
+                                      subintsize,args.nchans_per_node,keep,fchans))
+                wait(dsaXtasks)
+                for i in range(len(dsaXtasks)):
+                    dat[i*subintsize:(i+1)*subintsize,:,:,:] = dsaXtasks[i].result()
+            else:
+                for i in range(subints):
+                    dat[i*subintsize:(i+1)*subintsize,:,:,:] = np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=subintsize,readheader=False,reader=reader,verbose=False)[:,keep,:,:]*fstable_dat[i*subintsize:(i+1)*subintsize,keep,:,:]).reshape((subintsize,len(keep),args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
+                """ 
+                if i ==0:
+                    dat = np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=1,readheader=False,reader=reader,verbose=False)[:,keep,:,:]*fstable_dat[i:i+1,keep,:,:]).reshape((1,len(keep),args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
+                    #dat = np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=1,readheader=False,reader=reader,verbose=True)*rtreader.rtread(key=DSAX_FSTOPDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=1,readheader=False,reader=fstop_reader,verbose=True)).reshape((1,args.nbase,args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
+                else:
+                    dat = np.concatenate([dat,np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=1,readheader=False,reader=reader,verbose=False)[:,keep,:,:]*fstable_dat[i:i+1,keep,:,:]).reshape((1,len(keep),args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)],0)
+                    #dat = np.concatenate([dat,np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=1,readheader=False,reader=reader,verbose=True)*rtreader.rtread(key=DSAX_FSTOPDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=1,readheader=False,reader=fstop_reader,verbose=True)).reshape((1,args.nbase,args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)],0)
+                """
+            #dat = np.nansum(dat.reshape((args.num_time_samples,args.nbase,args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
+        else:
+            dat[:,:,:,:] = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True)[:,keep,:,:]
         #except Exception as exc:
         #    print("Trying to connect to ring buffer...")
         #    print(exc)
@@ -254,17 +344,20 @@ def main(args):
         mjd = mjd_init + (gulp_counter*T/1000/86400)
         gulp_counter += 1
         print(">>",mjd,"<<")
+        print(">>",dat.shape,">>")
         #if args.testh23:
         #    mjd = Time.now().mjd
 
         timage = time.time()
         
         #manual flagging
+        """
         dat = dat[:,keep,:,:]
         if args.sb in list(flagged_corrs) + list(args.flagcorrs):
             dat[:] = np.nan
-        fchans = np.array(args.flagchans,dtype=int)[np.logical_and(np.array(args.flagchans)>=args.sb*args.nchans_per_node,np.array(args.flagchans)<args.sb*args.nchans_per_node)]-(args.sb*args.nchans_per_node)
-        dat[:,:,fchans,:]=np.nan
+        """
+        #fchans = np.array(args.flagchans,dtype=int)[np.logical_and(np.array(args.flagchans)>=args.sb*args.nchans_per_node,np.array(args.flagchans)<args.sb*args.nchans_per_node)]-(args.sb*args.nchans_per_node)
+        #dat[:,:,fchans,:]=np.nan
 
         #np.save(img_dir + "2025-02-16T20:36:48.010_rtvis.npy",dat)
 
@@ -276,7 +369,7 @@ def main(args):
 
         #creating injection
         inject_flat = False
-        inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
+        inject_img = np.zeros((args.gridsize,args.gridsize,args.num_time_samples))
         if args.inject and (inject_count>=args.inject_interval):
             inject_count = 0
             #if verbose: printlog("Injecting pulse",output_file=logfile)
@@ -323,15 +416,16 @@ def main(args):
                     #read
                     try:
                         inject_img = np.load(local_inject_dir + fname)
-                        assert(inject_img.shape==(args.gridsize,args.gridsize,dat.shape[0]))
+                        assert(inject_img.shape==(args.gridsize,args.gridsize,args.num_time_samples))
                     except Exception as exc:
                         inject_flat = False
-                        inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
+                        inject_img = np.zeros((args.gridsize,args.gridsize,args.num_time_samples))
                         print(args.sb," inject failed")
                     #clear data if we only want the injection
-                    if injection_params['inject_only']: dat[:,:,:,:] = 0
+                    #if injection_params['inject_only']: dat[:,:,:,:] = 0
                     inject_flat = injection_params['inject_flat']
                     if args.verbose: print("Done injecting")
+        #if not (args.multiimage and dsaXmode):
         dat[np.isnan(dat)]= 0
 
         print("--->AFTER INJECT TIME:",time.time()-tbuffer)
@@ -339,7 +433,7 @@ def main(args):
         #imaging
         #if verbose: printlog("Start imaging",output_file=logfile)
         if args.wstack and verbose: printlog("W-stacking with "+str(args.Nlayers)+" layers",output_file=logfile)
-        dirty_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
+        dirty_img = np.zeros((args.gridsize,args.gridsize,args.num_time_samples))
         #j=args.sb
         
         task_list = []
@@ -347,15 +441,16 @@ def main(args):
         tgrid = time.time()
         #if verbose: printlog("gridding in advance...",output_file=logfile)
         #make U,V,Ws in advance
-
+        subintsize = args.num_time_samples//args.subints
         for j in range(args.nchans_per_node):
             jj = (args.nchans_per_node*args.sb)+j
             #if verbose: printlog("submitting task:"+str(jj),output_file=logfile)
             if args.multiimage:
-                for tidx in range(5):
-                    task_list.append(executor.submit(realtime_image_task,dat[tidx*5:(tidx+1)*5,:,j,:],
+                
+                for tidx in range(args.subints):
+                    task_list.append(executor.submit(realtime_image_task,dat[tidx*subintsize:(tidx+1)*subintsize,:,j,:],# if not dsaXmode else dsaXtasks[tidx],
                     #task_list.append(realtime_image_task(dat[tidx*5:(tidx+1)*5,:,j,:],
-                                                    tidx,
+                                                    tidx,j,
                                                     U_wavs[:,jj],
                                                     V_wavs[:,jj],
                                                     i_indices_all[:,jj],
@@ -371,7 +466,7 @@ def main(args):
                                                     args.briggs,
                                                     args.robust,
                                                     False,
-                                                    inject_img[:,:,tidx*5:(tidx+1)*5]/dat.shape[-1]/args.nchans_per_node,
+                                                    inject_img[:,:,tidx*subintsize:(tidx+1)*subintsize]/2/args.nchans_per_node,
                                                     False,
                                                     (args.wstack or args.wstack_parallel),
                                                     W_wavs,
@@ -380,7 +475,7 @@ def main(args):
                                                     args.Nlayers,
                                                     args.pixperFWHM,
                                                     args.wstack_parallel,
-                                                    None if not args.primarybeam else PB_all[j,:,:]))
+                                                    None if not args.primarybeam else PB_all[j,:,:],dsaXmode))
             else:
                 dirty_img += realtime_image_task(dat[:,:,j,:],
                                                     0,
@@ -413,7 +508,7 @@ def main(args):
             wait(task_list)
             for t in task_list:
                 m=t.result()
-                dirty_img[:,:,m[1]*5:(m[1]+1)*5] += m[0] #t.result()
+                dirty_img[:,:,m[1]*subintsize:(m[1]+1)*subintsize] += m[0] #t.result()
                                             
         print("--->AFTER IMAGE TIME:",time.time()-tbuffer)
         
@@ -575,6 +670,10 @@ if __name__=="__main__":
     parser.add_argument('--failsafe',action='store_true',help='Shutdown if real-time limit is exceeded')
     parser.add_argument('--dec',type=float,help='Pointing declination',default=71.6)
     parser.add_argument('--mjdfile',type=str,help='MJD file',default='/home/ubuntu/tmp/mjd.dat')
+    parser.add_argument('--dsaX',action='store_true',help='if set, performs the function of dsaX_nsfrb as well, i.e. calibrates and fringe stops data')
+    parser.add_argument('--multifstop',action='store_true',help='If set in dsaXmode, uses multithreading for fringestopping')
+    parser.add_argument('--fstable',type=str,help='fringe stopping table',default='/home/ubuntu/data/calTable.out')
+    parser.add_argument('--subints',type=int,help='form multiimage mode, number of sub-integrations',choices=[1,5,25],default=5)
     args = parser.parse_args()
     main(args)
 

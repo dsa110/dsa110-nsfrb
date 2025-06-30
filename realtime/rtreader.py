@@ -1,4 +1,5 @@
 from psrdada import Reader
+import time
 from nsfrb.config import NSFRB_PSRDADA_KEY,nsamps,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,IMAGE_SIZE
 import numpy as np
 
@@ -6,7 +7,7 @@ import numpy as np
 helper functions to read visibilities from a psrdada buffer and converts them to a numpy array.
 """
 
-def read_buffer_multisamp(reader, nbls, nchan, npol,nsamps,dtype=np.float32,dtypecomplex=np.float64):
+def read_buffer_multisamp(reader, nbls, nchan, npol,nsamps,dtype=np.float32,dtypecomplex=np.float64,verbose=False):
     """
     Reads a psrdada buffer as float32 and returns the visibilities.
 
@@ -29,9 +30,13 @@ def read_buffer_multisamp(reader, nbls, nchan, npol,nsamps,dtype=np.float32,dtyp
         The data. Dimensions (time, baselines, channels, polarization).
     """
     
-
+    if verbose: t1 = time.time()
     page = reader.getNextPage()
+    if verbose: print("...|TIME TO GET NEXT PAGE:",time.time()-t1)
+    if verbose: t1 = time.time()
     reader.markCleared()
+    if verbose: print("...|TIME TO CLEAR PAGE:",time.time()-t1)
+    if verbose: t1 = time.time()
     #print(page,type(page))
     data = np.frombuffer(page.tobytes(),dtype=dtype)
     data = data.view(dtype)
@@ -44,9 +49,10 @@ def read_buffer_multisamp(reader, nbls, nchan, npol,nsamps,dtype=np.float32,dtyp
         data = data[
             :data.shape[0] // (nbls * nchan * npol*nsamps) * (nbls * nchan * npol*nsamps)
         ].reshape(nsamps, nbls, nchan, npol)
+    if verbose: print("...|TIME TO REFORMAT DATA:",time.time()-t1)
     return data
 
-def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize=4,readheader=False):
+def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize=4,readheader=False,reader=None,verbose=False):
     """
     reads from psrdada specified by key provided
 
@@ -58,6 +64,8 @@ def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize
     """
     
     #datasize
+    if verbose:
+        t1=time.time()
     if datasize==4:
         dtype = np.float32
         dtypecomplex = np.complex64
@@ -76,9 +84,14 @@ def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize
 
 
     #make reader
-    print(f"Initializing reader: " + str(key))
-    reader = Reader(key)
-
+    localreader=False
+    if reader is None:
+        print(f"Initializing reader: " + str(key))
+        reader = Reader(key)
+        localreader=True
+    
+    if verbose:
+        print("....|SETUP TIME:",time.time()-t1)
     #check its connected
     if not reader.isConnected:
         print("Reaer not connected")
@@ -93,16 +106,15 @@ def rtread(key=NSFRB_PSRDADA_KEY,nbls=4656,nchan=8,npol=2,nsamps=nsamps,datasize
             dec = np.float32(header['DEC'])
         
         #read buffer
-        data = read_buffer_multisamp(reader,nbls,nchan,npol,nsamps,dtype=dtype,dtypecomplex=dtypecomplex)
+        tup = read_buffer_multisamp(reader,nbls,nchan,npol,nsamps,dtype=dtype,dtypecomplex=dtypecomplex,verbose=verbose)
         if readheader:
-            tup = (data,mjd,sb,dec)
-        else:
-            tup = data
+            tup = (tup,mjd,sb,dec)
     #disconnect reader
-    try:
-        reader.disconnect()
-    except Exception as e:
-        pass
+    if localreader:
+        try:
+            reader.disconnect()
+        except Exception as e:
+            pass
     return tup
 
 

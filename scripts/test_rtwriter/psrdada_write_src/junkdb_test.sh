@@ -1,14 +1,14 @@
 #!/bin/bash
 #create psrdada buffer
 #dada_junkdb -b 14899200 -k caba -r 4.440 -t 3.355 -g -m 0 -s 10 ../realtime/hdrtest.txt
-dada_db -k caba -b 14899200 -n 8
+#dada_db -k caba -b 14899200 -n 8
 
 #backup noise and frame dirs
-cp -r $NSFRBDIR-noise $NSFRBDIR-noise-backup
-cp -r $NSFRBDIR-frames $NSFRBDIR-frames-backup
+#cp -r $NSFRBDIR-noise $NSFRBDIR-noise-backup
+#cp -r $NSFRBDIR-frames $NSFRBDIR-frames-backup
 
 #on exit, restore
-trap 'rm -r $NSFRBDIR-noise; mv $NSFRBDIR-noise-backup $NSFRBDIR-noise; rm -r $NSFRBDIR-frames; mv $NSFRBDIR-frames-backup $NSFRBDIR-frames' EXIT
+#trap 'rm -r $NSFRBDIR-noise; mv $NSFRBDIR-noise-backup $NSFRBDIR-noise; rm -r $NSFRBDIR-frames; mv $NSFRBDIR-frames-backup $NSFRBDIR-frames' EXIT
 
 
 #current MJD
@@ -20,9 +20,12 @@ echo $startUNIX $startMJD $startISOT $nowUNIX
 COUNTER=0
 DEC=71.6
 
-sed "29s/MJD/MJD ${startMJD}/" ../realtime/hdrtemplate.txt > ./hdrtestnew.txt
+sed "29s/MJD/MJD ${startMJD}/" ../../../realtime/hdrtemplate.txt > ./hdrtestnew.txt
 sed -i "30s/SB/SB 1/" ./hdrtestnew.txt
 sed -i "31s/DEC/DEC ${DEC}/" ./hdrtestnew.txt
 sed -i "25s/UTC_START/UTC_START ${startISOT}/" ./hdrtestnew.txt
 
-dada_junkdb -k caba -r 14.8990 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt
+dada_junkdb -k caea -r 213.481 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt
+#dada_junkdb -k caba -r 14.8990 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt
+#try with higher rate to see if we can force the buffer overflow error
+#dada_junkdb -k caea -r 800.00 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt

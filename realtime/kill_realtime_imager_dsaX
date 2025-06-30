@@ -1,0 +1,7 @@
+#!/bin/bash
+dada_db -k caea -d
+
+#kill -9 $(pgrep -f run_realtime_imager)
+kill -9 $(pgrep -f realtime_imager_dsaX)
+kill -9 $(pgrep -f benchmark_realtime_dsaX)
+

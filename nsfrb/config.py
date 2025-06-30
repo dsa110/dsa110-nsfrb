@@ -156,6 +156,8 @@ crpix_dict = {16.27:{"source":"3C138",
 maxrawsamps = 2250
 
 #psrdada key
+DSAX_PSRDADA_KEY = 0xcaea #0xbada
+DSAX_FSTOPDADA_KEY = 0xcafa
 NSFRB_PSRDADA_KEY = 0xcaba
 NSFRB_PSRDADA_TESTKEYS = {0:0xcab0,
                           1:0xcab1,
