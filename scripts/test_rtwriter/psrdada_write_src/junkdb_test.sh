@@ -25,7 +25,7 @@ sed -i "30s/SB/SB 1/" ./hdrtestnew.txt
 sed -i "31s/DEC/DEC ${DEC}/" ./hdrtestnew.txt
 sed -i "25s/UTC_START/UTC_START ${startISOT}/" ./hdrtestnew.txt
 
-dada_junkdb -k caea -r 213.481 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt
-#dada_junkdb -k caba -r 14.8990 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt
+#dada_junkdb -k caea -r 213.481 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt
+dada_junkdb -k caba -r 14.8990 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt
 #try with higher rate to see if we can force the buffer overflow error
 #dada_junkdb -k caea -r 800.00 -t 36000 -g -m 0 -s 0.1 ./hdrtestnew.txt

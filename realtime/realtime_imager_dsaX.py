@@ -1,4 +1,5 @@
 import argparse
+import tracemalloc
 from dsacalib import constants as ct
 from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor,wait
 import glob
@@ -16,7 +17,7 @@ from collections import OrderedDict
 my_cnf = cnf.Conf(use_etcd=True)
 
 
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T,bad_antennas,flagged_antennas,Lon,Lat,Height,maxrawsamps,flagged_corrs,inject_dir,local_inject_dir,DSAX_PSRDADA_KEY,DSAX_FSTOPDADA_KEY
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T,bad_antennas,flagged_antennas,Lon,Lat,Height,maxrawsamps,flagged_corrs,inject_dir,local_inject_dir,DSAX_PSRDADA_KEY,DSAX_FSTOPDADA_KEY,rtmemory_file
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
@@ -120,6 +121,15 @@ def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
     cmatrix = np.array([[varX1, cov12], [cov12, varX2]])
     return cmatrix
 
+def printlog(txt,output_file,end='\n'):
+    if output_file != "":
+        fout = open(output_file,"a")
+    else:
+        fout = sys.stdout
+    print(txt,file=fout,end=end,flush=True)
+    if output_file != "":
+        fout.close()
+    return
 
 def fstoptask(dat,fstable_dat,nsamps,nchans_per_node,keep,fchans):
     outdata=np.nansum((dat*fstable_dat).reshape((nsamps,len(keep),nchans_per_node,(NUM_CHANNELS//2)//nchans_per_node,2)),3)
@@ -128,6 +138,10 @@ def fstoptask(dat,fstable_dat,nsamps,nchans_per_node,keep,fchans):
     return outdata
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
+    os.system("> " + rtbench_file)
+    os.system("> " + rtmemory_file)
+    if len(args.rtlog)>0:
+        os.system("> "+ args.rtlog)
 
     #verbose = args.verbose
 
@@ -203,7 +217,9 @@ def main(args):
     f = open(args.mjdfile,"r")
     mjd_init = float(f.read())
     f.close()
-    print("STARTUP PARAMS:",sb,Dec,mjd_init)
+
+    rtlog_file = args.rtlog
+    if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
     startuperr = False
 
 
@@ -226,38 +242,46 @@ def main(args):
 
 
     #create reader
-    print("Initializing reader...")
+    if args.verbose: printlog("Initializing reader...",output_file=rtlog_file)
     reader_connected=False
+    ii = 0
     while not reader_connected:
         try:
             reader = Reader(DSAX_PSRDADA_KEY if dsaXmode else NSFRB_PSRDADA_KEY)
             reader_connected=True
         except Exception as exc:
-            print("Trying to connect to ring buffer...")
-            print(exc)
-            print("")
+            if args.verbose and ii==0:
+                printlog("Trying to connect to ring buffer...",output_file=rtlog_file)
+                printlog(exc,output_file=rtlog_file)
             continue
-    """
-    if dsaXmode:
-        fstop_reader_connected = False
-        #create reader
-        print("Initializing fstop reader...")
-        while not fstop_reader_connected:
-            try:
-                fstop_reader = Reader(DSAX_FSTOPDADA_KEY)
-                fstop_reader_connected=True
-            except Exception as exc:
-                print("Trying to connect to ring buffer...")
-                print(exc)
-                print("")
-                continue
-    """
-    print("Ready for data")
+        ii+=1
+    if args.verbose: printlog("Ready for data",output_file=rtlog_file)
     fchans = np.array(args.flagchans,dtype=int)[np.logical_and(np.array(args.flagchans)>=args.sb*args.nchans_per_node,np.array(args.flagchans)<args.sb*args.nchans_per_node)]-(args.sb*args.nchans_per_node)
     dat = np.zeros((args.num_time_samples,len(keep),args.nchans_per_node,2),dtype=np.complex64)
     subintsize = args.num_time_samples//args.subints
+    verbosefile=(rtlog_file if args.verbose else sys.stdout)
+    if args.debug and args.verbose:
+        verbosefile2=rtbench_file
+    elif args.verbose:
+        verbosefile2=rtlog_file
+    else:
+        verbosefile2=sys.stdout
+    #memory logging
+    if args.debug:
+        tracemalloc.start()
+        mallocloop = 0
+        startmalloc = tracemalloc.take_snapshot()
+        f = open(rtmemory_file,"w")
+        print("INITIAL MEMORY ALLOCATION",file=f)
+        startstats = startmalloc.statistics('lineno')
+        for i in range(len(startstats)):
+            print(startstats[i],file=f)
+        print("-"*20,file=f)
+        print("")
+        f.close()
     while True:
-        tbuffer = time.time()
+        tbuffer1=tbuffer = time.time()
+        
 
         #if dsaX, get fstable
         """
@@ -275,6 +299,13 @@ def main(args):
                 continue
 
         """
+        if args.debug and args.verbose:
+            verbosefile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+            verbosefile2= open(rtbench_file,"a")
+        elif args.verbose:
+            verbosefile = verbosefile2 = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+        else:
+            verbosefile=verbosefile2=sys.stdout
 
 
         #dat = None
@@ -289,7 +320,7 @@ def main(args):
             if args.multifstop:
                 dsaXtasks = []
                 for i in range(subints):#args.num_time_samples):
-                    dsaXtasks.append(executor.submit(fstoptask,rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=subintsize,readheader=False,reader=reader,verbose=False)[:,keep,:,:],
+                    dsaXtasks.append(executor.submit(fstoptask,rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=subintsize,readheader=False,reader=reader,verbose=args.verbose,verbosefile=verbosefile,verbosefile2=verbosefile2)[:,keep,:,:],
                                       fstable_dat[i*subintsize:(i+1)*subintsize,keep,:,:],
                                       subintsize,args.nchans_per_node,keep,fchans))
                 wait(dsaXtasks)
@@ -297,7 +328,7 @@ def main(args):
                     dat[i*subintsize:(i+1)*subintsize,:,:,:] = dsaXtasks[i].result()
             else:
                 for i in range(subints):
-                    dat[i*subintsize:(i+1)*subintsize,:,:,:] = np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=subintsize,readheader=False,reader=reader,verbose=False)[:,keep,:,:]*fstable_dat[i*subintsize:(i+1)*subintsize,keep,:,:]).reshape((subintsize,len(keep),args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
+                    dat[i*subintsize:(i+1)*subintsize,:,:,:] = np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=subintsize,readheader=False,reader=reader,verbose=args.verbose,verbosefile=verbosefile,verbosefile2=verbosefile2)[:,keep,:,:]*fstable_dat[i*subintsize:(i+1)*subintsize,keep,:,:]).reshape((subintsize,len(keep),args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
                 """ 
                 if i ==0:
                     dat = np.nansum((rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=NUM_CHANNELS//2,nbls=args.nbase,nsamps=1,readheader=False,reader=reader,verbose=False)[:,keep,:,:]*fstable_dat[i:i+1,keep,:,:]).reshape((1,len(keep),args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
@@ -308,7 +339,7 @@ def main(args):
                 """
             #dat = np.nansum(dat.reshape((args.num_time_samples,args.nbase,args.nchans_per_node,(NUM_CHANNELS//2)//args.nchans_per_node,2)),3)
         else:
-            dat[:,:,:,:] = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True)[:,keep,:,:]
+            dat[:,:,:,:] = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=args.verbose,verbosefile=verbosefile,verbosefile2=verbosefile2)[:,keep,:,:]
         #except Exception as exc:
         #    print("Trying to connect to ring buffer...")
         #    print(exc)
@@ -339,16 +370,22 @@ def main(args):
                 print("Trying to connect to ring buffer...")
                 print(exc)
                 time.sleep(1)
+
         """
-        print("--->READ TIME:",time.time()-tbuffer)
+        if verbosefile != sys.stdout: verbosefile.close()
+        if verbosefile2 != sys.stdout and verbosefile2 != verbosefile: verbosefile2.close()
+
+
+        if args.debug:
+            printlog("--->READ TIME: "+str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
+        timage = time.time()
+        if args.debug: tbuffer= time.time()
         mjd = mjd_init + (gulp_counter*T/1000/86400)
         gulp_counter += 1
-        print(">>",mjd,"<<")
-        print(">>",dat.shape,">>")
+        if args.verbose: printlog(">>"+str(mjd)+"<<",output_file=rtlog_file)
         #if args.testh23:
         #    mjd = Time.now().mjd
 
-        timage = time.time()
         
         #manual flagging
         """
@@ -383,7 +420,7 @@ def main(args):
                 #update dict
                 if 'ISOT' not in injection_params.keys():
                     injection_params['ISOT'] = time_start_isot
-                print(injection_params)
+                if args.verbose: printlog(injection_params,output_file=rtlog_file)
                 #acknowledge receipt
                 if args.testh23:
                     for sbi in range(16):
@@ -412,7 +449,7 @@ def main(args):
                     """
                     fname = injection_params['fname'] + str(args.sb) + ".npy"
                     
-                    print(fname)
+                    if args.verbose: printlog(fname,output_file=rtlog_file)
                     #read
                     try:
                         inject_img = np.load(local_inject_dir + fname)
@@ -420,19 +457,21 @@ def main(args):
                     except Exception as exc:
                         inject_flat = False
                         inject_img = np.zeros((args.gridsize,args.gridsize,args.num_time_samples))
-                        print(args.sb," inject failed")
+                        if args.verbose: printlog(args.sb," inject failed",output_file=rtlog_file)
                     #clear data if we only want the injection
                     #if injection_params['inject_only']: dat[:,:,:,:] = 0
                     inject_flat = injection_params['inject_flat']
-                    if args.verbose: print("Done injecting")
+                    if args.verbose: printlog("Done injecting",output_file=rtlog_file)
         #if not (args.multiimage and dsaXmode):
         dat[np.isnan(dat)]= 0
 
-        print("--->AFTER INJECT TIME:",time.time()-tbuffer)
         
+        if args.debug: printlog("--->INJECT TIME: "+str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
+        if args.debug: tbuffer = time.time()
+
         #imaging
         #if verbose: printlog("Start imaging",output_file=logfile)
-        if args.wstack and verbose: printlog("W-stacking with "+str(args.Nlayers)+" layers",output_file=logfile)
+        if args.wstack and args.verbose: printlog("W-stacking with "+str(args.Nlayers)+" layers",output_file=rtlog_file)
         dirty_img = np.zeros((args.gridsize,args.gridsize,args.num_time_samples))
         #j=args.sb
         
@@ -510,8 +549,10 @@ def main(args):
                 m=t.result()
                 dirty_img[:,:,m[1]*subintsize:(m[1]+1)*subintsize] += m[0] #t.result()
                                             
-        print("--->AFTER IMAGE TIME:",time.time()-tbuffer)
         
+        if args.debug: printlog("--->IMAGE TIME:" + str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
+        if args.debug: tbuffer = time.time()
+
         #if verbose: printlog(str("Imaging complete:" + str(time.time()-timage) + "s"),output_file=logfile)
         rtime=time.time()-timage
         if args.testh23:
@@ -538,6 +579,9 @@ def main(args):
         ftime.write(str(rtime)+"\n")
         ftime.close()
         """
+        if args.debug: printlog("--->ETCD TIME: " + str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
+        if args.debug: tbuffer = time.time()
+
         if args.failsafe and rtime>args.rttimeout:
             
             
@@ -557,7 +601,7 @@ def main(args):
             if args.testh23:
                 tasklist = []
                 for sbi in range(len(corrs)):
-                    print("TIME LEFT",(args.rttimeout - (time.time()-timage)))
+                    if args.verbose: printlog("[TIME LEFT]"+str(args.rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
                     tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe,timage))
                     #time.sleep(T/1000)#/32)
                     """
@@ -576,9 +620,9 @@ def main(args):
                 txtime = tasklist[-1].result()
             else:
                 ttx = time.time()
-                print("TIME LEFT",(args.rttimeout - (time.time()-timage)))
+                if args.verbose: printlog("[TIME LEFT]"+str(args.rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
                 if (args.rttimeout - (time.time()-timage)) < 0.1:
-                    print("WITHHOLD TX, OUT OF TIME")
+                    if args.verbose: printlog("WITHHOLD TX, OUT OF TIME",output_file=rtlog_file)
                     if args.inject: inject_count += 1
                     continue
                 try:
@@ -588,9 +632,9 @@ def main(args):
                     if args.failsafe:
                         raise(exc)
                     else:
-                        print(exc)
+                        printlog(exc,output_file=rtlog_file)
                 txtime = time.time()-ttx
-                print("TXTIME:",txtime)
+                if args.verbose: printlog("TXTIME:"+str(txtime) + " sec",output_file=rtlog_file)
                 timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
                 if timing_dict is None: timing_dict = dict()
                 timing_dict["tx_time"] = txtime
@@ -603,7 +647,7 @@ def main(args):
             """
             if args.failsafe and time.time()-timage>args.rttimeout:
                 executor.shutdown()
-                print("Realtime exceeded, shutting down imager")
+                if args.verbose: printlog("Realtime exceeded, shutting down imager",output_file=rtlog_file)
                 try:
                     reader.disconnect()
                 except Exception as e:
@@ -611,10 +655,23 @@ def main(args):
                 return
         if args.inject:
             inject_count += 1
-        print("TOTAL TIME: ",time.time()-tbuffer)
+        if args.debug:
+            printlog("--->TX TIME: " + str(time.time()-tbuffer) + " sec",output_file=rtbench_file)
+            printlog("TOTAL TIME: " + str(time.time()-tbuffer1) + " sec",output_file=rtbench_file)
+            printlog("-"*20,output_file=rtbench_file)
         #del dat
         #del dirty_img
         #del inject_img
+        if args.debug:
+            endstats = tracemalloc.take_snapshot().compare_to(startmalloc,'lineno')
+            f = open(rtmemory_file,"a")
+            print("LOOP " + str(mallocloop) + "MEMORY ALLOCATION",file=f)
+            for i in range(len(endstats)):
+                print(endstats[i],file=f)
+            print("-"*20,file=f)
+            print("",file=f)
+            f.close()
+            mallocloop += 1
     executor.shutdown()
     try:
         reader.disconnect()
@@ -674,6 +731,8 @@ if __name__=="__main__":
     parser.add_argument('--multifstop',action='store_true',help='If set in dsaXmode, uses multithreading for fringestopping')
     parser.add_argument('--fstable',type=str,help='fringe stopping table',default='/home/ubuntu/data/calTable.out')
     parser.add_argument('--subints',type=int,help='form multiimage mode, number of sub-integrations',choices=[1,5,25],default=5)
+    parser.add_argument('--rtlog',type=str,help='Send output to logfile specified, defaults to stdout',default='')
+    parser.add_argument('--debug',action='store_true',help='memory debugging')
     args = parser.parse_args()
     main(args)
 
