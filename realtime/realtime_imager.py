@@ -536,7 +536,7 @@ def main(args):
                     continue
                 try:
                     #tasklist.append(executor.submit(send_data_task,args.sb,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(args.sb%len(args.multiport))],args.rttimeout,args.failsafe))
-                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=1,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))])
+                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))])
                 except Exception as exc:
                     if args.failsafe:
                         raise(exc)
@@ -639,6 +639,7 @@ if __name__=="__main__":
     parser.add_argument('--mjdfile',type=str,help='MJD file',default='/home/ubuntu/tmp/mjd.dat')
     parser.add_argument('--rtlog',type=str,help='Send output to logfile specified, defaults to stdout',default='')
     parser.add_argument('--debug',action='store_true',help='memory debugging')
+    parser.add_argument('--retries',action='store_true',help='retries')
     args = parser.parse_args()
     main(args)
 
