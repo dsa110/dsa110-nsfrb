@@ -639,7 +639,7 @@ if __name__=="__main__":
     parser.add_argument('--mjdfile',type=str,help='MJD file',default='/home/ubuntu/tmp/mjd.dat')
     parser.add_argument('--rtlog',type=str,help='Send output to logfile specified, defaults to stdout',default='')
     parser.add_argument('--debug',action='store_true',help='memory debugging')
-    parser.add_argument('--retries',action='store_true',help='retries')
+    parser.add_argument('--retries',type=int,help='retries',default=1)
     args = parser.parse_args()
     main(args)
 
