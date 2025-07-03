@@ -18,6 +18,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T,bad_antennas,flagged_antennas,Lon,Lat,Height,maxrawsamps,flagged_corrs,inject_dir,local_inject_dir,rtmemory_file
+from nsfrb.config import NROWSUBIMG,NSUBIMG,SUBIMGPIX,SUBIMGORDER
 from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
@@ -90,14 +91,14 @@ def printlog(txt,output_file,end='\n'):
         fout.close()
     return
 
-def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,timeout,failsafe,timage):
+def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,timeout,failsafe,timage,ipaddress):
     """
     task to send data to the process server; this is only required for testing, the 
     real implementation will only send data for one corr node in the foreground process
     """
     ttx = time.time()
     try:
-        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=5,keepalive_time=timeout,port=port)
+        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=5,keepalive_time=timeout,port=port,ipaddress=ipaddress)
     except Exception as exc:
         if failsafe:
             raise(exc)
@@ -132,6 +133,7 @@ def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
 
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
+    
     os.system("> " + rtbench_file)
     os.system("> " + rtmemory_file)
     if len(args.rtlog)>0:
@@ -219,6 +221,7 @@ def main(args):
     if args.verbose: printlog("Initializing reader...",output_file=rtlog_file)
     reader_connected=False
     ii=0
+    
     while not reader_connected:
         try:
             reader = Reader(NSFRB_PSRDADA_KEY)
@@ -244,6 +247,9 @@ def main(args):
         print("-"*20,file=f)
         print("")
         f.close()
+    if args.verbose: 
+        printlog("Will send data to IP " + str(args.ipaddress),output_file=rtlog_file)
+
     while True:
 
 
@@ -511,7 +517,7 @@ def main(args):
                 tasklist = []
                 for sbi in range(len(corrs)):
                     if args.verbose: printlog("[TIME LEFT]"+str(args.rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
-                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe,timage))
+                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe,timage,args.ipaddress))
                     #time.sleep(T/1000)#/32)
                     """
                     ttx = time.time()
@@ -536,7 +542,27 @@ def main(args):
                     continue
                 try:
                     #tasklist.append(executor.submit(send_data_task,args.sb,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(args.sb%len(args.multiport))],args.rttimeout,args.failsafe))
-                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))])
+                    if args.TXmode=='subimg':
+                        for sidx in range(len(SUBIMGORDER)):
+                            print(">>>",sidx)
+                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[SUBIMGPIX*SUBIMGORDER[sidx][0]:SUBIMGPIX*(SUBIMGORDER[sidx][0]+1),
+                                                                                   SUBIMGPIX*SUBIMGORDER[sidx][1]:SUBIMGPIX*(SUBIMGORDER[sidx][1]+1),:] ,
+                                                                                verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress)
+                    elif args.TXmode=='subint' and args.TXnints>1:
+                        stime=(args.rttimeout - (time.time()-timage))/args.TXnints
+                        stasks=[]
+                        for sidx in range(args.TXnints):
+                            print(">>>",sidx,(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))])
+                            stasks.append(executor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress))
+
+
+
+                            #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))])
+                            #time.sleep(stime)
+                        wait(stasks)
+
+                    else:
+                        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress)
                 except Exception as exc:
                     if args.failsafe:
                         raise(exc)
@@ -640,6 +666,9 @@ if __name__=="__main__":
     parser.add_argument('--rtlog',type=str,help='Send output to logfile specified, defaults to stdout',default='')
     parser.add_argument('--debug',action='store_true',help='memory debugging')
     parser.add_argument('--retries',type=int,help='retries',default=1)
+    parser.add_argument('--TXmode',type=str,choices=['subimg','subint','base'],default='base',help='TX mode')
+    parser.add_argument('--TXnints',type=int,help='Number of sub-integrations for TXmode subint',default=5)
+    parser.add_argument('--ipaddress',type=str,help='IP address of process server to send data to',choices=[os.environ["NSFRBIP"],os.environ["NSFRBIP2"]],default=os.environ["NSFRBIP"])
     args = parser.parse_args()
     main(args)
 
