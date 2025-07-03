@@ -592,13 +592,14 @@ def single_pix_image(dat_all,U,V,fobs,sb,dec,mjd,ngulps,nbin,target_coord,tsamp_
     """
     robust single pixel imaging given array of visibilities (nsamp x nbase x nchan x npol)
     """
+    print("START")
     yidxs,xidxs = np.meshgrid(np.arange(image_size,dtype=int),np.arange(image_size,dtype=int))
     nchan_per_node = nchans_per_node
     dspec = np.zeros((gulpsize*ngulps//nbin,nchan_per_node))
     #uv_diag=np.max(np.sqrt(U**2 + V**2))
     #pixel_resolution = (lambdaref / uv_diag) / pixperFWHM
     j = sb
-
+    print("CHECK1")
     #gridding
     U_wavs = np.zeros((len(U),nchans_per_node))
     V_wavs = np.zeros((len(V),nchans_per_node))
@@ -610,14 +611,14 @@ def single_pix_image(dat_all,U,V,fobs,sb,dec,mjd,ngulps,nbin,target_coord,tsamp_
     j_conj_indices_all = np.zeros(V_wavs.shape,dtype=int)
     #k_conj_indices_all = np.zeros(W_wavs.shape,dtype=int)
     bweights_all = np.zeros(U_wavs.shape)
-    
+    print("CHECK2")
     for jj in range(nchans_per_node):
         chanidx = (nchans_per_node*j)+jj
         U_wavs[:,jj] = U/(ct.C_GHZ_M/fobs[chanidx])
         V_wavs[:,jj] = V/(ct.C_GHZ_M/fobs[chanidx])
         i_indices_all[:,jj],j_indices_all[:,jj],i_conj_indices_all[:,jj],j_conj_indices_all[:,jj] = uniform_grid(U_wavs[:,jj], V_wavs[:,jj], image_size, pixel_resolution, pixperFWHM)
         bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], image_size, robust=robust,pixel_resolution=pixel_resolution)
-    
+    print("CHECK3")
     for gulp in range(ngulps):
   
         #get UVWs
@@ -629,8 +630,8 @@ def single_pix_image(dat_all,U,V,fobs,sb,dec,mjd,ngulps,nbin,target_coord,tsamp_
             target_pix = np.unravel_index(np.argmin(target_coord.separation(SkyCoord(ra=ra_grid_2D*u.deg,dec=dec_grid_2D*u.deg,frame='icrs'))),ra_grid_2D.shape)
             print("targeting coord",target_coord,target_pix)
             allpix.append(target_pix)
-            del ra_grid_2D
-            del dec_grid_2D
+            #del ra_grid_2D
+            #del dec_grid_2D
         else:
             target_pix = allpix[gulp]
             
