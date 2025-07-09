@@ -91,14 +91,14 @@ def printlog(txt,output_file,end='\n'):
         fout.close()
     return
 
-def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,timeout,failsafe,timage,ipaddress):
+def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,timeout,failsafe,timage,ipaddress,protocol):
     """
     task to send data to the process server; this is only required for testing, the 
     real implementation will only send data for one corr node in the foreground process
     """
     ttx = time.time()
     try:
-        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=5,keepalive_time=timeout,port=port,ipaddress=ipaddress)
+        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=5,keepalive_time=timeout,port=port,ipaddress=ipaddress,udpchunksize=args.udpchunksize,protocol=protocol,udpoffset=0)
     except Exception as exc:
         if failsafe:
             raise(exc)
@@ -517,7 +517,7 @@ def main(args):
                 tasklist = []
                 for sbi in range(len(corrs)):
                     if args.verbose: printlog("[TIME LEFT]"+str(args.rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
-                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe,timage,args.ipaddress))
+                    tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe,timage,args.ipaddress,args.protocol))
                     #time.sleep(T/1000)#/32)
                     """
                     ttx = time.time()
@@ -543,17 +543,18 @@ def main(args):
                 try:
                     #tasklist.append(executor.submit(send_data_task,args.sb,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(args.sb%len(args.multiport))],args.rttimeout,args.failsafe))
                     if args.TXmode=='subimg':
+                        msg_or_udpoffset=0
                         for sidx in range(len(SUBIMGORDER)):
                             print(">>>",sidx)
-                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[SUBIMGPIX*SUBIMGORDER[sidx][0]:SUBIMGPIX*(SUBIMGORDER[sidx][0]+1),
+                            msg_or_udpoffset=send_data(time_start_isot, uv_diag, Dec, dirty_img[SUBIMGPIX*SUBIMGORDER[sidx][0]:SUBIMGPIX*(SUBIMGORDER[sidx][0]+1),
                                                                                    SUBIMGPIX*SUBIMGORDER[sidx][1]:SUBIMGPIX*(SUBIMGORDER[sidx][1]+1),:] ,
-                                                                                verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress)
+                                                                                verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress,udpchunksize=args.udpchunksize,protocol=args.protocol,udpoffset=(0 if args.protocol=='tcp' else msg_or_udpoffset))
                     elif args.TXmode=='subint' and args.TXnints>1:
                         stime=(args.rttimeout - (time.time()-timage))/args.TXnints
                         stasks=[]
                         for sidx in range(args.TXnints):
                             print(">>>",sidx,(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))])
-                            stasks.append(executor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress))
+                            stasks.append(executor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0))
 
 
 
@@ -562,7 +563,7 @@ def main(args):
                         wait(stasks)
 
                     else:
-                        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress)
+                        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress,udpchunksize=args.udpchunksize,protocol=args.protocol)
                 except Exception as exc:
                     if args.failsafe:
                         raise(exc)
@@ -669,6 +670,8 @@ if __name__=="__main__":
     parser.add_argument('--TXmode',type=str,choices=['subimg','subint','base'],default='base',help='TX mode')
     parser.add_argument('--TXnints',type=int,help='Number of sub-integrations for TXmode subint',default=5)
     parser.add_argument('--ipaddress',type=str,help='IP address of process server to send data to',choices=[os.environ["NSFRBIP"],os.environ["NSFRBIP2"]],default=os.environ["NSFRBIP"])
+    parser.add_argument('--protocol',choices=['tcp','udp'],default='tcp',help='protocol to use to send data to process server,default=tcp')
+    parser.add_argument('--udpchunksize',type=int,help='Data chunksize in bytes,default=25886',default=25886)
     args = parser.parse_args()
     main(args)
 

@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import urllib3
 import logging
@@ -71,8 +72,36 @@ def build_np_header(shape,descr='<f8',fortran_order=False,headersize=128):
     #print(headerbytes)
     return headerbytes
     
+import socket
+def send_data(timestamp,uv_diag,Dec,array,shape=None,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time,port=port,ipaddress=ipaddress,protocol='tcp',udpchunksize=90601,udpoffset=0):
+    if protocol=='udp':
+        #make header
+        host = ipaddress + ":" + str(port)
+        hdrdata = np.array([uv_diag,Dec,node],dtype=np.float64)
+        hdrbytes = bytes(host.encode()) + bytes(timestamp.encode()) + hdrdata.tobytes()
+        print("UDP header length:",len(hdrbytes),"bytes")
 
-def send_data(timestamp,uv_diag,Dec,array,shape=None,node=23,ENDFILE='',headersize=128,verbose=False,retries=5,keepalive_time=keepalive_time,port=port,ipaddress=ipaddress):
+        databytes = array.tobytes()
+        nchunks = len(databytes)//udpchunksize
+        print("Sending in ",nchunks,"chunks of ",udpchunksize+len(hdrbytes)+8,"bytes (header + data) each")
+        
+        sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        try:
+            for ii in range(nchunks):
+                i=ii+udpoffset
+                print(i.to_bytes(8,byteorder='big').hex())
+                print(len(i.to_bytes(8,byteorder='big')+hdrbytes+databytes[ii*udpchunksize:(ii+1)*udpchunksize]))
+                sock.sendto((i.to_bytes(8,byteorder='big')+hdrbytes+databytes[ii*udpchunksize:(ii+1)*udpchunksize]),(ipaddress,port))
+            print("Done sending, sleep")
+            #time.sleep(60)
+        except Exception as exc:
+
+            print(exc)
+        finally:
+            sock.close()
+        print("Done")
+        return i
+    
     host = ipaddress + ":" + str(port)
 
     if type(array) != bytes and shape is None:
