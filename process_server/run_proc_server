@@ -1,7 +1,9 @@
 #!/bin/bash
 rt="true"
 completeness="false"
-multiports=$(seq 8730 8825)
+#multiports=$(seq 8810 8825) 
+#multiports=$(seq 8730 8825)
+multiports=$(seq 8794 8825)
 #run this script to open server, attach to a dask worker, and receive 32x32x25x16 image data
 #dask worker tcp://127.0.0.1:$DASKPORT --nworkers 1 --nthreads 10 --name process_server_WRKR > $PWD/.process_server_WRKR_log.txt 2>&1 &
 > $PWD/process_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt 
@@ -12,7 +14,9 @@ then
 	#dada_db -k cada -b 144961600
 	#dada_db -k caea -b 28992320
 	#dada_db -k cafa -b 28992320
-	python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --initnoise --initnoisezero --TXmode subint --TXnints 5 --maxProcesses 80 #--daskaddress "tcp://10.42.0.228:8786"
+	#python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --initnoise --initnoisezero --TXmode subint --TXnints 5 --maxProcesses 80 --protocol udp --headersize 103 --testsinglenode #--daskaddress "tcp://10.42.0.228:8786"
+	#python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --initnoise --initnoisezero --maxProcesses 80 --protocol udp --headersize 103 --testsinglenode --TXmode subint --TXnints 5
+	python run_udp.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 301 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --initnoise --initnoisezero --maxProcesses 80 --protocol udp --headersize 103 --TXmode subint --TXnints 5 --debug
 else
 	echo "offline process server active"
 	if [ "$completeness" = "true" ];

@@ -83,6 +83,296 @@ from nsfrb.config import IMAGE_SIZE,bmin,flagged_antennas,bad_antennas,pixperFWH
 import json
 
 
+def fullimage_main(args):
+    print("Re-fringestoopping and imaging "+str(args.fnum))
+    mingulp=args.mingulp
+    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+    outriggers = args.outriggers
+    nchans_per_node = nchan_per_node = args.nchans_per_node
+    ngulps=args.ngulps
+    gulpsize=args.gulpsize
+    image_size = gridsize = args.image_size
+    fnum = args.fnum
+    sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    #fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
+    #print(fobs)
+    fcts = []
+    if args.flagSWAVE:
+        fcts.append(fct_SWAVE)
+    if args.flagBPASS:
+        fcts.append(fct_BPASS)
+    if args.flagFRCBAND:
+        fcts.append(fct_FRCBAND)
+    if args.flagBPASSBURST:
+        fcts.append(fct_BPASSBURST)
+
+    print(args.path)
+    if args.path==vis_dir:
+        datadirs = [vis_dir + "lxd110"+corrs[i]+"/" for i in range(len(corrs))]
+    else:
+        datadirs = [args.path + "/" for i in range(len(corrs))]
+
+    print(datadirs[0] + "/refstop_nsfrb_sb00_" + str(fnum) + ".npy")
+    if len(glob.glob(datadirs[0] + "/refstop_nsfrb_sb00_" + str(fnum) + ".npy"))==0:
+    
+
+
+        #make fringestopping table [ADAPTED FROM https://github.com/dsa110/dsa110-xengine/blob/v3.1.0-rc97/scripts/gen_nsfrb_fstable.py]
+        iNode,mjd,my_pt_dec = pipeline.read_raw_vis(datadirs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=mingulp,headersize=16,get_header=True)
+        pt_dec = my_pt_dec*np.pi/180.
+
+        # calc uvw
+        bname, blen, uvw = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+        newvisdata = np.zeros((25*90,len(bname),nchans_per_node*16,2),dtype=complex)
+        for i in range(16):
+            print("Re-fringestopping sb"+str(i)+"...")
+            iNode,mjd,my_pt_dec = pipeline.read_raw_vis(datadirs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=mingulp,headersize=16,get_header=True)
+            ff = 1.53-np.arange(8192)*0.25/8192
+            fobs = ff[1024+(iNode)*384:1024+(iNode+1)*384]
+            fobs = fobs.reshape((len(fobs)//nchans_per_node,nchans_per_node)).mean(0)#bin frequencies to nchans_per_node
+
+
+            # make new vis model
+            new_vis_path = table_dir + "newvisModel_sb"+str(i)+".npz"
+            if not args.usecache:
+                os.system("rm "+new_vis_path)
+            new_vis_model = pu.load_visibility_model(new_vis_path,blen, 90, fobs, pt_dec, tsamp*25, antenna_order, outrigger_delays, bname, refmjd)
+            new_vis_model = new_vis_model[0,:,:,:,0].repeat(args.timebin,axis=0)
+            print("New vis model shape:",new_vis_model.shape)
+            for gulp in range(90):
+                print(">gulp"+str(gulp))
+                dat,iNode,mjd,my_pt_dec = pipeline.read_raw_vis(datadirs[i] + "/nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16,get_header=False)
+                newvisdata[gulp*25:(gulp+1)*25,:,i*nchans_per_node:(i+1)*nchans_per_node,:] = dat/(new_vis_model[gulp:gulp+1,:,:,np.newaxis])
+            np.save(datadirs[i] + "/refstop_nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".npy",newvisdata[:,:,i*nchans_per_node:(i+1)*nchans_per_node,:])
+            print("Done, saved re-fringestopped vis to "+datadirs[i] + "/refstop_nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".npy")
+            print("")
+    
+    print("Imaging data from" + datadirs[0] + "/refstop_nsfrb_sb00_" + str(fnum) + ".npy")
+    sb,mjd,dec = pipeline.read_raw_vis(datadirs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=mingulp,headersize=16,get_header=True)
+    image = np.zeros((gridsize,gridsize))
+    fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
+    for j in range(16):
+        tmp_dat = np.load(datadirs[j]+ "/refstop_nsfrb_sb"+str(sbs[j])+"_" + str(fnum) + ".npy")
+        if j ==0:
+            pt_dec=dec*np.pi/180
+            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+            uv_diag=np.max(np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2))
+            pixel_resolution = (lambdaref/uv_diag/3)
+        tmp_dat, bname_, blen_, UVW_, antenna_order_ = flag_vis(tmp_dat, bname, blen, UVW, antenna_order,
+                                            list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants),
+                                            bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),flag_channel_templates=fcts,
+                                            flagged_chans=list(np.array(args.flagchans)[np.logical_and(np.array(args.flagchans)>j*nchans_per_node,np.array(args.flagchans)<(j+1)*nchans_per_node)]-j*nchans_per_node),bmax=args.bmax)
+        U = UVW_[0,:,1]
+        V = UVW_[0,:,0]
+        for jj in range(tmp_dat.shape[2]):
+            image = np.nansum([image,revised_robust_image(tmp_dat[:,:,jj,:].mean(2),
+                                               U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                               V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                               image_size,robust=-2)],axis=0)
+    np.save(datadirs[0]+"refstop_fullimage_"+str(fnum)+".npy",image)
+    plt.figure(figsize=(24,24))
+    plt.imshow(image,aspect='auto',interpolation='none',vmin=0,vmax=np.nanpercentile(image,75))
+    plt.savefig( datadirs[0]+"refstop_fullimage_"+str(fnum)+".pdf")
+    plt.close()
+    print("saved image to "+ datadirs[0]+"refstop_fullimage_"+str(fnum)+".pdf")
+    return
+
+
+
+
+
+def fastimage_main(args):
+
+    print("Starting image-plane coherent search of files "+str(args.fnum))
+    mingulp=args.mingulp
+    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+    outriggers = args.outriggers
+    nchans_per_node = nchan_per_node = args.nchans_per_node
+    ngulps=args.ngulps
+    gulpsize=args.gulpsize
+    image_size = gridsize = args.image_size
+    fnum = args.fnum
+    sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
+    print(fobs)
+    fcts = []
+    if args.flagSWAVE:
+        fcts.append(fct_SWAVE)
+    if args.flagBPASS:
+        fcts.append(fct_BPASS)
+    if args.flagFRCBAND:
+        fcts.append(fct_FRCBAND)
+    if args.flagBPASSBURST:
+        fcts.append(fct_BPASSBURST)
+
+    print(args.path)
+    if args.path==vis_dir:
+        datadirs = [vis_dir + "lxd110"+corrs[i]+"/" for i in range(len(corrs))]
+    else:
+        datadirs = [args.path + "/" for i in range(len(corrs))]
+
+    if len(args.testpulsar)==3:
+        pass
+    else:
+        try:
+            assert(args.usecache)
+            image_cube = np.load(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube.npy")
+
+            sb,mjd,dec = pipeline.read_raw_vis(datadirs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=mingulp,headersize=16,get_header=True)
+            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+            dat_i, bname_, blen_, UVW_, antenna_order_ = flag_vis(np.zeros((25,4656,128,2)), bname, blen, UVW, antenna_order,
+                                                                                list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants),
+
+                               bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),
+                                                                                                                                                                        flagged_chans=list(args.flagchans),bmax=args.bmax)
+            U = UVW_[0,:,1]
+            V = UVW_[0,:,0]
+
+            uv_diag=np.max(np.sqrt(U**2 + V**2))
+            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + ((mingulp)*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+            print("Loading image cube from " + args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube.npy")
+        except Exception as exc:
+            print(exc)
+
+            print("Searching pulse periods directly from file")
+            
+            allsnrs = np.nan*np.ones((image_size,image_size,len(args.periods),len(args.widthtrials)))
+            allras = np.nan*np.ones((image_size,image_size,len(args.periods),len(args.widthtrials)))
+            alldecs = np.nan*np.ones((image_size,image_size,len(args.periods),len(args.widthtrials)))
+            uvwflag = False
+            for trial_period_i in range(len(args.periods)):
+                trial_period = args.periods[trial_period_i]
+                for trial_width_i in range(len(args.widthtrials)):
+                    trial_width = args.widthtrials[trial_width_i]
+                    
+                    if trial_period>args.maxphase:
+                        trial_phases = np.array(np.linspace(0,trial_period,args.maxphase),dtype=int)
+                    else:
+                        trial_phases = np.arange(trial_period,dtype=int)
+
+                    for trial_phase in trial_phases:#range(trial_period):
+                        image_cube_list = []
+                        racutoffs = []
+                        numfolds = 2250//trial_period 
+                        gulp0 = int(trial_phase//gulpsize)
+                        eject=False
+                        for i in range(numfolds):
+
+
+                            gulp = int((trial_period*i + trial_phase)//gulpsize)
+                            offset = (trial_period*i + trial_phase) - (gulpsize*gulp)
+                            print(gulp,offset)
+                            racutoff = 0 if i==0 else get_RA_cutoff(dec,usefit=True,offset_s=(gulp-gulp0)*T/1000)
+                            if racutoff >image_size//2:
+                                print("Stopping at ",i,"folds")
+                                eject=True
+                                break
+                            racutoffs.append(racutoff)
+                            
+                            image = np.zeros((image_size,image_size))    
+                            for j in range(16):
+                                tmp_dat,sb,mjd,dec = pipeline.read_raw_vis(datadirs[j] + "/nsfrb_sb" + sbs[j] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=gulp,headersize=16)
+                                tmp_dat -= np.nanmedian(tmp_dat,0)
+                                tmp_dat /= np.nanstd(tmp_dat,0)
+                                tmp_dat = tmp_dat[offset:min([offset+trial_width,gulpsize]),:,:,:]
+                                
+                                if not uvwflag:
+                                    pt_dec=dec*np.pi/180
+                                    bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+                                    uv_diag=np.max(np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2))
+                                    pixel_resolution = (lambdaref/uv_diag/3)
+                                tmp_dat, bname_, blen_, UVW_, antenna_order_ = flag_vis(tmp_dat, bname, blen, UVW, antenna_order,
+                                            list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants),
+                                            bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),flag_channel_templates=fcts,
+                                            flagged_chans=list(np.array(args.flagchans)[np.logical_and(np.array(args.flagchans)>j*nchans_per_node,np.array(args.flagchans)<(j+1)*nchans_per_node)]-j*nchans_per_node),bmax=args.bmax)
+                                if gulp==gulp0:
+                                    ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulp*tsamp_ms*gulpsize/86400/1000),image_size,DEC=dec,two_dim=True,manual=False,uv_diag=uv_diag)
+                                U = UVW_[0,:,1]
+                                V = UVW_[0,:,0]
+                                for jj in range(tmp_dat.shape[2]):
+                                    image = np.nansum([image,revised_robust_image(tmp_dat[:,:,jj,:].mean(2),
+                                               U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                               V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
+                                               image_size,robust=-2)],axis=0)
+                            image_cube_list.append(image[:,:,np.newaxis])
+                        
+                        #stack image
+                        numfolds = (i if eject else numfolds)
+                        print("stacking,",numfolds," images...")
+                        image_cube_list,ra_grid_2D,dec_grid_2D,min_gridsize = stack_images(image_cube_list,racutoffs,
+                                                                         ra_grid_2D,dec_grid_2D)
+                        image_cube = np.concatenate(image_cube_list,2)
+                        folded_image = np.nansum(image_cube,2)
+                        
+                        allsnrs[:folded_image.shape[0],:folded_image.shape[1],trial_period_i,trial_width_i] = np.nanmax([allsnrs[:folded_image.shape[0],:folded_image.shape[1],trial_period_i,trial_width_i],folded_image],0)
+                        allras[:folded_image.shape[0],:folded_image.shape[1],trial_period_i,trial_width_i]=ra_grid_2D
+                        alldecs[:folded_image.shape[0],:folded_image.shape[1],trial_period_i,trial_width_i]=dec_grid_2D
+
+                        np.save(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube_P"+str(trial_period)+"_W"+str(trial_width)+"_O"+str(trial_phase)+".npy",image_cube)
+                        
+                        np.save(args.path + "/"+str(args.fnum) + "_periodicity_fastfoldedimage_P"+str(trial_period)+"_W"+str(trial_width)+"_O"+str(trial_phase)+".npy",folded_image)
+                        
+                        """
+                        plt.figure(figsize=(12,12))
+                        plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=folded_image.flatten(),vmin=0,vmax=1e-1)
+                        plt.savefig(args.path + "/"+str(args.fnum) + "_periodicity_fastfoldedimage_P"+str(trial_period)+"_W"+str(trial_width)+"_O"+str(trial_phase)+".png")
+                        plt.close()
+
+                        plt.figure(figsize=(12,12*numfolds))
+                        for i in range(numfolds):
+                            plt.subplot(numfolds,1,i+1)
+                            plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=image_cube[:,:,i].flatten(),vmin=0,vmax=1e-2)
+                        plt.savefig(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube_P"+str(trial_period)+"_W"+str(trial_width)+"_O"+str(trial_phase)+".pdf")
+                        plt.close()
+                        """
+            np.save(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube.npy",allsnrs)
+            np.save(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube_ras.npy",allras)
+            np.save(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube_decs.npy",alldecs)
+            np.save(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube_periods.npy",args.periods)
+            np.save(args.path + "/"+str(args.fnum) + "_periodicity_fastimagecube_widths.npy",args.widthtrials)
+            
+            #get peak trial
+            bestidx = np.unravel_index(np.nanargmax(allsnrs),allsnrs.shape)
+            print("Peak Candidate:")
+            print("> S/N: ",allsnrs[bestidx[0],bestidx[1],bestidx[2],bestidx[3]])
+            print("> RA: ",allras[bestidx[0],bestidx[1],bestidx[2],bestidx[3]])
+            print("> DEC: ",alldecs[bestidx[0],bestidx[1],bestidx[2],bestidx[3]])
+            print("> P: ",args.periods[bestidx[2]]*tsamp_ms/1000,"s")
+            print("> W: ",args.widthtrials[bestidx[3]]*tsamp_ms/1000,"s")
+            allperiods = np.array(args.periods)[np.newaxis,np.newaxis,:,np.newaxis].repeat(allsnrs.shape[0],0).repeat(allsnrs.shape[1],1).repeat(allsnrs.shape[3],3)
+            allwidths = np.array(args.widthtrials)[np.newaxis,np.newaxis,np.newaxis,:].repeat(allsnrs.shape[0],0).repeat(allsnrs.shape[1],1).repeat(allsnrs.shape[2],2)
+
+            plt.figure(figsize=(32,12))
+            #histogram of S/Ns
+            plt.subplot(1,3,1)
+            plt.scatter(allwidths.flatten()*tsamp_ms/1000,allperiods.flatten()*tsamp_ms/1000,s=allsnrs.flatten(),alpha=0.1)
+            plt.xlabel("Width (s)")
+            plt.ylabel("Period (s)")
+            plt.subplot(1,3,2)
+            plt.hist(allsnrs.flatten(),np.linspace(0,10,1000))
+            plt.xlabel("S/N")
+            plt.subplot(1,3,3)
+            plt.scatter(allras[:,:,bestidx[2],bestidx[3]].flatten(),
+                    alldecs[:,:,bestidx[2],bestidx[3]].flatten(),
+                    c=allsnrs[:,:,bestidx[2],bestidx[3]].flatten(),vmin=0,vmax=1e-1)
+            plt.suptitle(str(args.fnum)+", RA={:.02f}deg".format(allras[bestidx[0],bestidx[1],bestidx[2],bestidx[3]])+", DEC={:.02f}deg".format(alldecs[bestidx[0],bestidx[1],bestidx[2],bestidx[3]])+",W={:.02f}s".format(args.widthtrials[bestidx[3]]*tsamp_ms/1000)+",P={:.02f}s".format(args.periods[bestidx[2]]*tsamp_ms/1000))
+            plt.savefig(args.path + "/"+str(args.fnum) + "_periodicity_fast_summary.png")
+            plt.close()
+
+            results = dict()
+            results["BestPeriod_s"] = args.periods[bestidx[2]]*tsamp_ms/1000
+            results["BestRA_deg"] = allras[bestidx[0],bestidx[1],bestidx[2],bestidx[3]]
+            results["BestDEC_deg"] = alldecs[bestidx[0],bestidx[1],bestidx[2],bestidx[3]]
+            results["BestWidth_s"] = args.widthtrials[bestidx[3]]*tsamp_ms/1000
+            f=open(args.path + "/"+str(args.fnum) + "_periodicity_fast_results"+str("_test" if args.testpulsar else "") + ".json","w")
+            json.dump(results,f)
+            f.close()
+    return
+
+
+
 def image_main(args):
     print("Starting incoherent search of files "+str(args.fnum))
     mingulp=args.mingulp
@@ -122,10 +412,10 @@ def image_main(args):
 
             sb,mjd,dec = pipeline.read_raw_vis(datadirs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=mingulp,headersize=16,get_header=True)
             bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-            dat_i, bname_, blen_, UVW_, antenna_order_ = flag_vis(np.zeros((25,4656,8,2)), bname, blen, UVW, antenna_order,
+            dat_i, bname_, blen_, UVW_, antenna_order_ = flag_vis(np.zeros((25,4656,128,2)), bname, blen, UVW, antenna_order,
                                                                                 list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants),
                                                                                                                             bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),
-                                                                                                                                                                        flagged_chans=list(args.flagchans))
+                                                                                                                                                                        flagged_chans=list(args.flagchans),bmax=args.bmax)
             U = UVW_[0,:,1]
             V = UVW_[0,:,0]
 
@@ -153,7 +443,7 @@ def image_main(args):
                 dat_i, bname_, blen_, UVW_, antenna_order_ = flag_vis(tmp_dat, bname, blen, UVW, antenna_order,
                                             list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants),
                                             bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),flag_channel_templates=fcts,
-                                            flagged_chans=list(args.flagchans))
+                                            flagged_chans=list(args.flagchans),bmax=args.bmax)
                 U = UVW_[0,:,1]
                 V = UVW_[0,:,0]
                 tmpimg = np.zeros((image_size,image_size,gulpsize,len(corrs)))
@@ -185,13 +475,13 @@ def image_main(args):
         def update(ii):
             plt.clf()
             #plt.imshow(image_cube[:,:,ii],aspect='auto',interpolation='none',vmin=0,vmax=1)
-            plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),image_cube[:,:,ii].flatten(),vmin=0,vmax=1)
+            plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=image_cube[:,:,ii].flatten(),vmin=0,vmax=10)
             plt.xlabel("RA")
             plt.ylabel("Dec")
             plt.title(Time(mjd + ((mingulp+ii)*tsamp_ms*gulpsize/86400/1000),format='mjd').isot)
             return
         fig=plt.figure(figsize=(12,12))
-        animation_fig = animation.FuncAnimation(fig,update,frames=image_cube.shape[2],interval=1)
+        animation_fig = animation.FuncAnimation(fig,update,frames=image_cube.shape[2],interval=10)
         animation_fig.save(args.path + "/"+str(args.fnum) + "_periodicity_imagegif.gif")
 
     #fold on provided period
@@ -202,6 +492,19 @@ def image_main(args):
     print("Folding to period ",args.imageperiod*tsamp_ms/1000,"s")
     fold_cube = np.nansum(image_cube[:,:,:args.imageperiod*(image_cube.shape[2]//args.imageperiod)].reshape((image_cube.shape[0],image_cube.shape[1],image_cube.shape[2]//args.imageperiod,args.imageperiod)),3)
     np.save(args.path + "/"+str(args.fnum) + "_periodicity_foldedcube.npy",fold_cube)
+    if args.foldedgif:
+        def update(ii):
+            plt.clf()
+            #plt.imshow(image_cube[:,:,ii],aspect='auto',interpolation='none',vmin=0,vmax=1)
+            plt.scatter(ra_grid_2D.flatten(),dec_grid_2D.flatten(),c=fold_cube[:,:,ii].flatten(),vmin=0,vmax=50)
+            plt.xlabel("RA")
+            plt.ylabel("Dec")
+            plt.title(Time(mjd + ((mingulp+ii)*tsamp_ms*gulpsize/86400/1000),format='mjd').isot)
+            return
+        fig=plt.figure(figsize=(12,12))
+        animation_fig = animation.FuncAnimation(fig,update,frames=fold_cube.shape[2],interval=10)
+        animation_fig.save(args.path + "/"+str(args.fnum) + "_periodicity_foldedgif.gif")
+
     return
 
 
@@ -299,7 +602,7 @@ def bf_search_main(args):
                 dat_i, bname_, blen_, UVW_, antenna_order_ = flag_vis(tmp_dat, bname, blen, UVW, antenna_order,
                                             list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants),
                                             bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),flag_channel_templates=fcts,
-                                            flagged_chans=list(args.flagchans))
+                                            flagged_chans=list(args.flagchans),bmax=args.bmax)
                 U = UVW_[0,:,1]
                 V = UVW_[0,:,0]
                 
@@ -523,7 +826,7 @@ def search_main(args):
                 dat_i, bname_, blen_, UVW_, antenna_order_ = flag_vis(tmp_dat, bname, blen, UVW, antenna_order, 
                                             list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants), 
                                             bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),flag_channel_templates=fcts,
-                                            flagged_chans=list(args.flagchans))
+                                            flagged_chans=list(args.flagchans),bmax=args.bmax)
     
                 dspec_incoherent[j*gulpsize:(j+1)*gulpsize,:] = np.nanmean(np.abs(dat_i),(1,3))
                 dspec_incoherent[j*gulpsize:(j+1)*gulpsize,:] -= np.nanmedian(dspec_incoherent[j*gulpsize:(j+1)*gulpsize,:],0)    
@@ -652,12 +955,15 @@ def main(args):
         search_main(args)
     elif args.mode == 'beamform_search':
         bf_search_main(args)
-        return
+    elif args.mode == 'fast_image_fold':
+        fastimage_main(args)
     elif args.mode=='image_fold' and args.imageperiod>0 and args.imagewidth>0:
         image_main(args)
     elif args.mode=='image_fold':
         print('Must provide --imageperiod and --imagewidth in \'image_fold\' mode')
         return 
+    elif args.mode=='fstop_image_search':
+        fullimage_main(args)
     else:
         print("Invalide --mode")
         return
@@ -690,15 +996,19 @@ if __name__=="__main__":
     parser.add_argument('--testpulsar',type=float,nargs='+',help='width and period in seconds of test pulsar injection',default=[])
     parser.add_argument('--finePrange',type=float,help='range in samples around initial period to run timing analysis',default=50)
     parser.add_argument('--nfinePtrials',type=int,help='number of fine trials',default=50)
-    parser.add_argument('--mode',type=str,choices=['incoherent_search','image_fold','beamform_search'],default='incoherent_search',help='incoherent_search: runs fast folding search pipeline\nimage_fold: forms and folds images at a specified period\nbeamform_search: runs fast folding search on grid of 25 beams')
+    parser.add_argument('--mode',type=str,choices=['fast_image_fold','incoherent_search','image_fold','beamform_search','fstop_image_search'],default='incoherent_search',help='incoherent_search: runs fast folding search pipeline\nimage_fold: forms and folds images at a specified period\nbeamform_search: runs fast folding search on grid of 25 beams')
     parser.add_argument('--imageperiod',type=int,help='period in samples to use in \'image\' mode',default=-1)
     parser.add_argument('--imagewidth',type=int,help='width in samples to use in \'image\' mode',default=-1)
     parser.add_argument('--image_size',type=int,help='image size, default=301',default=301)
 
     parser.add_argument('--imagegif',action='store_true',help='output gif')
+    parser.add_argument('--foldedgif',action='store_true',help='output gif')
     parser.add_argument('--gridrows',type=int,help='number of rows for beamforming search, default=5',default=5)
     parser.add_argument('--gridcols',type=int,help='number of cols for beamforming search, default=5',default=5)
     parser.add_argument('--gridstep',type=float,help='stepsize between beams in degrees, default=0.25',default=0.25)
+    parser.add_argument('--bmax',type=float,help='Maximum baseline length to include, default=inf',default=np.inf)
+    parser.add_argument('--maxphase',type=int,help='Max number of phases',default=5)
+    parser.add_argument('--timebin',type=int,help='Time bin in samples,default=1',default=1)
     args = parser.parse_args()
     main(args)
 

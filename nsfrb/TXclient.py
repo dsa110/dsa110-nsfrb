@@ -77,7 +77,7 @@ def send_data(timestamp,uv_diag,Dec,array,shape=None,node=23,ENDFILE='',headersi
     if protocol=='udp':
         #make header
         host = ipaddress + ":" + str(port)
-        hdrdata = np.array([uv_diag,Dec,node],dtype=np.float64)
+        hdrdata = np.array([uv_diag,Dec,node] + list(array.shape) + [0]*(4-len(array.shape)),dtype=np.float64)
         hdrbytes = bytes(host.encode()) + bytes(timestamp.encode()) + hdrdata.tobytes()
         print("UDP header length:",len(hdrbytes),"bytes")
 

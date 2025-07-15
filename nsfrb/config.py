@@ -134,6 +134,7 @@ srchtime_file = cwd + "-logfiles/srchtime_log.txt"
 candcutter_memory_file = cwd + "-logfiles/candmem_log.txt"
 candcutter_time_file = cwd + "-logfiles/candtime_log.txt"
 rtmemory_file = cwd + "/realtime/rtmemory_log.txt"
+procserver_memory_file = cwd + "-logfiles/procservermemory_log.txt"
 import casatools as cc
 me = cc.measures()
 obs=me.observatory("OVRO_MMA")

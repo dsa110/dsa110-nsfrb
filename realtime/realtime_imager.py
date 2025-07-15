@@ -378,7 +378,7 @@ def main(args):
                     except Exception as exc:
                         inject_flat = False
                         inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
-                        if args.verbose: printlog(args.sb," inject failed",output_file=rtlog_file)
+                        if args.verbose: printlog(str(args.sb)+" inject failed",output_file=rtlog_file)
                     #clear data if we only want the injection
                     if injection_params['inject_only']: dat[:,:,:,:] = 0
                     inject_flat = injection_params['inject_flat']
@@ -553,14 +553,14 @@ def main(args):
                         stime=(args.rttimeout - (time.time()-timage))/args.TXnints
                         stasks=[]
                         for sidx in range(args.TXnints):
-                            print(">>>",sidx,(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))])
-                            stasks.append(executor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0))
-
-
+                            print(">>>",sidx,(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))])
+                            #stasks.append(executor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0))
+                            
+                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
 
                             #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))])
                             #time.sleep(stime)
-                        wait(stasks)
+                        #wait(stasks)
 
                     else:
                         msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress,udpchunksize=args.udpchunksize,protocol=args.protocol)
