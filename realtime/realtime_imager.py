@@ -607,6 +607,7 @@ def main(args):
         if args.inject:
             inject_count += 1
         if args.debug:
+            printlog("--->TX TIME: " + str(time.time()-tbuffer) + " sec",output_file=rtlog_file)
             printlog("--->TX TIME: " + str(time.time()-tbuffer) + " sec",output_file=rtbench_file)
             printlog("TOTAL TIME: " + str(time.time()-tbuffer1) + " sec",output_file=rtbench_file)
             printlog("-"*20,output_file=rtbench_file)

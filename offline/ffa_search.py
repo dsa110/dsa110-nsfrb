@@ -138,7 +138,7 @@ def fullimage_main(args):
             if not args.usecache:
                 os.system("rm "+new_vis_path)
             new_vis_model = pu.load_visibility_model(new_vis_path,blen, 90, fobs, pt_dec, tsamp*25, antenna_order, outrigger_delays, bname, refmjd)
-            new_vis_model = new_vis_model[0,:,:,:,0].repeat(args.timebin,axis=0)
+            new_vis_model = new_vis_model[0,:,:,:,0]
             print("New vis model shape:",new_vis_model.shape)
             for gulp in range(90):
                 print(">gulp"+str(gulp))
@@ -148,33 +148,50 @@ def fullimage_main(args):
             print("Done, saved re-fringestopped vis to "+datadirs[i] + "/refstop_nsfrb_sb" + sbs[i] + "_" + str(fnum) + ".npy")
             print("")
     
-    print("Imaging data from" + datadirs[0] + "/refstop_nsfrb_sb00_" + str(fnum) + ".npy")
-    sb,mjd,dec = pipeline.read_raw_vis(datadirs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=mingulp,headersize=16,get_header=True)
-    image = np.zeros((gridsize,gridsize))
-    fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
-    for j in range(16):
-        tmp_dat = np.load(datadirs[j]+ "/refstop_nsfrb_sb"+str(sbs[j])+"_" + str(fnum) + ".npy")
-        if j ==0:
-            pt_dec=dec*np.pi/180
-            bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
-            uv_diag=np.max(np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2))
-            pixel_resolution = (lambdaref/uv_diag/3)
-        tmp_dat, bname_, blen_, UVW_, antenna_order_ = flag_vis(tmp_dat, bname, blen, UVW, antenna_order,
+    if args.usecache and len(glob.glob(datadirs[0] + "/refstop_fullimage_" + str(fnum) + ".npy"))>0:
+        image = np.load(datadirs[0] + "/refstop_fullimage_" + str(fnum) + ".npy")
+    else:
+        
+        print("Imaging data from" + datadirs[0] + "/refstop_nsfrb_sb00_" + str(fnum) + ".npy")
+        sb,mjd,dec = pipeline.read_raw_vis(datadirs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=mingulp,headersize=16,get_header=True)
+        image = np.zeros((90,gridsize,gridsize))
+        fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
+        for j in range(16):
+            print("channel "+str(j))
+            tmp_dat,sb,mjd,dec = pipeline.read_raw_vis(datadirs[j] + "/nsfrb_sb" + sbs[j] + "_" + str(fnum) + ".out",nchan=nchan_per_node,gulp=0,headersize=16,get_header=False) #np.load(datadirs[j]+ "/refstop_nsfrb_sb"+str(sbs[j])+"_" + str(fnum) + ".npy")
+            print("done reading")
+            if j ==0:
+                pt_dec=dec*np.pi/180
+                bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+                uv_diag=np.max(np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2))
+                pixel_resolution = (lambdaref/uv_diag/3)
+            tmp_dat, bname_, blen_, UVW_, antenna_order_ = flag_vis(tmp_dat, bname, blen, UVW, antenna_order,
                                             list(bad_antennas if outriggers else flagged_antennas) + list(args.flagants),
                                             bmin=args.bmin,flagged_corrs=list(flagged_corrs)+list(args.flagcorrs),flag_channel_templates=fcts,
                                             flagged_chans=list(np.array(args.flagchans)[np.logical_and(np.array(args.flagchans)>j*nchans_per_node,np.array(args.flagchans)<(j+1)*nchans_per_node)]-j*nchans_per_node),bmax=args.bmax)
-        U = UVW_[0,:,1]
-        V = UVW_[0,:,0]
-        for jj in range(tmp_dat.shape[2]):
-            image = np.nansum([image,revised_robust_image(tmp_dat[:,:,jj,:].mean(2),
+            U = UVW_[0,:,1]
+            V = UVW_[0,:,0]
+            for jj in range(tmp_dat.shape[2]):
+                for i in range(90):
+                    print(">>"+str(i))
+                    image[i,:,:] = np.nansum([image[i,:,:],revised_robust_image(tmp_dat[i*gulpsize:(i+1)*gulpsize,:,jj,:].mean(2),
                                                U/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                V/(ct.C_GHZ_M/fobs[(j*nchans_per_node) + jj]),
                                                image_size,robust=-2)],axis=0)
-    np.save(datadirs[0]+"refstop_fullimage_"+str(fnum)+".npy",image)
+        #np.save(datadirs[0]+"refstop_fullimage_"+str(fnum)+".npy",image)
     plt.figure(figsize=(24,24))
-    plt.imshow(image,aspect='auto',interpolation='none',vmin=0,vmax=np.nanpercentile(image,75))
+    plt.imshow(np.nanmean(image,0),aspect='auto',interpolation='none',vmin=0,vmax=np.nanpercentile(image,99))
     plt.savefig( datadirs[0]+"refstop_fullimage_"+str(fnum)+".pdf")
     plt.close()
+
+
+    fig=plt.figure(figsize=(24,24))
+    def update(ii):
+        plt.cla()
+        plt.imshow(image[ii,:,:],aspect='auto',interpolation='none',vmin=0,vmax=np.nanpercentile(image,99))
+    animation_fig = animation.FuncAnimation(fig,update,frames=image.shape[0],interval=10)
+    animation_fig.save(datadirs[0]+"refstop_fullimage_"+str(fnum)+".gif") 
+
     print("saved image to "+ datadirs[0]+"refstop_fullimage_"+str(fnum)+".pdf")
     return
 

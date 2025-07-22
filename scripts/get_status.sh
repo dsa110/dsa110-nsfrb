@@ -1,7 +1,7 @@
 #!/bin/bash
 #test
 cwd=$(cat ../metadata.txt)
-
+#grepword="SEARCH QUEUE\\|Thread\\|deleting\\|Expecting\\|EXCEPTION\\|TIMEOUT\\|?"
 
 while :
 do
@@ -39,14 +39,17 @@ do
                 do
                         echo ""
                         echo  ">>>>>>>>>>>>>>> ${cwd}-logfiles/$f.txt"
-                        tail -$2 ${cwd}-logfiles/$f.txt
+			echo  "<<grep ${grepword}"
+                        tail -$2 ${cwd}-logfiles/$f.txt | grep "$grepword"
                         echo  ">>>>>>>>>>>>>>>"
 
                 done
 
 		echo ""
                 echo ">>>>>>>>>>>>>>> $3.txt"
-                tail -$2 ${cwd}-logfiles/$3.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt
+                echo  "<<grep ${grepword}"
+		tail -$2 ${cwd}-logfiles/$3.txt | grep "$grepword"
+		#/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt
                 echo ">>>>>>>>>>>>>>>"
 	fi
 	echo "------------------------------------------------------	End NSFRB Status Report		------------------------------------------------------"

@@ -1838,6 +1838,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 #CONTEXTSETUP = False
 def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False):
+    printlog("starting search task>>[TIME]"+str(time.time()),output_file=processfile)
     searchlock.acquire()
     global current_noise
     printlog("CURRENT NOISE:"+str((current_noise[0][0,0],current_noise[1])),run_file)
@@ -2125,9 +2126,9 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
     else:
 
         if cands_found:
-            return "candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + ".csv",slow,imgdiff,srchtime,srchtxtime
+            return "candidates_" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + ".csv",slow,imgdiff,srchtime,srchtxtime,fullimg.img_id_isot,fullimg.thash
         else:
-            return None,slow,imgdiff,srchtime,srchtxtime
+            return None,slow,imgdiff,srchtime,srchtxtime,fullimg.img_id_isot,fullimg.thash
 
 
 

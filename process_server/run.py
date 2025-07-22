@@ -129,10 +129,19 @@ for i in range(NROWSUBIMG):
 class fullimg:
     def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow,imgdiff=False,bin_imgdiff=bin_imgdiff,TXsubimg=False,TXsubint=False,TXnints=1):
         printlog("INIT FULLIMG WITH SHAPE:"+str(shape),output_file=processfile)
+        if not (slow or imgdiff):
+            try:
+                self.timer = Timer(config.tsamp*shape[2]/1000, lambda: self.timeout_handler())
+                self.timer.start()
+                self.timerlock=Lock()
+                printlog("ACTIVATED TIMER",output_file=processfile)
+            except Exception as exc:
+                printlog("FAILED TO ACTIVATE TIMER:"+str(exc),output_file=processfile)
         self.queuetime = time.time()
         self.running = False
         self.image_tesseract = np.zeros(shape,dtype=dtype)
         self.corrstatus = np.zeros(16,dtype=int)
+        self.thash = hex(random.getrandbits(32))
         """
         if TXsubimg:
             self.corrstatus -= (NSUBIMG-1)
@@ -188,6 +197,18 @@ class fullimg:
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
+    def timeout_handler(self):
+        self.timerlock.acquire()
+        if not self.running:
+            printlog("Image "+self.img_id_isot+" timed out, searching now",output_file=processfile)
+            timeout_isots.append(self.img_id_isot)
+            self.nanfill()
+            QQUEUE_UDP.put_nowait(("mport",-1,self.img_id_isot,self.img_id_mjd,self.img_uv_diag,self.img_dec,self.shape[:-1],None,-99))
+            printlog("["+self.img_id_isot+"]EXITING TIMEOUT HANDLER",output_file=processfile)
+        else:
+            printlog("Already running, ignore timeout",output_file=processfile)
+        self.timerlock.release()
+        return
     def add_corr_img(self,data,corr_node,testmode=False,TXsubimg=False,TXsubint=False,TXnints=1):
         """
         if TXsubimg:
@@ -594,6 +615,7 @@ ECODE_BREAK = -1
 ECODE_CONT = -2
 ECODE_SUCCESS = 0
 def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,headersize,datasize,testh23,offline,protocol,udpchunksize):
+    t_ = time.time()
     socksuffix = "SOCKET " + str(ii) + " >>"
     if protocol=='udp':
         lastbyte=-1
@@ -750,7 +772,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout,chunksize,header
     printlog(socksuffix+"Data: " + str(arrData),output_file=processfile)
 
     #reopen
-
+    printlog(socksuffix+"TOTAL READ TIME:"+str(time.time()-t_)+"s",output_file=processfile)
     return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
 
 multiport_accepting = dict()
@@ -797,7 +819,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
 
     if fullimg_dict[img_id_isot].is_full(): #fullimg_array[idx].is_full():
         f = open(sslogfile,"a")
-        thash = hex(random.getrandbits(32))
+        thash = fullimg_dict[img_id_isot].thash #hex(random.getrandbits(32))
         f.write("[start] [" + thash + "] " + str(time.time()))
         f.close()
 
@@ -860,6 +882,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 printlog(socksuffix+"FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
                 slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),slow=True)
                 slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+                slow_fullimg_dict[img_id_isot].thash = fullimg_dict[img_id_isot].thash
                 k = img_id_isot
             slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
 
@@ -882,6 +905,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 printlog(socksuffix+"FIRST IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
                 imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
                 imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
+                imgdiff_fullimg_dict[img_id_isot].thash = fullimg_dict[img_id_isot].thash
                 kd = img_id_isot
             imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
             slowlock.release()
