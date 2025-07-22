@@ -534,6 +534,10 @@ def main(args):
                 wait(tasklist)
                 txtime = tasklist[-1].result()
             else:
+                if args.stagger_multisend>0:
+                    printlog("STAGGERING SB"+str(args.sb)+" BY "+str(args.sb*args.stagger_multisend)+" sec",output_file=rtlog_file)
+                    time.sleep(args.sb*args.stagger_multisend)
+                    printlog("DONE",output_file=rtlog_file)
                 ttx = time.time()
                 if args.verbose: printlog("[TIME LEFT]"+str(args.rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
                 if (args.rttimeout - (time.time()-timage)) < 0.1:
@@ -555,8 +559,19 @@ def main(args):
                         for sidx in range(args.TXnints):
                             print(">>>",sidx,(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))])
                             #stasks.append(executor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0))
+                            if sidx<args.TXnints-1:
+                                subintsize = int(dirty_img.shape[2]//args.TXnints)
+                                minidx = subintsize*sidx
+                                maxidx = minidx + subintsize
+                            else:
+                                subintsize = dirty_img.shape[2] - int(dirty_img.shape[2]//args.TXnints)*sidx
+                                maxidx = dirty_img.shape[2]
+                                minidx = maxidx - subintsize
+                            print(">>>",sidx,(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],(minidx,maxidx))
+                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,minidx:maxidx],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
+                            #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,minidx:maxidx],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
                             
-                            msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
+                            #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*((dirty_img.shape[2]//args.TXnints)+int(args.udproundup)):((sidx+1)*((dirty_img.shape[2]//args.TXnints)+int(args.udproundup)))],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
 
                             #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))])
                             #time.sleep(stime)
@@ -609,6 +624,7 @@ def main(args):
             print("",file=f)
             f.close()
             mallocloop += 1
+        #break
     executor.shutdown()
     try:
         reader.disconnect()
@@ -672,6 +688,7 @@ if __name__=="__main__":
     parser.add_argument('--ipaddress',type=str,help='IP address of process server to send data to',choices=[os.environ["NSFRBIP"],os.environ["NSFRBIP2"]],default=os.environ["NSFRBIP"])
     parser.add_argument('--protocol',choices=['tcp','udp'],default='tcp',help='protocol to use to send data to process server,default=tcp')
     parser.add_argument('--udpchunksize',type=int,help='Data chunksize in bytes,default=25886',default=25886)
+    parser.add_argument('--udproundup',action='store_true',help='Round sub-integration size up')
     args = parser.parse_args()
     main(args)
 
