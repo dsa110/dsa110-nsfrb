@@ -137,8 +137,8 @@ def main(args):
     corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
     if corrstaggerdict is None:
         corrstaggerdict = dict()
-        corrstaggerdict['status'] = [False]*16
-    corrstaggerdict['status'][args.sb] = False
+        corrstaggerdict['status'] = [True]*16
+    #corrstaggerdict['status'][args.sb] = False
     ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
     
     os.system("> " + rtbench_file)
@@ -550,11 +550,14 @@ def main(args):
                     corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
                     printlog("INIT CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
                     printlog(">>>>>"+str(corrstaggerdict['status'][args.sb-1]),output_file=rtlog_file)
-                    while (not corrstaggerdict['status'][args.sb-1] or corrstaggerdict['status'][args.sb]) and ((args.rttimeout - (time.time()-timage)) >= 0.1):
+                    while (args.sb>0 and (not corrstaggerdict['status'][args.sb-1] or corrstaggerdict['status'][args.sb])) or (args.sb==0 and not np.all(np.array(corrstaggerdict['status']))):# and ((args.rttimeout - (time.time()-timage)) >= 0.1):
                         corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
                         time.sleep(args.corrstagger_multisend)
                         printlog("WAITING..."+str(corrstaggerdict['status']),output_file=rtlog_file)
-                    if args.sb==0: corrstaggerdict['status'] = [False]*16
+                    if args.sb==0: 
+                        corrstaggerdict['status'] = [False]*16
+                        for i in args.flagcorrs:
+                            corrstaggerdict['status'][i] = True
                     printlog("SB "+str(args.sb)+" STARTING TX WITH CORR STATUS:"+str(corrstaggerdict['status']),output_file=rtlog_file)
                     printlog(">>>>>TIMEOUT:"+str((args.rttimeout - (time.time()-timage))),output_file=rtlog_file)
 
@@ -564,7 +567,9 @@ def main(args):
                     if args.verbose: printlog("WITHHOLD TX, OUT OF TIME",output_file=rtlog_file)
                     if args.inject: inject_count += 1
                     if args.corrstagger_multisend>0:
-                        corrstaggerdict['status'][args.sb] = True
+                        for i in range(args.sb+1):
+                            corrstaggerdict['status'][i] = True
+                        #corrstaggerdict['status'] = [True]*16 #just for testing
                         printlog("TIMEOUT, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
                         ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
                     continue
@@ -616,7 +621,9 @@ def main(args):
                 timing_dict["tot_time"] = time.time()-timage
                 ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
                 if args.corrstagger_multisend>0:
-                    corrstaggerdict['status'][args.sb] = True
+                    for i in range(args.sb+1):
+                        corrstaggerdict['status'][i] = True
+
                     #corrstaggerdict['status'] = [True]*16 #just for testing
                     #corrstaggerdict['status'][args.sb-1] = False
                     printlog("DONE, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)

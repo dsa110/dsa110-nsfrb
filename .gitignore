@@ -188,3 +188,6 @@ scripts/x11size.txt
 scripts/x11alertmessage.txt
 scripts/hdrtestnew.txt
 realtime/rt*log.txt
+
+#setup file
+setup.py
