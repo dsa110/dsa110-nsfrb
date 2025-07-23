@@ -202,7 +202,7 @@ class fullimg:
         if not self.running:
             printlog("Image "+self.img_id_isot+" timed out, searching now",output_file=processfile)
             timeout_isots.append(self.img_id_isot)
-            self.nanfill()
+            self.zerofill()
             QQUEUE_UDP.put_nowait(("mport",-1,self.img_id_isot,self.img_id_mjd,self.img_uv_diag,self.img_dec,self.shape[:-1],None,-99))
             printlog("["+self.img_id_isot+"]EXITING TIMEOUT HANDLER",output_file=processfile)
         else:
@@ -300,6 +300,25 @@ class fullimg:
             printlog("&IMGDIFF",output_file=processfile)
             return (time.time()-self.queuetime) >= 2*(config.tsamp_imgdiff*self.shape[2]/1000)
         return (time.time()-self.queuetime) >= (config.tsamp*self.shape[2]/1000)
+    def zerofill(self):
+        """
+        if data has timed out, fill missing data with nan and mark full
+        """
+        printlog("FILLING NAN"+str(self.image_tesseract.shape)+str(self.corrstatus)+str(type(self.corrstatus)),output_file=processfile)
+        if self.slow:
+            printlog("&SLOW",output_file=processfile)
+            self.image_tesseract[:,:,np.array(self.slowstatus)<1,:] = 0
+            self.slowstatus=np.ones_like(self.slowstatus)
+        elif self.imgdiff:
+            printlog("&IMGDIFF",output_file=processfile)
+            self.image_tesseract[:,:,np.array(self.imgdiffstatus)<1,:]=0
+            self.imgdiffstatus=np.ones_like(self.imgdiffstatus)
+        else:
+            self.image_tesseract[:,:,:,np.array(self.corrstatus)<1]=0
+            self.corrstatus = np.ones_like(self.corrstatus)
+        printlog("DONE FILLING NAN",output_file=processfile)
+
+        return
     def nanfill(self):
         """
         if data has timed out, fill missing data with nan and mark full
@@ -505,8 +524,8 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     #timing_dict = ETCD.get_dict(ETCDKEY_SEARCHTIMING)
     #if timing_dict is None: timing_dict = dict()
     timing_dict = dict()
-    timing_dict["search_time"]=fresult[-2]
-    timing_dict["search_tx_time"]=fresult[-1]
+    timing_dict["search_time"]=fresult[-4]
+    timing_dict["search_tx_time"]=fresult[-3]
     #timing_dict["search_completed"]=True
     ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
 
@@ -586,8 +605,8 @@ def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_sl
     #timing_dict = ETCD.get_dict(ETCDKEY_SEARCHTIMING)
     #if timing_dict is None: timing_dict = dict()
     timing_dict = dict()
-    timing_dict["search_time"]=fresult[-2]
-    timing_dict["search_tx_time"]=fresult[-1]
+    timing_dict["search_time"]=fresult[-4]
+    timing_dict["search_tx_time"]=fresult[-3]
     #timing_dict["search_completed"]=True
     ETCD.put_dict(ETCDKEY_SEARCHTIMING,timing_dict)
 
@@ -812,7 +831,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     #check if timed out
     if fullimg_dict[img_id_isot].is_timeout():
         printlog(socksuffix+"searching incomplete data for "+img_id_isot,output_file=processfile)
-        fullimg_dict[img_id_isot].nanfill()
+        fullimg_dict[img_id_isot].zerofill()
     slowlock.release()
 
 
@@ -1597,6 +1616,7 @@ def main(args):
             #task_timing.pop(i)
         """
         #check if any timed out
+        slowlock_.acquire()
         for k in fullimg_dict.keys():
             if (not fullimg_dict[k].running) and fullimg_dict[k].is_timeout():
                 printlog("Image "+str(k)+" timed out, searching now",output_file=processfile)
@@ -1618,6 +1638,7 @@ def main(args):
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
                                     args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1)#TXsubimg,TXsubint,args.TXnints)
                     #multiport_num_list.append(ii)    
+        slowlock_.release()
         """
         for k in slow_fullimg_dict.keys():
             if (not slow_fullimg_dict[k].running) and slow_fullimg_dict[k].is_timeout():

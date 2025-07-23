@@ -607,6 +607,9 @@ def timestatusplot(showsamps=30,update_time=T/1000,plotfile_searchtime=img_dir+"
 
 
         #quantize search time
+        #print(type(search_time_all))
+        #print(type(interval))
+        #print(search_time_all,interval,0,len(time_levels)-1)
         search_time_quantize = np.clip(np.array(search_time_all/interval,dtype=int),0,len(time_levels)-1)
         search_txtime_quantize = np.clip(np.array(search_txtime_all/interval,dtype=int),0,len(time_levels)-1)
         f.write("Process Server Search Time (s)  " + " "*2*int(showsamps//3) + "Process Server Cand Stream Time (s)\n")

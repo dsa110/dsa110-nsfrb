@@ -55,6 +55,7 @@ ETCDKEY = f'/mon/nsfrb/fastvis'
 ETCDKEY_INJECT = f'/mon/nsfrb/inject'
 ETCDKEY_TIMING = f'/mon/nsfrb/timing'
 ETCDKEY_TIMING_LIST = [f'/mon/nsfrbtiming/'+str(i+1) for i in range(len(corrs))]
+ETCDKEY_CORRSTAGGER = f'/mon/nsfrbstagger'
 
 #flagged antennas/
 TXtask_list = []
@@ -133,6 +134,12 @@ def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
 
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
+    corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+    if corrstaggerdict is None:
+        corrstaggerdict = dict()
+        corrstaggerdict['status'] = [False]*16
+    corrstaggerdict['status'][args.sb] = False
+    ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
     
     os.system("> " + rtbench_file)
     os.system("> " + rtmemory_file)
@@ -538,11 +545,28 @@ def main(args):
                     printlog("STAGGERING SB"+str(args.sb)+" BY "+str(args.sb*args.stagger_multisend)+" sec",output_file=rtlog_file)
                     time.sleep(args.sb*args.stagger_multisend)
                     printlog("DONE",output_file=rtlog_file)
+                elif args.corrstagger_multisend>0:
+                    printlog("MONITORING CORR DICT EVERY "+str(args.corrstagger_multisend)+" sec",output_file=rtlog_file)
+                    corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+                    printlog("INIT CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
+                    printlog(">>>>>"+str(corrstaggerdict['status'][args.sb-1]),output_file=rtlog_file)
+                    while (not corrstaggerdict['status'][args.sb-1] or corrstaggerdict['status'][args.sb]) and ((args.rttimeout - (time.time()-timage)) >= 0.1):
+                        corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+                        time.sleep(args.corrstagger_multisend)
+                        printlog("WAITING..."+str(corrstaggerdict['status']),output_file=rtlog_file)
+                    if args.sb==0: corrstaggerdict['status'] = [False]*16
+                    printlog("SB "+str(args.sb)+" STARTING TX WITH CORR STATUS:"+str(corrstaggerdict['status']),output_file=rtlog_file)
+                    printlog(">>>>>TIMEOUT:"+str((args.rttimeout - (time.time()-timage))),output_file=rtlog_file)
+
                 ttx = time.time()
                 if args.verbose: printlog("[TIME LEFT]"+str(args.rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
                 if (args.rttimeout - (time.time()-timage)) < 0.1:
                     if args.verbose: printlog("WITHHOLD TX, OUT OF TIME",output_file=rtlog_file)
                     if args.inject: inject_count += 1
+                    if args.corrstagger_multisend>0:
+                        corrstaggerdict['status'][args.sb] = True
+                        printlog("TIMEOUT, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
+                        ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
                     continue
                 try:
                     #tasklist.append(executor.submit(send_data_task,args.sb,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(args.sb%len(args.multiport))],args.rttimeout,args.failsafe))
@@ -591,6 +615,12 @@ def main(args):
                 timing_dict["tx_time"] = txtime
                 timing_dict["tot_time"] = time.time()-timage
                 ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
+                if args.corrstagger_multisend>0:
+                    corrstaggerdict['status'][args.sb] = True
+                    #corrstaggerdict['status'] = [True]*16 #just for testing
+                    #corrstaggerdict['status'][args.sb-1] = False
+                    printlog("DONE, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
+                    ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
             """
             ftime = open(rttx_file,"a")
             ftime.write(str(txtime)+"\n")
@@ -671,6 +701,7 @@ if __name__=="__main__":
     #parser.add_argument('--multiimagepol',action='store_true',help='If set with --multiimage flag, runs separate threads for each polarization, otherwise ignored')
     parser.add_argument('--multisend',action='store_true',help='If set, uses multithreading to send data to the process server')
     parser.add_argument('--stagger_multisend',type=float,help='Specifies the time in seconds between sending each subband, default 0 sends all at once',default=0)
+    parser.add_argument('--corrstagger_multisend',type=float,help='Specifies the time in seconds to query etcd for corr status',default=0)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
     parser.add_argument('-T','--testh23',action='store_true')
