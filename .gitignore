@@ -189,3 +189,6 @@ scripts/x11alertmessage.txt
 scripts/hdrtestnew.txt
 realtime/rt*log.txt
 
+#cuda benchmark files
+cudaimager/*sqlite
+cudaimager/*nsys-rep

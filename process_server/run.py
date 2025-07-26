@@ -1,4 +1,5 @@
 import numpy as np
+from threading import Lock, Timer
 import glob
 import json
 from multiprocessing import Manager
@@ -129,6 +130,7 @@ for i in range(NROWSUBIMG):
 class fullimg:
     def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow,imgdiff=False,bin_imgdiff=bin_imgdiff,TXsubimg=False,TXsubint=False,TXnints=1):
         printlog("INIT FULLIMG WITH SHAPE:"+str(shape),output_file=processfile)
+        """
         if not (slow or imgdiff):
             try:
                 self.timer = Timer(config.tsamp*shape[2]/1000, lambda: self.timeout_handler())
@@ -137,6 +139,7 @@ class fullimg:
                 printlog("ACTIVATED TIMER",output_file=processfile)
             except Exception as exc:
                 printlog("FAILED TO ACTIVATE TIMER:"+str(exc),output_file=processfile)
+        """
         self.queuetime = time.time()
         self.running = False
         self.image_tesseract = np.zeros(shape,dtype=dtype)
@@ -197,6 +200,7 @@ class fullimg:
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
+    """
     def timeout_handler(self):
         self.timerlock.acquire()
         if not self.running:
@@ -209,6 +213,7 @@ class fullimg:
             printlog("Already running, ignore timeout",output_file=processfile)
         self.timerlock.release()
         return
+    """
     def add_corr_img(self,data,corr_node,testmode=False,TXsubimg=False,TXsubint=False,TXnints=1):
         """
         if TXsubimg:
@@ -299,7 +304,7 @@ class fullimg:
         elif self.imgdiff:
             printlog("&IMGDIFF",output_file=processfile)
             return (time.time()-self.queuetime) >= 2*(config.tsamp_imgdiff*self.shape[2]/1000)
-        return (time.time()-self.queuetime) >= (config.tsamp*self.shape[2]/1000)
+        return (time.time()-self.queuetime) >= (2*config.tsamp*self.shape[2]/1000)
     def zerofill(self):
         """
         if data has timed out, fill missing data with nan and mark full
@@ -474,7 +479,7 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
 fullimg_dict = dict()
 slow_fullimg_dict =dict()
 imgdiff_fullimg_dict=dict()
-def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,dask_enabled,thash):
+def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,dask_enabled,thash,slowlock):
     """
     This function prints the result once a thread finishes processing an image
     """
@@ -536,6 +541,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     printlog("************************",output_file=processfile)
 
     #delete from array
+    slowlock.acquire()
     if slow:
         printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
         del slow_fullimg_dict[timestepisot]
@@ -548,12 +554,13 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
         printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
         del fullimg_dict[timestepisot]
         printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
+    slowlock.release()
     f = open(sslogfile,"a")
     f.write("[stop] [" + thash +"] " + str(time.time()))
     f.close()
     return
 
-def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_slow,RA_axis_slow,timestepisot_imgdiff,RA_axis_imgdiff,DEC_axis,etcd_enabled,dask_enabled,thash):
+def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_slow,RA_axis_slow,timestepisot_imgdiff,RA_axis_imgdiff,DEC_axis,etcd_enabled,dask_enabled,thash,slowlock):
     """
     This function prints the result once a thread finishes processing an image
     """
@@ -616,12 +623,15 @@ def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_sl
     printlog(fresult,output_file=processfile)
     printlog("************************",output_file=processfile)
 
+
     #delete from array
+    slowlock.acquire()
     if timestepisot_slow is not None:
         del slow_fullimg_dict[timestepisot_slow]
     if timestepisot_imgdiff is not None:
         del imgdiff_fullimg_dict[timestepisot_imgdiff]
     del fullimg_dict[timestepisot]
+    slowlock.release()
     f = open(sslogfile,"a")
     f.write("[stop] [" + thash +"] " + str(time.time()))
     f.close()
@@ -953,7 +963,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                                                                             str(kd) if imgdiffsearch_now else None,
                                                                                             RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:] if imgdiffsearch_now else None,
                                                                                             DEC_axis_idx,
-                                                                                            etcd_enabled,dask_enabled,thash))
+                                                                                            etcd_enabled,dask_enabled,thash,slowlock))
             return [stask]
 
 
@@ -971,11 +981,16 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit)
-            stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash))
+            stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
             ret_tasks.append(stask)
             printlog("DID IT SUBMIT?",output_file=processfile)
         elif forfeit and (slowsearch_now or imgdiffsearch_now):
-            del fullimg_dict[img_id_isot]
+            try:
+                slowlock.acquire()
+                del fullimg_dict[img_id_isot]
+                slowlock.release()
+            except Exception as exc:
+                printlog("NOTE FORFEIT DELETION FAILED FOR BASE "+str(img_id_isot) + "|EXCEPTION|"+str(exc),output_file=processfile)
             printlog(socksuffix+"BASE SEARCH FORFEIT "+img_id_isot,output_file=processfile)
 
         #task_list.append(stask)
@@ -995,11 +1010,16 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit)
                     
-            sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
+            sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
             #task_list.append(sstask)
             ret_tasks.append(sstask)
         elif forfeit and slowsearch_now:
-            del slow_fullimg_dict[k]
+            try:
+                slowlock.acquire()
+                del slow_fullimg_dict[k]
+                slowlock.release()
+            except Exception as exc:
+                printlog("NOTE FORFEIT DELETION FAILED FOR SLOW "+str(k) + "|EXCEPTION|"+str(exc),output_file=processfile)
             printlog(socksuffix + "SLOW SEARCH FORFEIT "+str(k),output_file=processfile)
 
         if imgdiffsearch_now:
@@ -1018,7 +1038,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit)
 
-            ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash))
+            ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
             #task_list.append(sstask)
             ret_tasks.append(ssstask)
         return ret_tasks

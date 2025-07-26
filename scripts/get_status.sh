@@ -1,7 +1,7 @@
 #!/bin/bash
 #test
 cwd=$(cat ../metadata.txt)
-#grepword="SEARCH QUEUE\\|Thread\\|deleting\\|Expecting\\|EXCEPTION\\|TIMEOUT\\|?"
+#grepword="corrstatus\|search" #"SEARCH QUEUE\\|Thread\\|deleting\\|Expecting\\|EXCEPTION\\|TIMEOUT\\|?"
 
 while :
 do

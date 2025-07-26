@@ -208,7 +208,7 @@ def main(args):
         csvfile.close()
         """
         DM = np.random.choice(default_DMtrials)
-        width = np.random.choice(default_widthtrials)
+        width = np.random.choice(default_widthtrials[:-1])
         Dec=args.dec
         SNR=args.snr_inject
 
@@ -248,12 +248,13 @@ def main(args):
 
             #sleep...sort of
             t1 = time.time()
+            acked = False
             while time.time() - t1 < args.waittime*60:
             
                 #check to see its been injected on all corr nodes
                 time.sleep(args.waittime*60/90)
                 injection_dict = ETCD.get_dict(ETCDKEY)
-                if np.all(injection_dict['ack']):
+                if np.any(injection_dict['ack']) and not acked:
                     #write to csv
                     with open(inject_file,"a") as csvfile:
                         wr = csv.writer(csvfile,delimiter=',')
@@ -262,10 +263,10 @@ def main(args):
                     if not np.all(injection_dict['injected']):
                         printlog("Injection" + injection_dict['ISOT'] + " missing channels:" + str(np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))]),output_file=inject_log_file)
                     #delete injection
-                    printlog("Removing injection " + str(ID),output_file=inject_log_file)
+                    #printlog("Removing injection " + str(ID),output_file=inject_log_file)
                     #os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
-                    break
-
+                    #break
+                    acked=True
         
     return
 

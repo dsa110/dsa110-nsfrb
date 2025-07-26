@@ -134,7 +134,8 @@ def main(args):
                 inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
 
             for j in range(args.num_chans):
-                np.save(inject_dir + "realtime_staging/injection_DM"+str(DM)+"_W"+str(width)+"_DEC"+str(args.dec)+"_SB"+str(j)+".npy",inject_img[:,:,:,j])
+                os.system("mkdir "+inject_dir + "realtime_staging/gridsize_"+str(args.gridsize))
+                np.save(inject_dir + "realtime_staging/gridsize_"+str(args.gridsize)+"/injection_DM"+str(DM)+"_W"+str(width)+"_DEC"+str(args.dec)+"_SB"+str(j)+".npy",inject_img[:,:,:,j])
             print("")
 
         
