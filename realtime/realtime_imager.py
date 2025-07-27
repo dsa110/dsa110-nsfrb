@@ -134,10 +134,10 @@ def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
 
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
-    corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
-    if corrstaggerdict is None:
-        corrstaggerdict = dict()
-        corrstaggerdict['status'] = [True]*16
+    #corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+    #if corrstaggerdict is None:
+    corrstaggerdict = dict()
+    corrstaggerdict['status'] = [True]*16
     #corrstaggerdict['status'][args.sb] = False
     ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
     

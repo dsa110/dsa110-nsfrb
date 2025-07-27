@@ -1058,6 +1058,8 @@ def main(args):
     if args.etcd:
         printlog("Etcd enabled, will push candidates to " + ETCDKEY,output_file=processfile)
 
+    
+
     #update default values and lookup tables
     sl.SNRthresh = args.SNRthresh
     if args.gridsize != config.gridsize or args.nchans != config.nchans or args.nsamps != config.nsamps or args.imgdiffgulps != config.ngulps_per_file:
