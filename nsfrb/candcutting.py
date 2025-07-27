@@ -428,7 +428,7 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
 
 
 #checks injection file to see if a candidate is an injection
-def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps):
+def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps,realtime=False):
     #check if the candidate is an injection
     injection = False
     postinjection = False
@@ -437,11 +437,19 @@ def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps):
         i = 0
         for row in re:
             if i != 0:
-                if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
-                    injection = True
-                    if row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
-                        postinjection = True
-                    break
+                if realtime:
+                    if row[0] == isot or ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= (tsamp*nsamps/1000)):
+                        injection = True
+                        break
+                    elif (tsamp<134*5) and ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= 2*(tsamp*nsamps/1000)):
+                        postinjection = False
+                        break
+                else:
+                    if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
+                        injection = True
+                        if row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
+                            postinjection = True
+                        break
             i += 1
     csvfile.close()
     return injection,postinjection

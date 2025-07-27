@@ -1309,6 +1309,7 @@ def main(args):
         if args.remote:
             #update injections
             os.system("scp h24.pro.pvt:/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-injections/injections.csv " + inject_dir)
+            time.sleep(5)
         if not args.testtrigger:
             try:
                 #if remote, copy from h24
@@ -1337,7 +1338,10 @@ def main(args):
             image = uniform.rvs(size=((301,301,25,16)))
             TOAs = np.zeros((301,301,25,16),dtype=int)
         cand_mjd = Time(cand_isot,format='isot').mjd
-        injection_flag,postinjection_flag = cc.is_injection(cand_isot)
+        if args.realtime_inject:
+            injection_flag,postinjection_flag = cc.is_injection(cand_isot,tsamp=tsamp_use,nsamps=image.shape[2],realtime=args.realtime_inject)
+        else:
+            injection_flag,postinjection_flag = cc.is_injection(cand_isot)
         injection_flag = injection_flag and (not args.completeness)
         postinjection_flag = postinjection_flag and (not args.completeness)
         RA_axis,DEC_axis,tmp = uv_to_pix(cand_mjd,image.shape[0],uv_diag=uv_diag,DEC=dec_obs,pixperFWHM=pixperFWHM)
@@ -1427,6 +1431,7 @@ if __name__=="__main__":
     parser.add_argument('--completeness',action='store_true',help='Run a completeness assessment by sending images to the process server and testing recovery')
     parser.add_argument('--searchradius',type=float,help='Max search radius in degrees within which to include candidates,default=inf',default=np.inf)
     parser.add_argument('--remote',action='store_true',help='Run T4 manager on remote server; files are scp to/from h24')
+    parser.add_argument('--realtime_inject',action='store_true',help='Realtime injection criteria')
     args = parser.parse_args()
     
     main(args)
