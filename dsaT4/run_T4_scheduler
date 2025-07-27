@@ -1,0 +1,3 @@
+#!/bin/bash
+conda activate casa310nsfrb
+dask scheduler

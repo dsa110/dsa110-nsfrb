@@ -1,0 +1,3 @@
+#!/bin/bash
+conda activate casa310nsfrb
+dask worker tcp://10.42.0.249:8786 --nthreads 32
