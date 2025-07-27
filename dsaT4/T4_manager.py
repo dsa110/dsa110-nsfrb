@@ -499,7 +499,10 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
         finalcands = finalcands_new
         if len(finalcands) == 0:
             printlog("No remaining candidates, done",output_file=cutterfile)
-            os.system("rm " + raw_cand_dir + "*" + cand_isot + "*")
+            if args.remote:
+                os.system("ssh h24.pro.pvt \"rm " + raw_cand_dir + "*" + cand_isot + "*\"")
+            else:
+                os.system("rm " + raw_cand_dir + "*" + cand_isot + "*")
             return
         probabilities = probabilities[predictions==0]
         predictions = predictions[predictions==0]
@@ -593,7 +596,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     csvfile.close()
     if args.remote:
         printlog("copying cand file to h24...",output_file=cutterfile)
-        os.system("scp "+remote_cand_dir + "/final_candidates_" + cand_isot + ".csv "+final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/")
+        os.system("scp "+remote_cand_dir + "/final_candidates_" + cand_isot + ".csv h24.pro.pvt:"+final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/")
         printlog("done")
 
     with open(table_dir+"nsfrb_lastname.txt","w") as lnamefile:
@@ -652,7 +655,7 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
                 tshift =np.array(np.abs((4.15)*DM*((1/np.nanmin(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
                 sourceimg_dm = np.zeros_like(sourceimg)
                 for j in range(len(freq_axis)):
-                    sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(0,tshift[j])),mode='constant')[:,:,-sourceimg.shape[2]:]
+                    sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(tshift[j],0)),mode='constant')[:,:,:sourceimg.shape[2]]
                 """
 
 
