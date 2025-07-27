@@ -809,7 +809,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,
-                                    attachmode,completeness,slowlock,searchlock,forfeit,rtastrocal,testsinglenode,TXsubimg,TXsubint,TXnints):
+                                    attachmode,completeness,slowlock,searchlock,forfeit,rtastrocal,testsinglenode,TXsubimg,TXsubint,TXnints,dtype):
     """
     This task sets up the given socket to accept connections, reads
     data when a client connects, and submits a search task
@@ -823,7 +823,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     slowlock.acquire()
     if corr_node != -1:
         if img_id_isot not in fullimg_dict.keys():
-            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),TXsubimg=TXsubimg,TXsubint=TXsubint,TXnints=TXnints)
+            fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),dtype=dtype,TXsubimg=TXsubimg,TXsubint=TXsubint,TXnints=TXnints)
 
         printlog(socksuffix+"IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
         #add image and update flags
@@ -909,7 +909,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                     break
             if not slowdone:
                 printlog(socksuffix+"FIRST SLOW MJD:" + str(img_id_mjd),output_file=processfile)
-                slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),slow=True)
+                slow_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),dtype=dtype,slow=True)
                 slow_fullimg_dict[img_id_isot].slow_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
                 slow_fullimg_dict[img_id_isot].thash = fullimg_dict[img_id_isot].thash
                 k = img_id_isot
@@ -932,7 +932,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                     break
             if not imgdiffdone:
                 printlog(socksuffix+"FIRST IMGDIFF MJD:" + str(img_id_mjd),output_file=processfile)
-                imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),slow=False,imgdiff=True)
+                imgdiff_fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape[:2],[args.imgdiffgulps,1]])),dtype=dtype,slow=False,imgdiff=True)
                 imgdiff_fullimg_dict[img_id_isot].imgdiff_append_img(fullimg_dict[img_id_isot].image_tesseract,0)
                 imgdiff_fullimg_dict[img_id_isot].thash = fullimg_dict[img_id_isot].thash
                 kd = img_id_isot
@@ -1359,6 +1359,16 @@ def main(args):
     printlog("SAMPS:"+str((args.nsamps,args.TXnints,args.nsamps//args.TXnints)),output_file=processfile)
 
     #total expected number of bytes for each sub-band image
+    if args.datasize==4:
+        dtype = np.float32
+    elif args.datasize==2:
+        dtype = np.float16
+    elif args.datasize==8:
+        dtype = np.float64
+    elif args.datasize==16:
+        dtype = np.float128
+    
+    printlog(dtype,output_file=processfile)
     portmapping = dict() #dictionary defining which ports correspond to which sub-int/sub-image
     if TXsubimg:
         if args.datasize%2 != 0:
@@ -1564,7 +1574,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype)#TXsubimg,TXsubint,args.TXnints)
                     else:
                         #multiport_task_list.append(
                         executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
@@ -1573,7 +1583,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype)#TXsubimg,TXsubint,args.TXnints)
                     #multiport_num_list.append(ii)
                 else:
                     #packet_dict["dropped"] += 1
@@ -1650,7 +1660,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype=dtype)#TXsubimg,TXsubint,args.TXnints)
                 else:
                     executor.submit(multiport_task,-1,str(k),fullimg_dict[k].img_id_mjd,fullimg_dict[k].img_uv_diag,fullimg_dict[k].img_dec,fullimg_dict[k].shape[:-1],None,
                                     ii,args.testh23,
@@ -1658,7 +1668,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype=dtype)#TXsubimg,TXsubint,args.TXnints)
                     #multiport_num_list.append(ii)    
         slowlock_.release()
         """
