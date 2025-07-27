@@ -20,7 +20,7 @@ setup(name='dsa110-nsfrb',
 H24_INSTALL=0 #set INSTALLMODE=H24_INSTALL for full server installation on h24
 CORR_INSTALL=1 #set INSTALLMODE=CORR_INSTALL if installing realtime imager on the corr nodes
 T4REMOTE_INSTALL=2 #set INSTALLMODE=T4REMOTE_INSTALL if installing T4 candidate post-processor on a remote server (e.g. h20)
-INSTALLMODE = H24_INSTALL
+INSTALLMODE = T4REMOTE_INSTALL
 
 
 #get local nsfrb directory
@@ -61,7 +61,10 @@ elif INSTALLMODE == T4REMOTE_INSTALL:
             "candcuttertask_log.txt",
             "journalctl.txt",
             "candcutter_error_log.txt",
-            "error_log.txt"]
+            "error_log.txt",
+            "run_log.txt",
+            "process_log.txt",
+            "search_log.txt"]
     for i in range(len(logfiles)):
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
