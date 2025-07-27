@@ -33,6 +33,7 @@ os.system("sed -i \"s|NSFRBDIR|$PWD|g\" $PWD/realtime/rt_imager.service")
 if INSTALLMODE == CORR_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-injections")
     os.system("mkdir ../dsa110-nsfrb-injections/realtime_staging_sb")
+    """
     os.system("mkdir ../dsa110-nsfrb-logfiles")
     logfiles = ["rttimes_log.txt",
                 "rttx_log.txt"]
@@ -40,6 +41,7 @@ if INSTALLMODE == CORR_INSTALL:
         l = logfiles[i]
         os.system("touch ../dsa110-nsfrb-logfiles/" + l)
         os.system("> ../dsa110-nsfrb-logfiles/" + l)
+    """
 elif INSTALLMODE == T4REMOTE_INSTALL:
     os.system("mkdir ../dsa110-nsfrb-injections")
     with open("../dsa110-nsfrb-injections/injections.csv","w") as csvfile:
