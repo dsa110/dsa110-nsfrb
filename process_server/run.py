@@ -542,18 +542,22 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
 
     #delete from array
     slowlock.acquire()
-    if slow:
-        printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
-        del slow_fullimg_dict[timestepisot]
-        printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
-    elif imgdiff:
-        printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
-        del imgdiff_fullimg_dict[timestepisot]
-        printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
-    else:
-        printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
-        del fullimg_dict[timestepisot]
-        printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
+    try:
+        if slow:
+            printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
+            del slow_fullimg_dict[timestepisot]
+            printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
+        elif imgdiff:
+            printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
+            del imgdiff_fullimg_dict[timestepisot]
+            printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
+        else:
+            printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
+            del fullimg_dict[timestepisot]
+            printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
+    except Exception as exc:
+        printlog("FUTURE FAILED TO DELETE "+str(timestepisot),output_file=processfile)
+        printlog(exc,output_file=processfile)
     slowlock.release()
     f = open(sslogfile,"a")
     f.write("[stop] [" + thash +"] " + str(time.time()))
@@ -626,11 +630,15 @@ def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_sl
 
     #delete from array
     slowlock.acquire()
-    if timestepisot_slow is not None:
-        del slow_fullimg_dict[timestepisot_slow]
-    if timestepisot_imgdiff is not None:
-        del imgdiff_fullimg_dict[timestepisot_imgdiff]
-    del fullimg_dict[timestepisot]
+    try:
+        if timestepisot_slow is not None:
+            del slow_fullimg_dict[timestepisot_slow]
+        if timestepisot_imgdiff is not None:
+            del imgdiff_fullimg_dict[timestepisot_imgdiff]
+        del fullimg_dict[timestepisot]
+    except Exception as exc:
+        printlog("FUTURE FAILED TO DELETE "+str(timestepisot),output_file=processfile)
+        printlog(exc,output_file=processfile)
     slowlock.release()
     f = open(sslogfile,"a")
     f.write("[stop] [" + thash +"] " + str(time.time()))
@@ -987,7 +995,8 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
         elif forfeit and (slowsearch_now or imgdiffsearch_now):
             try:
                 slowlock.acquire()
-                del fullimg_dict[img_id_isot]
+                if not fullimg_dict[img_id_isot].running:
+                    del fullimg_dict[img_id_isot]
                 slowlock.release()
             except Exception as exc:
                 printlog("NOTE FORFEIT DELETION FAILED FOR BASE "+str(img_id_isot) + "|EXCEPTION|"+str(exc),output_file=processfile)
@@ -1016,7 +1025,8 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
         elif forfeit and slowsearch_now:
             try:
                 slowlock.acquire()
-                del slow_fullimg_dict[k]
+                if not slow_fullimg_dict[k].running:
+                    del slow_fullimg_dict[k]
                 slowlock.release()
             except Exception as exc:
                 printlog("NOTE FORFEIT DELETION FAILED FOR SLOW "+str(k) + "|EXCEPTION|"+str(exc),output_file=processfile)

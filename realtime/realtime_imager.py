@@ -131,6 +131,16 @@ def ellipse_to_covariance(semiMajorAxis,semiMinorAxis,phi):
     cmatrix = np.array([[varX1, cov12], [cov12, varX2]])
     return cmatrix
 
+from multiprocessing import Queue
+QQUEUE = Queue()
+def etcd_to_stagger(etcd_dict,sb,queue=QQUEUE):
+    """
+    This is a callback function that waits for previous corr node to send data
+    """
+    if ((sb>0 and (etcd_dict['status'][sb-1] and not etcd_dict['status'][sb])) or 
+        (sb==0 and np.all(np.array(etcd_dict['status'])))):
+        QQUEUE.put(etcd_dict['status'])
+    return 
 
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
@@ -140,6 +150,8 @@ def main(args):
     corrstaggerdict['status'] = [True]*16
     #corrstaggerdict['status'][args.sb] = False
     ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
+    if args.corrstagger_multisend>0:
+        ETCD.add_watch(ETCDKEY_CORRSTAGGER, lambda etcd_dict : etcd_to_stagger(etcd_dict,args.sb))
     
     os.system("> " + rtbench_file)
     os.system("> " + rtmemory_file)
@@ -550,10 +562,15 @@ def main(args):
                     corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
                     printlog("INIT CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
                     printlog(">>>>>"+str(corrstaggerdict['status'][args.sb-1]),output_file=rtlog_file)
-                    while (args.sb>0 and (not corrstaggerdict['status'][args.sb-1] or corrstaggerdict['status'][args.sb])) or (args.sb==0 and not np.all(np.array(corrstaggerdict['status']))):# and ((args.rttimeout - (time.time()-timage)) >= 0.1):
-                        corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
-                        time.sleep(args.corrstagger_multisend)
-                        printlog("WAITING..."+str(corrstaggerdict['status']),output_file=rtlog_file)
+                    printlog("WAITING FOR QUEUE...",output_file=rtlog_file)
+                    if args.sb>0 or (args.sb==0 and not np.all(np.array(corrstaggerdict['status']))):
+                        corrstaggerdict['status'] = QQUEUE.get()
+                    printlog("PROCEEDING"+str(corrstaggerdict['status']),output_file=rtlog_file)
+                    
+                    #while (args.sb>0 and (not corrstaggerdict['status'][args.sb-1] or corrstaggerdict['status'][args.sb])) or (args.sb==0 and not np.all(np.array(corrstaggerdict['status']))):# and ((args.rttimeout - (time.time()-timage)) >= 0.1):
+                    #    corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+                    #    time.sleep(args.corrstagger_multisend)
+                    #    printlog("WAITING..."+str(corrstaggerdict['status']),output_file=rtlog_file)
                     if args.sb==0: 
                         corrstaggerdict['status'] = [False]*16
                         for i in args.flagcorrs:
