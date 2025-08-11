@@ -227,12 +227,13 @@ def main(args):
     #set the dec, sb, and mjd
     Dec = args.dec
     sb = args.sb
+    """
     f = open(args.mjdfile,"r")
     mjd_init = float(f.read())
     f.close()
-
+    """
     rtlog_file = args.rtlog
-    if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
+    #if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
     startuperr = False
 
 
@@ -269,6 +270,7 @@ def main(args):
     if args.verbose: 
         printlog("Will send data to IP " + str(args.ipaddress),output_file=rtlog_file)
 
+    mjd_init = -1
     while True:
 
 
@@ -287,6 +289,13 @@ def main(args):
             if tmpfile != sys.stdout: tmpfile.close()
         else:
             dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
+        if mjd_init == -1:
+
+            f = open(args.mjdfile,"r")
+            mjd_init = float(f.read())
+            f.close()
+            if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
+            
         #except Exception as exc:
         #    print("Trying to connect to ring buffer...")
         #    print(exc)
