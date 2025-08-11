@@ -493,6 +493,7 @@ def main(args):
             wait(task_list)
             for t in task_list:
                 m=t.result()
+                m[0][np.isnan(m[0])]=0
                 dirty_img[:,:,m[1]*5:(m[1]+1)*5] += m[0] #t.result()
                                             
         if args.debug: printlog("--->IMAGE TIME:" + str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
