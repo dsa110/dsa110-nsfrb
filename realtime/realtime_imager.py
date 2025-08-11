@@ -289,6 +289,8 @@ def main(args):
             if tmpfile != sys.stdout: tmpfile.close()
         else:
             dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
+        if args.verbose:
+            printlog("DATA [PRE-FLAGGING]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
         if mjd_init == -1:
 
             f = open(args.mjdfile,"r")
@@ -344,7 +346,9 @@ def main(args):
             dat[:] = np.nan
         fchans = np.array(args.flagchans,dtype=int)[np.logical_and(np.array(args.flagchans)>=args.sb*args.nchans_per_node,np.array(args.flagchans)<args.sb*args.nchans_per_node)]-(args.sb*args.nchans_per_node)
         dat[:,:,fchans,:]=np.nan
-
+        if args.verbose:
+            printlog("DATA [POST-FLAGGING]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
+        
         #np.save(img_dir + "2025-02-16T20:36:48.010_rtvis.npy",dat)
 
         #if verbose: printlog("Collected 25 samples, imaging...",output_file=logfile)
@@ -412,7 +416,9 @@ def main(args):
                     inject_flat = injection_params['inject_flat']
                     if args.verbose: printlog("Done injecting",output_file=rtlog_file)
         dat[np.isnan(dat)]= 0
-
+        if args.verbose:
+            printlog("DATA [POST-INJECTION]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
+        
         if args.debug: printlog("--->INJECT TIME: "+str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
         if args.debug: tbuffer = time.time()
 
@@ -495,7 +501,11 @@ def main(args):
                 m=t.result()
                 m[0][np.isnan(m[0])]=0
                 dirty_img[:,:,m[1]*5:(m[1]+1)*5] += m[0] #t.result()
-                                            
+                                          
+        if args.verbose:
+            printlog("DATA [POST-IMAGING]>"+str(dirty_img)+"; "+str(np.sum(np.isnan(dirty_img))),output_file=rtlog_file)
+        
+
         if args.debug: printlog("--->IMAGE TIME:" + str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
         if args.debug: tbuffer = time.time()
         #if verbose: printlog(str("Imaging complete:" + str(time.time()-timage) + "s"),output_file=logfile)
