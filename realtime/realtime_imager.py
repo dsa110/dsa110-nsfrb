@@ -202,7 +202,7 @@ def main(args):
     i_indices_all,j_indices_all,i_conj_indices_all,j_conj_indices_all = uniform_grid(U_wavs, V_wavs, args.gridsize, pixel_resolution, args.pixperFWHM)
     bweights_all = np.zeros(U_wavs.shape)
     if args.briggs:
-        for jj in range(args.nchans_per_node):
+        for jj in range(bweights_all.shape[1]):
             bweights_all[:,jj] = briggs_weighting(U_wavs[:,jj], V_wavs[:,jj], args.gridsize, robust=args.robust,pixel_resolution=pixel_resolution)
     if args.primarybeam:
         PB_all = np.zeros((args.nchans_per_node,args.gridsize,args.gridsize))
