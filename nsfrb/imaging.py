@@ -344,6 +344,47 @@ def inverse_revised_uniform_image(dirty_image,u,v,pixperFWHM=pixperFWHM):
     return visibility_grid
 
 
+def realtime_robust_image(chunk_V, u, v, image_size,  robust=0.0, inject_img=None, pixel_resolution=None ,pixperFWHM=pixperFWHM, briggs_weights=None,i_indices=None,j_indices=None,i_conj_indices=None,j_conj_indices=None,tidx=0):
+    """
+    This version only takes pre-computed pixel resolution and grid indices to speed-up processing
+    Process visibility data and create a dirty image using FFT and Briggs weighting.
+
+    Parameters:
+    chunk_V: Chunk of visibility data.
+    u, v: u,v coordinates.
+    image_size: Size of the output image.
+    robust: Robust parameter for Briggs weighting.
+
+    Returns:
+    The resulting 'dirty' image.
+    """
+    uv_resolution = 1 / (image_size * pixel_resolution)
+    uv_max = uv_resolution * image_size / 2
+    grid_res = 2 * uv_max / image_size
+
+    #briggs weighting
+    v_avg = chunk_V * briggs_weights * image_size #normalize since ifft has a 1/n term
+
+    visibility_grid = np.zeros((v_avg.shape[0],image_size, image_size), dtype=complex)
+    for i in range(v_avg.shape[0]):
+        visibility_grid_i = np.zeros((image_size, image_size), dtype=complex)
+        nancondition = ~np.isnan(v_avg[i,:])
+        np.add.at(visibility_grid_i, (np.concatenate([i_indices[nancondition],i_conj_indices[nancondition]]),
+                                    np.concatenate([j_indices[nancondition],j_conj_indices[nancondition]])),
+                                    np.concatenate([v_avg[i,nancondition],np.conj(v_avg[i,nancondition])]))
+        visibility_grid[i,:,:] = visibility_grid_i
+
+    if inject_img is not None:
+        #assert(v_avg.shape[0] == inject_img.shape[2])
+        for i in range(v_avg.shape[0]):
+            visibility_grid[i,:,:] += inverse_revised_uniform_image(inject_img[:,:,i],u,v,pixperFWHM=pixperFWHM)
+
+    #updated sign convention
+    dirty_image = ifftshift(ifft2(ifftshift(visibility_grid,axes=(1,2)),axes=(1,2)),axes=(1,2))
+    return np.real(dirty_image).transpose((1,2,0)),tidx
+
+
+
 def DSAelev_to_ASTROPYalt(elev,az=az_offset):
     """
     DSA110 uses elevation from 0 to 180 with azimuth fixed at 1.23 deg

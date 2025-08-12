@@ -19,7 +19,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,pixperFWHM,chanbw,freq_axis_fullres,lambdaref,c,NSFRB_PSRDADA_KEY,NSFRB_CANDDADA_KEY,NSFRB_SRCHDADA_KEY,NSFRB_TOADADA_KEY,rttx_file,rtbench_file,nsamps,T,bad_antennas,flagged_antennas,Lon,Lat,Height,maxrawsamps,flagged_corrs,inject_dir,local_inject_dir,rtmemory_file
 from nsfrb.config import NROWSUBIMG,NSUBIMG,SUBIMGPIX,SUBIMGORDER
-from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid
+from nsfrb.imaging import inverse_revised_uniform_image,uv_to_pix, revised_robust_image,get_ra,briggs_weighting,uniform_grid,realtime_robust_image
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
 from nsfrb.TXclient import send_data,ipaddress
 import time
@@ -298,37 +298,6 @@ def main(args):
             f.close()
             if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
             
-        #except Exception as exc:
-        #    print("Trying to connect to ring buffer...")
-        #    print(exc)
-        #    continue
-        """
-        while (dat is None) or dat.shape[0]<args.num_time_samples:
-            #printlog("Waiting for data in psrdada buffer")
-            #if args.testh23:
-            #    dat_i,mjd,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_TESTKEYS[args.sb],nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples)
-            #else:
-            #if gulp_counter == 0:
-            #    dat_i,mjd_init,sb,Dec = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=True)
-            #else:
-            try:
-                dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False)
-           
-           
-                #printlog(str((mjd,sb,Dec)),output_file=logfile)
-                assert(sb==args.sb)
-                print(Dec,pt_dec*180/np.pi)
-                assert(np.abs((Dec*np.pi/180) - pt_dec)<1e-2)
-                #if dat is None:
-                #    dat = dat_i
-                #else:
-                #    dat = np.concatenate([dat,dat_i])
-                #printlog(dat.shape,output_file=logfile)
-            except Exception as exc:
-                print("Trying to connect to ring buffer...")
-                print(exc)
-                time.sleep(1)
-        """
         if args.debug:
             printlog("--->READ TIME: "+str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
         timage = time.time()
@@ -360,6 +329,7 @@ def main(args):
         #creating injection
         inject_flat = False
         inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
+        inject_now=False
         if args.inject and (inject_count>=args.inject_interval):
             inject_count = 0
             #if verbose: printlog("Injecting pulse",output_file=logfile)
@@ -393,13 +363,6 @@ def main(args):
                 if time_start_isot == injection_params['ISOT']:
                     #if verbose: printlog("Injection" + injection_params['ID'] + "found",output_file=logfile)
                     fname = "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy"
-                    #copy
-                    """
-                    if args.testh23:
-                        os.system("cp " + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
-                    else:
-                        os.system("scp h24.pro.pvt:" + inject_dir + "realtime_staging/" + "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy " + local_inject_dir)
-                    """
                     fname = injection_params['fname'] + str(args.sb) + ".npy"
                     
                     if args.verbose: printlog(fname,output_file=rtlog_file)
@@ -407,6 +370,7 @@ def main(args):
                     try:
                         inject_img = np.load(local_inject_dir + fname)
                         assert(inject_img.shape==(args.gridsize,args.gridsize,dat.shape[0]))
+                        inject_now=True
                     except Exception as exc:
                         inject_flat = False
                         inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
@@ -437,8 +401,29 @@ def main(args):
         for j in range(args.nchans_per_node):
             jj = (args.nchans_per_node*args.sb)+j
             #if verbose: printlog("submitting task:"+str(jj),output_file=logfile)
-            if args.multiimage:
-                for tidx in range(5):
+            #if args.multiimage:
+            for tidx in range(5):
+
+
+                task_list.append(executor.submit(realtime_robust_image,
+                                                    np.nanmean(dat[tidx*5:(tidx+1)*5,:,j,:],2),
+                                                    U_wavs[:,jj],
+                                                    V_wavs[:,jj],
+                                                    args.gridsize,
+                                                    args.robust,
+                                                    None if (not inject_now) else inject_img[:,:,tidx*5:(tidx+1)*5]/dat.shape[-1]/args.nchans_per_node,
+                                                    pixel_resolution,
+                                                    args.pixperFWHM,
+                                                    None if not args.briggs else bweights_all[:,jj],
+                                                    i_indices_all[:,jj],
+                                                    j_indices_all[:,jj],
+                                                    i_conj_indices_all[:,jj],
+                                                    j_conj_indices_all[:,jj],
+                                                    tidx))
+            
+
+
+            """
                     task_list.append(executor.submit(realtime_image_task,dat[tidx*5:(tidx+1)*5,:,j,:],
                     #task_list.append(realtime_image_task(dat[tidx*5:(tidx+1)*5,:,j,:],
                                                     tidx,
@@ -495,12 +480,13 @@ def main(args):
                                                     args.pixperFWHM,
                                                     args.wstack_parallel,
                                                     None if not args.primarybeam else PB_all[j,:,:])[0]
+
         if args.multiimage:
-            wait(task_list)
-            for t in task_list:
-                m=t.result()
-                m[0][np.isnan(m[0])]=0
-                dirty_img[:,:,m[1]*5:(m[1]+1)*5] += m[0] #t.result()
+        """    
+        wait(task_list)
+        for t in task_list:
+            m=t.result()
+            dirty_img[:,:,m[1]*5:(m[1]+1)*5] += m[0] #t.result()
                                           
         if args.verbose:
             printlog("DATA [POST-IMAGING]>"+str(dirty_img)+"; "+str(np.sum(np.isnan(dirty_img))),output_file=rtlog_file)
@@ -557,19 +543,6 @@ def main(args):
                 for sbi in range(len(corrs)):
                     if args.verbose: printlog("[TIME LEFT]"+str(args.rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
                     tasklist.append(executor.submit(send_data_task,sbi,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(sbi%len(args.multiport))],10,args.failsafe,timage,args.ipaddress,args.protocol))
-                    #time.sleep(T/1000)#/32)
-                    """
-                    ttx = time.time()
-                    msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10,port=args.multiport[int(sbi%len(args.multiport))])
-            
-                    #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=5,keepalive_time=10)
-                    #if args.verbose: printlog(msg,output_file=logfile)
-                    txtime = time.time()-ttx
-                    timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
-                    if timing_dict is None: timing_dict = dict()
-                    timing_dict["tx_time"] = txtime
-                    ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
-                    """
                 wait(tasklist)
                 txtime = tasklist[-1].result()
             else:
@@ -587,10 +560,6 @@ def main(args):
                         corrstaggerdict['status'] = QQUEUE.get()
                     printlog("PROCEEDING"+str(corrstaggerdict['status']),output_file=rtlog_file)
                     
-                    #while (args.sb>0 and (not corrstaggerdict['status'][args.sb-1] or corrstaggerdict['status'][args.sb])) or (args.sb==0 and not np.all(np.array(corrstaggerdict['status']))):# and ((args.rttimeout - (time.time()-timage)) >= 0.1):
-                    #    corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
-                    #    time.sleep(args.corrstagger_multisend)
-                    #    printlog("WAITING..."+str(corrstaggerdict['status']),output_file=rtlog_file)
                     if args.sb==0: 
                         corrstaggerdict['status'] = [False]*16
                         for i in args.flagcorrs:
@@ -611,7 +580,6 @@ def main(args):
                         ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
                     continue
                 try:
-                    #tasklist.append(executor.submit(send_data_task,args.sb,time_start_isot, uv_diag, Dec, dirty_img,args.verbose,args.multiport[int(args.sb%len(args.multiport))],args.rttimeout,args.failsafe))
                     if args.TXmode=='subimg':
                         msg_or_udpoffset=0
                         for sidx in range(len(SUBIMGORDER)):
@@ -624,7 +592,6 @@ def main(args):
                         stasks=[]
                         for sidx in range(args.TXnints):
                             print(">>>",sidx,(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))])
-                            #stasks.append(executor.submit(send_data,time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0))
                             if sidx<args.TXnints-1:
                                 subintsize = int(dirty_img.shape[2]//args.TXnints)
                                 minidx = subintsize*sidx
@@ -635,13 +602,6 @@ def main(args):
                                 minidx = maxidx - subintsize
                             print(">>>",sidx,(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],(minidx,maxidx))
                             msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,minidx:maxidx],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
-                            #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,minidx:maxidx],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
-                            
-                            #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*((dirty_img.shape[2]//args.TXnints)+int(args.udproundup)):((sidx+1)*((dirty_img.shape[2]//args.TXnints)+int(args.udproundup)))],None,args.sb,'',128,args.verbose,args.retries,(args.rttimeout - (time.time()-timage)),(-16*(sidx%2))+args.multiport[int(args.sb%len(args.multiport))],args.ipaddress,args.protocol,args.udpchunksize,0)
-
-                            #msg=send_data(time_start_isot, uv_diag, Dec, dirty_img[:,:,sidx*(dirty_img.shape[2]//args.TXnints):(sidx+1)*(dirty_img.shape[2]//args.TXnints)],verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=(-16*sidx)+args.multiport[int(args.sb%len(args.multiport))])
-                            #time.sleep(stime)
-                        #wait(stasks)
 
                     else:
                         msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=args.verbose,retries=args.retries,keepalive_time=(args.rttimeout - (time.time()-timage)),port=args.multiport[int(args.sb%len(args.multiport))],ipaddress=args.ipaddress,udpchunksize=args.udpchunksize,protocol=args.protocol)
@@ -740,7 +700,7 @@ if __name__=="__main__":
     parser.add_argument('--flagbase',type=int,nargs='+',default=[],help='List of baselines [0,4655] to flag')
     parser.add_argument('--nbase',type=int,help='Expected number of baselines',default=4656)
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of processes used for multithreading; only used if --multiimage is set; default=16',default=16)
-    parser.add_argument('--multiimage',action='store_true',help='If set, uses multithreading for imaging')
+    #parser.add_argument('--multiimage',action='store_true',help='If set, uses multithreading for imaging')
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     #parser.add_argument('--multiimagepol',action='store_true',help='If set with --multiimage flag, runs separate threads for each polarization, otherwise ignored')
     parser.add_argument('--multisend',action='store_true',help='If set, uses multithreading to send data to the process server')
