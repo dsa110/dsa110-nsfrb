@@ -419,11 +419,11 @@ def main(args):
         for j in range(args.nchans_per_node):
             jj = (args.nchans_per_node*args.sb)+j
             #if verbose: printlog("submitting task:"+str(jj),output_file=logfile)
-            #if args.multiimage:
-            for tidx in range(5):
+            if args.multiimage:
+                for tidx in range(5):
+    
 
-
-                task_list.append(executor.submit(realtime_robust_image,
+                    task_list.append(executor.submit(realtime_robust_image,
                                                     np.nanmean(dat[tidx*5:(tidx+1)*5,:,j,:],2),
                                                     U_wavs[:,jj],
                                                     V_wavs[:,jj],
@@ -439,8 +439,21 @@ def main(args):
                                                     j_conj_indices_all[:,jj],
                                                     tidx))
             
-
-
+            else:
+                dirty_img += realtime_robust_image(np.nanmean(dat[:,:,j,:],2),
+                                                    U_wavs[:,jj],
+                                                    V_wavs[:,jj],
+                                                    args.gridsize,
+                                                    args.robust,
+                                                    None if (not inject_now) else inject_img/dat.shape[-1]/args.nchans_per_node,
+                                                    pixel_resolution,
+                                                    args.pixperFWHM,
+                                                    None if not args.briggs else bweights_all[:,jj],
+                                                    i_indices_all[:,jj],
+                                                    j_indices_all[:,jj],
+                                                    i_conj_indices_all[:,jj],
+                                                    j_conj_indices_all[:,jj],
+                                                    0)[0]
             """
                     task_list.append(executor.submit(realtime_image_task,dat[tidx*5:(tidx+1)*5,:,j,:],
                     #task_list.append(realtime_image_task(dat[tidx*5:(tidx+1)*5,:,j,:],
@@ -498,13 +511,13 @@ def main(args):
                                                     args.pixperFWHM,
                                                     args.wstack_parallel,
                                                     None if not args.primarybeam else PB_all[j,:,:])[0]
-
+        """
         if args.multiimage:
-        """    
-        wait(task_list)
-        for t in task_list:
-            m=t.result()
-            dirty_img[:,:,m[1]*5:(m[1]+1)*5] += m[0] #t.result()
+            
+            wait(task_list)
+            for t in task_list:
+                m=t.result()
+                dirty_img[:,:,m[1]*5:(m[1]+1)*5] += m[0] #t.result()
                                           
         if args.verbose:
             printlog("DATA [POST-IMAGING]>"+str(dirty_img)+"; "+str(np.sum(np.isnan(dirty_img))),output_file=rtlog_file)
@@ -721,7 +734,7 @@ if __name__=="__main__":
     parser.add_argument('--flagbase',type=int,nargs='+',default=[],help='List of baselines [0,4655] to flag')
     parser.add_argument('--nbase',type=int,help='Expected number of baselines',default=4656)
     parser.add_argument('--maxProcesses',type=int,help='Maximum number of processes used for multithreading; only used if --multiimage is set; default=16',default=16)
-    #parser.add_argument('--multiimage',action='store_true',help='If set, uses multithreading for imaging')
+    parser.add_argument('--multiimage',action='store_true',help='If set, uses multithreading for imaging')
     parser.add_argument('--pixperFWHM',type=float,help='Pixels per FWHM, default 3',default=pixperFWHM)
     #parser.add_argument('--multiimagepol',action='store_true',help='If set with --multiimage flag, runs separate threads for each polarization, otherwise ignored')
     parser.add_argument('--multisend',action='store_true',help='If set, uses multithreading to send data to the process server')
