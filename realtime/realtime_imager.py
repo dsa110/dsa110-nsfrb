@@ -575,7 +575,10 @@ def main(args):
                     printlog(">>>>>"+str(corrstaggerdict['status'][args.sb-1]),output_file=rtlog_file)
                     printlog("WAITING FOR QUEUE...",output_file=rtlog_file)
                     if args.sb>0 or (args.sb==0 and not np.all(np.array(corrstaggerdict['status']))):
-                        corrstaggerdict['status'] = QQUEUE.get()
+                        try:
+                            corrstaggerdict['status'] = QQUEUE.get(timeout=0.75*max([0,args.rttimeout - (time.time()-timage)]))
+                        except:
+                            printlog("QUEUE TIMED OUT",output_file=rterr_file)
                     printlog("PROCEEDING"+str(corrstaggerdict['status']),output_file=rtlog_file)
                     
                     if args.sb==0: 
@@ -595,7 +598,7 @@ def main(args):
                             corrstaggerdict['status'][i] = True
                         #corrstaggerdict['status'] = [True]*16 #just for testing
                         printlog("TIMEOUT, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
-                        etcd_put_dict_catch(ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
+                        etcd_put_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
                     continue
                 try:
                     if args.TXmode=='subimg':
