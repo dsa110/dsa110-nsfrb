@@ -157,16 +157,82 @@ def etcd_get_dict_catch(ETCD,ekey,edict=None,output_file=""):
         printlog("Failed to get ETCD dict",output_file=output_file)
         return edict
 
+
+
+def corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, retries,multiport,ipaddress,udpchunksize,protocol,sb,timage,rttimeout,corrstagger_future,flagcorrs,rtlog_file="",rterr_file="",verbose=False,debug=False,failsafe=False):
+    corrstaggerdict = etcd_get_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,edict=None if corrstagger_future is None else corrstagger_future.result(),output_file=rterr_file) #ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+    if corrstaggerdict is None:
+        corrstaggerdict = dict()
+        corrstaggerdict = [False]*16
+    printlog("INIT CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
+    printlog(">>>>>"+str(corrstaggerdict['status'][sb-1]),output_file=rtlog_file)
+    printlog("WAITING FOR QUEUE...",output_file=rtlog_file)
+    if sb>0 or (sb==0 and not np.all(np.array(corrstaggerdict['status']))):
+        try:
+            corrstaggerdict['status'] = QQUEUE.get(timeout=0.75*max([0,rttimeout - (time.time()-timage)]))
+        except:
+            printlog("QUEUE TIMED OUT",output_file=rterr_file)
+    printlog("PROCEEDING"+str(corrstaggerdict['status']),output_file=rtlog_file)
+
+    if sb==0:
+        corrstaggerdict['status'] = [False]*16
+        for i in flagcorrs:
+            corrstaggerdict['status'][i] = True
+    printlog("SB "+str(sb)+" STARTING TX WITH CORR STATUS:"+str(corrstaggerdict['status']),output_file=rtlog_file)
+    printlog(">>>>>TIMEOUT:"+str((rttimeout - (time.time()-timage))),output_file=rtlog_file)
+
+    ttx = time.time()
+    if verbose: printlog("[TIME LEFT]"+str(rttimeout - (time.time()-timage))+" sec",output_file=rtlog_file)
+    if (rttimeout - (time.time()-timage)) < 0.1:
+        if verbose: printlog("WITHHOLD TX, OUT OF TIME",output_file=rtlog_file)
+        #if inject: inject_count += 1
+        corrstaggerdict['status'][:sb+1] = [True]*(sb+1)
+        #for i in range(sb+1):
+        #    corrstaggerdict['status'][i] = True
+        printlog("TIMEOUT, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
+        etcd_put_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
+        return corrstaggerdict
+
+    try:
+        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=retries,keepalive_time=(rttimeout - (time.time()-timage)),port=multiport[int(sb%len(multiport))],ipaddress=ipaddress,udpchunksize=udpchunksize,protocol=protocol)
+    except Exception as exc:
+        if failsafe:
+            raise(exc)
+        else:
+            printlog(exc,output_file=rtlog_file)
+                
+                
+    txtime = time.time()-ttx
+    if verbose: printlog("TXTIME:"+str(txtime) + " sec",output_file=rtlog_file)
+    timing_dict = etcd_get_dict_catch(ETCD,ETCDKEY_TIMING_LIST[sb],output_file=rterr_file) #ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
+    if timing_dict is None: timing_dict = dict()
+    timing_dict["tx_time"] = txtime
+    timing_dict["tot_time"] = time.time()-timage
+    etcd_put_dict_catch(ETCD, ETCDKEY_TIMING_LIST[sb],timing_dict, output_file=rterr_file) #ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
+    #if inject: inject_count += 1
+    corrstaggerdict['status'][:sb+1] = [True]*(sb+1)
+    #for i in range(sb+1):
+    #    corrstaggerdict['status'][i] = True
+
+    printlog("DONE, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
+    etcd_put_dict_catch(ETCD, ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
+
+    return corrstaggerdict
+
+
+
+
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
     #corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
     #if corrstaggerdict is None:
+    corrstagger_future = None
     corrstaggerdict = dict()
     corrstaggerdict['status'] = [True]*16
     #corrstaggerdict['status'][args.sb] = False
     etcd_put_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file="") #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
-    if args.corrstagger_multisend>0:
-        ETCD.add_watch(ETCDKEY_CORRSTAGGER, lambda etcd_dict : etcd_to_stagger(etcd_dict,args.sb))
+    #if args.corrstagger_multisend>0:
+    ETCD.add_watch(ETCDKEY_CORRSTAGGER, lambda etcd_dict : etcd_to_stagger(etcd_dict,args.sb))
     
     os.system("> " + rtbench_file)
     os.system("> " + rtmemory_file)
@@ -546,11 +612,26 @@ def main(args):
             #timing_dict[args.sb]["tx_time"] = -1
         #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
 
+        if args.search:
+            corrstagger_future = executor.submit(corrstagger_send_task,
+                                            time_start_isot, uv_diag, Dec, dirty_img, args.retries,
+                                            args.multiport,args.ipaddress,args.udpchunksize,args.protocol,args.sb,time.time(),
+                                            args.rttimeout,corrstagger_future,args.flagcorrs,
+                                            rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe)
+        inject_count += 1
+
         """
-        ftime = open(rtbench_file,"a")
-        ftime.write(str(rtime)+"\n")
-        ftime.close()
-        """
+
+
+
+
+
+
+
+
+
+
+
         if args.debug: printlog("--->ETCD TIME: " + str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
         if args.debug: tbuffer = time.time()
         if args.failsafe and rtime>args.rttimeout:
@@ -659,11 +740,6 @@ def main(args):
                     #corrstaggerdict['status'][args.sb-1] = False
                     printlog("DONE, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
                     etcd_put_dict_catch(ETCD, ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
-            """
-            ftime = open(rttx_file,"a")
-            ftime.write(str(txtime)+"\n")
-            ftime.close()
-            """
             if args.failsafe and time.time()-timage>args.rttimeout:
                 executor.shutdown()
                 if args.verbose: printlog("Realtime exceeded, shutting down imager",output_file=rtlog_file)
@@ -694,6 +770,7 @@ def main(args):
             f.close()
             mallocloop += 1
         #break
+        """
     executor.shutdown()
     try:
         reader.disconnect()
@@ -739,7 +816,7 @@ if __name__=="__main__":
     #parser.add_argument('--multiimagepol',action='store_true',help='If set with --multiimage flag, runs separate threads for each polarization, otherwise ignored')
     parser.add_argument('--multisend',action='store_true',help='If set, uses multithreading to send data to the process server')
     parser.add_argument('--stagger_multisend',type=float,help='Specifies the time in seconds between sending each subband, default 0 sends all at once',default=0)
-    parser.add_argument('--corrstagger_multisend',type=float,help='Specifies the time in seconds to query etcd for corr status',default=0)
+    #parser.add_argument('--corrstagger_multisend',type=float,help='Specifies the time in seconds to query etcd for corr status',default=0)
     parser.add_argument('--port',type=int,help='Port number for receiving data from subclient, default = 8080',default=8080)
     parser.add_argument('--multiport',nargs='+',default=list(8810 + np.arange(16)),help='List of port numbers to listen on, default using single port specified in --port',type=int)
     parser.add_argument('-T','--testh23',action='store_true')
