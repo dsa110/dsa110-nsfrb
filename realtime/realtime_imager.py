@@ -1,4 +1,5 @@
 import argparse
+import etcd3
 import tracemalloc
 from dsacalib import constants as ct
 from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor,wait
@@ -106,11 +107,11 @@ def send_data_task(sbi,time_start_isot, uv_diag, Dec, dirty_img,verbose,port,tim
         else:
             print(exc)
     txtime = time.time()-ttx
-    timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
+    timing_dict = etcd_get_dict_catch(ETCD,ETCDKEY_TIMING_LIST[sbi]) #ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
     if timing_dict is None: timing_dict = dict()
     timing_dict["tx_time"] = txtime
     timing_dict["tot_time"] = time.time()-timage
-    ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
+    etcd_put_dict_catch(ETCD,ETCDKEY_TIMING_LIST[sbi],timing_dict) #ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
     return txtime
 
 from scipy.stats import multivariate_normal
@@ -142,6 +143,20 @@ def etcd_to_stagger(etcd_dict,sb,queue=QQUEUE):
         QQUEUE.put(etcd_dict['status'])
     return 
 
+def etcd_put_dict_catch(ETCD,ekey,edict,output_file=""):
+    try:
+        ETCD.put_dict(ekey,edict)
+    except etcd3.exceptions.ConnectionFailedError:
+        printlog("Failed to put ETCD dict",output_file=output_file)
+    return
+
+def etcd_get_dict_catch(ETCD,ekey,edict=None,output_file=""):
+    try:
+        return ETCD.get_dict(ekey)
+    except etcd3.exceptions.ConnectionFailedError:
+        printlog("Failed to get ETCD dict",output_file=output_file)
+        return edict
+
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
 def main(args):
     #corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
@@ -149,7 +164,7 @@ def main(args):
     corrstaggerdict = dict()
     corrstaggerdict['status'] = [True]*16
     #corrstaggerdict['status'][args.sb] = False
-    ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
+    etcd_put_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file="") #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
     if args.corrstagger_multisend>0:
         ETCD.add_watch(ETCDKEY_CORRSTAGGER, lambda etcd_dict : etcd_to_stagger(etcd_dict,args.sb))
     
@@ -157,6 +172,8 @@ def main(args):
     os.system("> " + rtmemory_file)
     if len(args.rtlog)>0:
         os.system("> "+ args.rtlog)
+    if len(args.rterr)>0:
+        os.system("> "+ args.rterr)
     #verbose = args.verbose
 
     if args.inject:
@@ -233,6 +250,7 @@ def main(args):
     f.close()
     """
     rtlog_file = args.rtlog
+    rterr_file = args.rterr
     #if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
     startuperr = False
 
@@ -335,7 +353,7 @@ def main(args):
             #if verbose: printlog("Injecting pulse",output_file=logfile)
 
             #look for an injection in etcd
-            injection_params = ETCD.get_dict(ETCDKEY_INJECT)
+            injection_params = etcd_get_dict_catch(ETCD, ETCDKEY_INJECT, output_file=rterr_file) #ETCD.get_dict(ETCDKEY_INJECT)
             if injection_params is None:
                 #if verbose: printlog("Injection not ready, postponing",output_file=logfile)
                 inject_count = args.inject_interval
@@ -358,7 +376,7 @@ def main(args):
                             injection_params["injected"][sbi] = True
                     else:
                         injection_params["injected"][args.sb] = True
-                ETCD.put_dict(ETCDKEY_INJECT,injection_params)
+                etcd_put_dict_catch(ETCD,ETCDKEY_INJECT,injection_params,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_INJECT,injection_params)
 
                 if time_start_isot == injection_params['ISOT']:
                     #if verbose: printlog("Injection" + injection_params['ID'] + "found",output_file=logfile)
@@ -498,20 +516,20 @@ def main(args):
         rtime=time.time()-timage
         if args.testh23:
             for sbi in range(len(corrs)):
-                timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
+                timing_dict = etcd_get_dict_catch(ETCD,ETCDKEY_TIMING_LIST[sbi],output_file=rterr_file) #ETCD.get_dict(ETCDKEY_TIMING_LIST[sbi])
                 if timing_dict is None: timing_dict = dict()
                 timing_dict["corr_num"] = sbi
                 timing_dict["ISOT"] = time_start_isot
                 timing_dict["image_time"] = rtime
-                ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
+                etcd_put_dict_catch(ETCD,ETCDKEY_TIMING_LIST[sbi],timing_dict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_TIMING_LIST[sbi],timing_dict)
                 #timing_dict[sbi]["tx_time"] = -1
         else:
-            timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
+            timing_dict = etcd_get_dict_catch(ETCD,ETCDKEY_TIMING_LIST[args.sb],output_file=rterr_file)#ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
             if timing_dict is None: timing_dict = dict()
             timing_dict["corr_num"] = args.sb
             timing_dict["ISOT"] = time_start_isot
             timing_dict["image_time"] = rtime
-            ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
+            etcd_put_dict_catch(ETCD,ETCDKEY_TIMING_LIST[args.sb],timing_dict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
             #timing_dict[args.sb]["tx_time"] = -1
         #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
 
@@ -552,7 +570,7 @@ def main(args):
                     printlog("DONE",output_file=rtlog_file)
                 elif args.corrstagger_multisend>0:
                     printlog("MONITORING CORR DICT EVERY "+str(args.corrstagger_multisend)+" sec",output_file=rtlog_file)
-                    corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+                    corrstaggerdict = etcd_get_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,edict=corrstaggerdict,output_file=rterr_file) #ETCD.get_dict(ETCDKEY_CORRSTAGGER)
                     printlog("INIT CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
                     printlog(">>>>>"+str(corrstaggerdict['status'][args.sb-1]),output_file=rtlog_file)
                     printlog("WAITING FOR QUEUE...",output_file=rtlog_file)
@@ -577,7 +595,7 @@ def main(args):
                             corrstaggerdict['status'][i] = True
                         #corrstaggerdict['status'] = [True]*16 #just for testing
                         printlog("TIMEOUT, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
-                        ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
+                        etcd_put_dict_catch(ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
                     continue
                 try:
                     if args.TXmode=='subimg':
@@ -612,11 +630,11 @@ def main(args):
                         printlog(exc,output_file=rtlog_file)
                 txtime = time.time()-ttx
                 if args.verbose: printlog("TXTIME:"+str(txtime) + " sec",output_file=rtlog_file)
-                timing_dict = ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
+                timing_dict = etcd_get_dict_catch(ETCD,ETCDKEY_TIMING_LIST[args.sb],output_file=rterr_file) #ETCD.get_dict(ETCDKEY_TIMING_LIST[args.sb])
                 if timing_dict is None: timing_dict = dict()
                 timing_dict["tx_time"] = txtime
                 timing_dict["tot_time"] = time.time()-timage
-                ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
+                etcd_put_dict_catch(ETCD, ETCDKEY_TIMING_LIST[args.sb],timing_dict, output_file=rterr_file) #ETCD.put_dict(ETCDKEY_TIMING_LIST[args.sb],timing_dict)
                 if args.corrstagger_multisend>0:
                     for i in range(args.sb+1):
                         corrstaggerdict['status'][i] = True
@@ -624,7 +642,7 @@ def main(args):
                     #corrstaggerdict['status'] = [True]*16 #just for testing
                     #corrstaggerdict['status'][args.sb-1] = False
                     printlog("DONE, NEW CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
-                    ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
+                    etcd_put_dict_catch(ETCD, ETCDKEY_CORRSTAGGER,corrstaggerdict,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_CORRSTAGGER,corrstaggerdict)
             """
             ftime = open(rttx_file,"a")
             ftime.write(str(txtime)+"\n")
@@ -717,6 +735,7 @@ if __name__=="__main__":
     parser.add_argument('--dec',type=float,help='Pointing declination',default=71.6)
     parser.add_argument('--mjdfile',type=str,help='MJD file',default='/home/ubuntu/tmp/mjd.dat')
     parser.add_argument('--rtlog',type=str,help='Send output to logfile specified, defaults to stdout',default='')
+    parser.add_argument('--rterr',type=str,help='Send errors to logfile specified, defaults to stdout',default='')
     parser.add_argument('--debug',action='store_true',help='memory debugging')
     parser.add_argument('--retries',type=int,help='retries',default=1)
     parser.add_argument('--TXmode',type=str,choices=['subimg','subint','base'],default='base',help='TX mode')
