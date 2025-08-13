@@ -1,4 +1,5 @@
 import time
+from nsfrb import config
 import argparse
 from dsamfs import fringestopping
 import os
@@ -278,7 +279,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             Smin_loerr = Smin - ((stat_noise["image_noise_median_full"]-stat_noise["image_noise_error_full"])*(popt[0]-popterrs[0]) + (popt[1]-popterrs[1]))
             stat_noise_time_im = (len(stat_noise.keys())-2)*ngulps*nsamps*tsamp_ms/1000/3600
 
-            noisef_search = open(noise_dir + "noise_301x301.pkl","rb")
+            noisef_search = open(noise_dir + "noise_"+str(gridsize)+"x"+str(gridsize)+".pkl","rb")
             stat_noise_d = pkl.load(noisef_search)
             stat_noise_count = stat_noise_d[0][1][0]
             stat_noise_time = stat_noise_count*tsamp_ms*nsamps/1000/3600
@@ -341,12 +342,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     
         plt.plot(faxis,pfunc_fit(faxis),color='grey')
         plt.fill_between(faxis,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
-    violinfluxes = []
-    uniquenvssfluxes = []
-    for i in range(len(uniquesrcnames)):
-        uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
-        violinfluxes.append(allfluxs[allsrcnames==uniquesrcnames[i]])
-    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    try:
+        violinfluxes = []
+        uniquenvssfluxes = []
+        for i in range(len(uniquesrcnames)):
+            uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
+            violinfluxes.append(allfluxs[allsrcnames==uniquesrcnames[i]])
+        plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    except Exception as exc:
+        print(exc)
     plt.scatter(allfluxs,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     """
     for i in range(len(uniquesrcnames)):
@@ -398,6 +402,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     BW = chanbw*nchans*1E6
     print(Nbase,BW,tsamp_ms)
     NSFRBsens = 2*SEFD*1000/np.sqrt((2*Nbase)*BW*tsamp_ms*2/1000) #mJy
+    if Smin_search==0: NSFRBsens = Smin_search
     print("Comparing to theoretical sensitivity:",NSFRBsens,"mJy")
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
     plt.text(5,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
@@ -423,12 +428,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.plot(pfunc(faxis),pfunc_fit(faxis),color='grey')
         plt.fill_between(pfunc(faxis),pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
 
-    violinfluxes = []
-    uniquenvssfluxes = []
-    for i in range(len(uniquesrcnames)):
-        uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
-        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]]))
-    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    try:
+        violinfluxes = []
+        uniquenvssfluxes = []
+        for i in range(len(uniquesrcnames)):
+            uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
+            violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]]))
+        plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    except Exception as exc:
+        print(exc)
     plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Calibrated Flux (mJy)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
@@ -464,12 +472,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.plot(pfunc(faxis),pfunc_fit(faxis),color='grey')
         plt.fill_between(pfunc(faxis),pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
 
-    violinfluxes = []
-    uniquenvssfluxes = []
-    for i in range(len(uniquesrcnames)):
-        uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
-        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]]))
-    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    try:
+        violinfluxes = []
+        uniquenvssfluxes = []
+        for i in range(len(uniquesrcnames)):
+            uniquenvssfluxes.append(allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])
+            violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]]))
+        plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    except Exception as exc:
+        print(exc)
     #plt.scatter(pfunc(allfluxs),allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Calibrated Flux (mJy)")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
@@ -548,13 +559,16 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.fill_between(pfunc(faxis)/Smin_search,pfunc_down(faxis)/NSFRBsens,pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
         plt.plot(pfunc_fit(faxis)/Smin_search,pfunc_fit(faxis)/NSFRBsens,color='grey')
         plt.fill_between(pfunc_fit(faxis)/Smin_search,pfunc_down_fit(faxis)/NSFRBsens,pfunc_up_fit(faxis)/NSFRBsens,color='grey',alpha=0.5)
-    violinfluxes = []
-    uniquenvssfluxes = []
-    print(NSFRBsens,Smin,Smin_search)
-    for i in range(len(uniquesrcnames)):
-        uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])/NSFRBsens)
-        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin_search)
-    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    try:
+        violinfluxes = []
+        uniquenvssfluxes = []
+        print(NSFRBsens,Smin,Smin_search)
+        for i in range(len(uniquesrcnames)):
+            uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0])/NSFRBsens)
+            violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin_search)
+        plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    except Exception as exc:
+        print(exc)
     plt.scatter(pfunc(allfluxs)/Smin_search,allnvssfluxes/NSFRBsens,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Measured S/N")
     plt.ylabel("Predicted S/N")
@@ -583,12 +597,15 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         plt.fill_between(pfunc(faxis)/Smin_search,pfunc_down(faxis),pfunc_up(faxis)/NSFRBsens,color='red',alpha=0.5)
         plt.plot(pfunc_fit(faxis)/Smin_search,pfunc_fit(faxis),color='grey')
         plt.fill_between(pfunc_fit(faxis)/Smin_search,pfunc_down_fit(faxis),pfunc_up_fit(faxis),color='grey',alpha=0.5)
-    violinfluxes = []
-    uniquenvssfluxes = []
-    for i in range(len(uniquesrcnames)):
-        uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0]))
-        violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin_search)
-    plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    try:
+        violinfluxes = []
+        uniquenvssfluxes = []
+        for i in range(len(uniquesrcnames)):
+            uniquenvssfluxes.append((allnvssfluxes[allsrcnames==uniquesrcnames[i]][0]))
+            violinfluxes.append(pfunc(allfluxs[allsrcnames==uniquesrcnames[i]])/Smin_search)
+        plt.violinplot(violinfluxes,positions=uniquenvssfluxes,vert=False,widths=uniquenvssfluxes)
+    except Exception as exc:
+        print(exc)
     plt.scatter(pfunc(allfluxs)/Smin_search,allnvssfluxes,c=allresids,marker="o",s=100,cmap='copper',alpha=0.8,vmin=0,vmax=np.nanpercentile(allresids,90),zorder=1000)
     plt.xlabel("Measured S/N")
     plt.ylabel("NVSS or VLAC Flux (mJy)")
@@ -1030,7 +1047,7 @@ def astrocal(args):
             fs= np.sort(glob.glob(vis_dir + bright_names[i].replace(" ","") + "/image_*npy"))
             found=False
             for f in fs:
-                fisot=f[6:-4]
+                fisot=os.path.basename(f)[6:-4]
                 if 86400*(np.abs(Time(fisot,format='isot').mjd-besttime[i].mjd))<=(ngulps*config.T/1000):
                     if bright_names[i] not in bright_fnamedict.keys():
                         bright_fnames.append(f)
@@ -1156,7 +1173,9 @@ def astrocal(args):
     outriggers = args.outriggers
     ref_wav=0.20
     bmin=args.bmin
+    min_gridsize = image_size
     savestuff = True
+    buff = args.buff_astrocal#50
     for bright_idx in range(len(bright_fnames)):
         if bright_fnames[bright_idx] == -1:
             bright_poserrs.append(-1)
@@ -1172,13 +1191,15 @@ def astrocal(args):
             continue
     
         if rtcalflag:
-            print("RT MODE Loading ",bright_fnames[bright_idx])
+            mjd = besttime[bright_idx].mjd
+            fnum = 0
+            print("RT MODE Loading ",bright_fnames[bright_idx],"; ",besttime[bright_idx].mjd,"; ",Time(besttime[bright_idx].mjd,format='mjd').isot)
             ngulps = len(bright_fnamedict[bright_names[bright_idx]])
             gulps = np.arange(ngulps,dtype=int)
-            full_img = np.zeros((image_size,image_size,ngulps)) #np.load(bright_fnames[bright_idx])
+            full_img = np.load(bright_fnames[bright_idx])
             bmin=20
             test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
-            pt_dec = args.search_dec*np.pi/180.
+            pt_dec = search_dec*np.pi/180.
             bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
 
             tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((25,len(bname),nchans_per_node,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates=[])
@@ -1190,7 +1211,7 @@ def astrocal(args):
             pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
 
 
-            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=args.search_dec,two_dim=True,manual=False,uv_diag=uv_diag)
+            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=search_dec,two_dim=True,manual=False,uv_diag=uv_diag)
             g = 0
             for gulp in gulps:
                 full_img[:,:,gulp] = np.load(bright_fnamedict[bright_names[bright_idx]][gulp])
@@ -1768,7 +1789,7 @@ def speccal(args):
             fs= glob.glob(vis_dir + bright_nvssnames[i].replace(" ","") + "/image_*npy")
             found=False
             for f in fs:
-                fisot=f[6:-4]
+                fisot=os.path.basename(f)[6:-4]
                 if 86400*(np.abs(Time(fisot,format='isot').mjd-besttime[i].mjd))<=(config.T/1000):
                     bright_fnames.append(f)
                     print(f)
@@ -1833,7 +1854,7 @@ def speccal(args):
                     bright_nvssnames = bright_nvssnames[:-1]
                     continue
     
-                if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime.mjd)<(5*60/86400):
+                if name in ex_table and np.any(np.array(ex_times)[np.logical_and(np.array(ex_table)==name,np.array(ex_times)!=-1)]-besttime[-1].mjd)<(5*60/86400):
                     besttime.append(-1)
                     print("Excluding " + name)
                     print("")
@@ -1897,6 +1918,8 @@ def speccal(args):
     ref_wav=0.20
     bmin=args.bmin
     full_img = np.zeros((image_size,image_size,int(gulpsize/args.timebin),16*nchan_per_node),dtype=float)
+    buff = args.buff_speccal
+    min_gridsize = image_size
     savestuff = True
     if args.completeness:
         completeness_searchdict = dict()
@@ -1920,7 +1943,6 @@ def speccal(args):
     
     
     for bright_idx in range(len(bright_fnames)):
-        
         if bright_fnames[bright_idx] == -1:
             print(">>",bright_nvssnames[bright_idx])
             bright_poserrs.append(-1)
@@ -1936,13 +1958,16 @@ def speccal(args):
             continue
         
         if rtcalflag:
-            print("RT MODE Loading ",bright_fnames[bright_idx])
+            mjd = besttime[bright_idx].mjd
+            fnum = 0
+            print("RT MODE Loading ",bright_fnames[bright_idx],"; ",besttime[bright_idx].mjd,"; ",Time(besttime[bright_idx].mjd,format='mjd').isot)
             full_img = np.load(bright_fnames[bright_idx])
+
             gulps = [0]
             ngulps = 1
             bmin=20
             test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
-            pt_dec = args.search_dec*np.pi/180.
+            pt_dec = search_dec*np.pi/180.
             bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
 
             tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((25,len(bname),nchans_per_node,2)), bname, blen, UVW, antenna_order, (list(bad_antennas) + list(args.flagants) if outriggers else list(flagged_antennas) + list(args.flagants)), bmin, list(flagged_corrs) + list(args.flagcorrs), flag_channel_templates=[])
@@ -1954,7 +1979,7 @@ def speccal(args):
             pixel_resolution = (lambdaref/uv_diag/pixperFWHM)
 
 
-            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=args.search_dec,two_dim=True,manual=False,uv_diag=uv_diag)
+            ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=search_dec,two_dim=True,manual=False,uv_diag=uv_diag)
         else:
             print("Reading data for "+ bright_nvssnames[bright_idx])
             fnum = int(bright_fnames[bright_idx])
@@ -2230,6 +2255,10 @@ def speccal(args):
         bright_pixel = np.unravel_index(np.argmin(bright_pixcoord.separation(SkyCoord(ra=ra_grid_2D*u.deg,dec=dec_grid_2D*u.deg,frame='icrs')).value),ra_grid_2D.shape)
         
         #plotting
+        print("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx])
+        print(ra_grid_2D[bright_pixel[0],bright_pixel[1]],dec_grid_2D[bright_pixel[0],bright_pixel[1]])
+        print(buff)
+
         plt.figure(figsize=(12,12))
         fullmean = True
         median_sub = False
@@ -2305,19 +2334,28 @@ def speccal(args):
         plt.xlim(0,tsamp_ms*gulpsize*ngulps/1000)
 
         plt.subplot(2,2,4,facecolor='black')
-        plt.step(np.nansum(bright_dynspec,0),fobs,linewidth=1)
+        plt.step(np.nansum(bright_dynspec,0),freq_axis if rtcalflag else fobs,linewidth=1)
         cm = plt.get_cmap('Blues')
         for i in range(int(gulpsize*ngulps/args.timebin)):
-            plt.step(np.nansum(bright_dynspec[:i+1,:],0),fobs,color=cm(i/int(gulpsize*ngulps/args.timebin)),alpha=0.5,linewidth=1)
-        plt.ylim(fobs[-1],fobs[0])
+            plt.step(np.nansum(bright_dynspec[:i+1,:],0),freq_axis if rtcalflag else fobs,color=cm(i/int(gulpsize*ngulps/args.timebin)),alpha=0.5,linewidth=1)
+        if rtcalflag:
+            plt.ylim(freq_axis[-1],freq_axis[0])
+        else:
+            plt.ylim(fobs[-1],fobs[0])
         plt.scatter([],[],c=[],vmin=0,vmax=tsamp_ms*gulpsize/1000,cmap='Blues')
         plt.title("SOURCE: " + bright_nvssnames[bright_idx] + "\nMJD: " + str(mjd) + "\nFNUM: " + bright_fnames[bright_idx],fontsize=20)
         plt.colorbar(label='Time (s)')
 
         plt.subplot(2,2,3)
-        plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize*ngulps/1000,fobs[-1],fobs[0]))
+        if rtcalflag:
+            plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize*ngulps/1000,freq_axis[-1],freq_axis[0]))
+        else:
+            plt.imshow(bright_dynspec.transpose(),aspect='auto',extent=(0,tsamp_ms*gulpsize*ngulps/1000,fobs[-1],fobs[0]))
         plt.xlim(0,tsamp_ms*gulpsize*ngulps/1000)
-        plt.ylim(fobs[-1],fobs[0])
+        if rtcalflag:
+            plt.ylim(freq_axis[-1],freq_axis[0])
+        else:
+            plt.ylim(fobs[-1],fobs[0])
         plt.xlabel("Time (s)")
         plt.ylabel("Frequency (GHz)")
         plt.subplots_adjust(hspace=0,wspace=0)
@@ -2532,11 +2570,15 @@ def main(args):
             if args.update_only:
                 update_astrocal_table([],[],[],[],[],[],[],[],[],[],[],args.outriggers,init=args.init_astrocal,resid_th=args.astroresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange)
             else:
+                if len(glob.glob(table_dir + "/NSFRB_astrocal.json"))==0:
+                    init_table(args.outriggers,table_dir + "/NSFRB_astrocal.json",image_flux=True,exactposition=args.exactposition)
                 astrocal(args)
         if (not args.astrocal_only and not args.speccal_only) or (not args.astrocal_only and args.speccal_only):
             if args.update_only:
                 update_speccal_table([],[],[],[],[],[],[],[],args.outriggers,init=args.init_speccal,fitresid_th=args.specresid_th,exclude_table=str("" if args.includeall else table_dir + "/NSFRB_excludecal.json"),image_flux=True,target=args.target,targetMJD=args.targetMJD,target_timerange=args.target_timerange,target_decrange=args.target_decrange,gridsize=args.image_size,robust=args.robust,exactposition=args.exactposition,ngulps=args.ngulps,completeness=args.completeness,nchans_per_node=args.nchans_per_node)
             else:
+                if len(glob.glob(table_dir + "/NSFRB_speccal.json"))==0:
+                    init_table(args.outriggers,table_dir + "/NSFRB_speccal.json",image_flux=True,exactposition=args.exactposition)
                 speccal(args)
     return
 

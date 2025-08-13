@@ -192,3 +192,7 @@ realtime/rt*log.txt
 #cuda benchmark files
 cudaimager/*sqlite
 cudaimager/*nsys-rep
+
+#UVW files
+realtime/rt_c_imager/*.bin
+cudaimager/cuda_offline_imager/*.bin
