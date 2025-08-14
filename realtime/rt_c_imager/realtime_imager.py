@@ -356,6 +356,7 @@ def main(args):
         printlog("Will send data to IP " + str(args.ipaddress),output_file=rtlog_file)
 
     mjd_init = -1
+    inject_count=0
     while True:
 
 
