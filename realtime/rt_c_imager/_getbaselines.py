@@ -1,9 +1,7 @@
-from nsfrb.flagging import flag_vis
 from dsamfs import utils as pu
 import argparse
 import numpy as np
 import struct
-from nsfrb import config
 
 
 
@@ -25,13 +23,6 @@ def main(args):
 
 
 
-    """
-    nsamps=25
-    nchans_per_node = 8
-    bmin=20
-
-    tmp, bname, blen, UVW, antenna_order,keep = flag_vis(np.zeros((nsamps,UVW.shape[1],nchans_per_node,2)), bname, blen, UVW, antenna_order, config.flagged_antennas, bmin, [], flag_channel_templates = [], flagged_chans=[], returnidxs=True)
-    """
     print("Final UVW Shape:"+str(UVW.shape))
     UVW = UVW.astype(np.float64)
     blen = np.sqrt(UVW[0,:,0]**2 + UVW[0,:,1]**2).astype(np.float64)
@@ -56,6 +47,6 @@ def main(args):
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Update UVW coordinates for cuda imager')
     parser.add_argument("--pt_dec",type=float,help="pointing declination in radians. If not specified, uses value from current configuration",default=np.nan) 
-    parser.add_argument("--outdir",type=str,help='output directory',default=config.table_dir)
+    parser.add_argument("--outdir",type=str,help='output directory',default="./")
     args = parser.parse_args()
     main(args)
