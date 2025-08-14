@@ -825,7 +825,6 @@ unsigned long long myCPUTimer(void)
 
 int main(int argc, char *argv[])
 {
-	sleep(180);
 	
 	FILE *fobj;
         //double pi = 22.0/7.0;
@@ -843,6 +842,7 @@ int main(int argc, char *argv[])
 	}
 
 
+	sleep(args->sleeptime);
 	const char *cwd = getenv("NSFRBDIR");
 
 
@@ -1427,7 +1427,7 @@ int main(int argc, char *argv[])
 	unsigned long long t2, tottime,t1;
 	FILE *fobj_w;
   	while (!observation_complete) {
-		t1 = myCPUTimer();
+		//t1 = myCPUTimer();
 		if (uselogfile)
                 {
                         fobj = fopen(args->logfile,"a");
@@ -1457,6 +1457,7 @@ int main(int argc, char *argv[])
 		// read block
 		//block = ipcio_open_block_read (hdu_in->data_block, &bytes_read, &block_id);
     		data = (fftwf_complex *)ipcio_open_block_read(hdu_in->data_block, &bytes_read, &block_id);//(fftwf_complex *)block;
+		t1 = myCPUTimer();
 		if (uselogfile)
                 {
                         fobj = fopen(args->logfile,"a");
