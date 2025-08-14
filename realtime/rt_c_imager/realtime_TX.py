@@ -491,7 +491,7 @@ def main(args):
                                             rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe)
             else:
                 corrstaggerdict = corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, args.retries,
-                                            args.multiport,args.ipaddress,args.udpchunksize,args.protocol,args.sb,tbuffer1,
+                                            args.multiport,args.ipaddress,args.udpchunksize,args.protocol,args.sb,timage,
                                             args.rttimeout,corrstagger_future,args.flagcorrs,
                                             rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe)
         inject_count += 1
