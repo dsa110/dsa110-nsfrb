@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <math.h>
 #include <string.h>
 #include <unistd.h>
@@ -824,6 +825,7 @@ unsigned long long myCPUTimer(void)
 
 int main(int argc, char *argv[])
 {
+	sleep(180);
 	
 	FILE *fobj;
         //double pi = 22.0/7.0;
@@ -964,42 +966,43 @@ int main(int argc, char *argv[])
                 return EXIT_FAILURE;
 	}
 	*/
-	fobj = fopen(ufname,"rb");
+	FILE *fobj_r;
+	fobj_r = fopen(ufname,"rb");
         double *U;
 	size_t nread;
         U = (double *)malloc((args->max_base)*sizeof(double));//cudaMallocManaged(&U,(args->max_base)*sizeof(double));
-        nread = fread(U,sizeof(double),args->max_base,fobj)*sizeof(double);
-        fclose(fobj);
+        nread = fread(U,sizeof(double),args->max_base,fobj_r)*sizeof(double);
+        fclose(fobj_r);
 
-        fobj = fopen(vfname,"rb");
+        fobj_r = fopen(vfname,"rb");
         double *V;
         V = (double *)malloc((args->max_base)*sizeof(double));//cudaMallocManaged(&V,(args->max_base)*sizeof(double));
-        nread = fread(V,sizeof(double),args->max_base,fobj)*sizeof(double);
-        fclose(fobj);
+        nread = fread(V,sizeof(double),args->max_base,fobj_r)*sizeof(double);
+        fclose(fobj_r);
 
-        fobj = fopen(wfname,"rb");
+        fobj_r = fopen(wfname,"rb");
         double *W;
         W = (double *)malloc((args->max_base)*sizeof(double));//cudaMallocManaged(&W,(args->max_base)*sizeof(double));
-        nread = fread(W,sizeof(double),args->max_base,fobj)*sizeof(double);
-        fclose(fobj);
+        nread = fread(W,sizeof(double),args->max_base,fobj_r)*sizeof(double);
+        fclose(fobj_r);
 
-        fobj = fopen(bfname,"rb");
+        fobj_r = fopen(bfname,"rb");
         double *BLEN;
         BLEN = (double *)malloc((args->max_base)*sizeof(double));//cudaMallocManaged(&BLEN,(args->max_base)*sizeof(double));
-        nread = fread(BLEN,sizeof(double),args->max_base,fobj)*sizeof(double);
-        fclose(fobj);
+        nread = fread(BLEN,sizeof(double),args->max_base,fobj_r)*sizeof(double);
+        fclose(fobj_r);
 
-        fobj = fopen(a1fname,"rb");
+        fobj_r = fopen(a1fname,"rb");
         uint8_t *ANT1;
         ANT1 = (uint8_t *)malloc((args->max_base)*sizeof(uint8_t)); //cudaMallocManaged(&ANT1,(args->max_base)*sizeof(unsigned int));
-        nread = fread(ANT1,sizeof(uint8_t),args->max_base,fobj)*sizeof(uint8_t);
-        fclose(fobj);
+        nread = fread(ANT1,sizeof(uint8_t),args->max_base,fobj_r)*sizeof(uint8_t);
+        fclose(fobj_r);
 
-        fobj = fopen(a2fname,"rb");
+        fobj_r = fopen(a2fname,"rb");
         uint8_t *ANT2;
         ANT2 = (uint8_t *)malloc((args->max_base)*sizeof(uint8_t)); //cudaMallocManaged(&ANT2,(args->max_base)*sizeof(unsigned int));
-        nread = fread(ANT2,sizeof(uint8_t),args->max_base,fobj)*sizeof(uint8_t);
-        fclose(fobj);
+        nread = fread(ANT2,sizeof(uint8_t),args->max_base,fobj_r)*sizeof(uint8_t);
+        fclose(fobj_r);
 	if (uselogfile)
         {
                 fobj = fopen(args->logfile,"a");
@@ -1422,6 +1425,7 @@ int main(int argc, char *argv[])
 	//int iters =0;
 	//int maxiters = 10;
 	unsigned long long t2, tottime,t1;
+	FILE *fobj_w;
   	while (!observation_complete) {
 		t1 = myCPUTimer();
 		if (uselogfile)
@@ -1618,9 +1622,9 @@ int main(int argc, char *argv[])
 		//***for testing***//
 		if (args->save)
 		{
-			fobj = fopen(imgfname,"wb");
-        		fwrite(image, sizeof(double), (args->num_time_samples)*(args->gridsize)*(args->gridsize), fobj);
-        		fclose(fobj);
+			fobj_w = fopen(imgfname,"wb");
+        		fwrite(image, sizeof(double), (args->num_time_samples)*(args->gridsize)*(args->gridsize), fobj_w);
+        		fclose(fobj_w);
 		}
 		if (uselogfile)
                 {
