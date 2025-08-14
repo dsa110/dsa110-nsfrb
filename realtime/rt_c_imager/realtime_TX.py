@@ -479,7 +479,8 @@ def main(args):
                     if injection_params['inject_only']: dirty_img[:,:,:] = 0
                     inject_flat = injection_params['inject_flat']
                     if args.verbose: printlog("Done injecting",output_file=rtlog_file)
-        dirty_img += inject_img
+            dirty_img += inject_img
+        np.save("TESTIMAGE.npy",dirty_img)
 
         if args.debug: tbuffer = time.time()
 

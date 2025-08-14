@@ -195,4 +195,5 @@ cudaimager/*nsys-rep
 
 #UVW files
 realtime/rt_c_imager/*.bin
+realtime/rt_c_imager/*log.txt
 cudaimager/cuda_offline_imager/*.bin

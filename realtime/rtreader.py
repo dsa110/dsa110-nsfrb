@@ -237,13 +237,13 @@ def read_imaging_buffer_multisamp(reader, gridsize,nsamps,dtype=np.float32,dtype
     data = data.view(dtype)
     #data = data.reshape(-1, 2).view(dtypecomplex).squeeze(axis=-1)
     try:
-        data = data.reshape(nsamps, gridsize, gridsize ).transpose((1,2,0))
+        data = data.reshape(gridsize, gridsize,nsamps )#.transpose((1,2,0))
     except ValueError:
         print(
             f"incomplete data: {data.shape[0]%(nsamps*gridsize*gridsize)} out of {nsamps*gridsize*gridsize} samples",file=verbosefile)
         data = data[
             :data.shape[0] // (gridsize*gridsize*nsamps) * (nsamps*gridsize*gridsize)
-        ].reshape(nsamps,  gridsize, gridsize).transpose((1,2,0))
+        ].reshape( gridsize, gridsize, nsamps)#.transpose((1,2,0))
     if verbose: print("...|TIME TO REFORMAT DATA:",time.time()-t1,file=verbosefile2)
     return data
 
