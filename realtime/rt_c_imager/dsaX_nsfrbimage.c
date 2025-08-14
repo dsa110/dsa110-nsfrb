@@ -826,7 +826,7 @@ int main(int argc, char *argv[])
 {
 	
 	FILE *fobj;
-        double pi = 22.0/7.0;
+        //double pi = 22.0/7.0;
         cmdargs args_obj;
         cmdargs *args = &args_obj;
         //cudaMallocManaged(&args,sizeof(cmdargs));
@@ -844,11 +844,12 @@ int main(int argc, char *argv[])
 	const char *cwd = getenv("NSFRBDIR");
 
 
+	/*
         char baseUVWcmd[300];
-        strcpy(baseUVWcmd, "python ");
+        strcpy(baseUVWcmd, "conda init; conda activate casa310nsfrb; python ");
         strcat(baseUVWcmd, cwd);
         strcat(baseUVWcmd, "/realtime/rt_c_imager/_getbaselines.py --outdir ");
-
+	*/
         char ufname[300];
         strcpy(ufname,cwd);
         strcat(ufname,"/realtime/rt_c_imager/U.bin");
@@ -873,12 +874,13 @@ int main(int argc, char *argv[])
         strcpy(a2fname,cwd);
         strcat(a2fname,"/realtime/rt_c_imager/ANT2.bin");
 
+	/*
         char outdirUVWcmd[300];
         strcpy(outdirUVWcmd,cwd);
         strcat(outdirUVWcmd,"/realtime/rt_c_imager/");
         strcat(baseUVWcmd, outdirUVWcmd);
         strcat(baseUVWcmd, " --pt_dec ");
-
+	*/
         char imgfname[300];
         strcpy(imgfname,cwd);
         strcat(imgfname,"/realtime/rt_c_imager/tmpimage.bin");
@@ -887,13 +889,13 @@ int main(int argc, char *argv[])
         {
                 fobj = fopen(args->logfile,"a");
                 fprintf(fobj,"retrieved cwd=%s\n",cwd);
-		fprintf(fobj,"UVW command: %s\n",baseUVWcmd);
+		//fprintf(fobj,"UVW command: %s\n",baseUVWcmd);
 		fprintf(fobj,"%d ANTENNAS WILL BE FLAGGED\n",args->nflagants);
                 fclose(fobj);
         }
 	else{
         	printf("retrieved cwd=%s\n",cwd);
-        	printf("UVW command: %s\n",baseUVWcmd);
+        	//printf("UVW command: %s\n",baseUVWcmd);
 		printf("%d ANTENNAS WILL BE FLAGGED\n",args->nflagants);
 	}
 
@@ -939,6 +941,7 @@ int main(int argc, char *argv[])
 	{
 		printf("Updating and reading UVW coords\n");
 	}
+	/*
         char updateUVWcmd[strlen(baseUVWcmd)+20];
         strcpy(updateUVWcmd,baseUVWcmd);
         sprintf(updateUVWcmd + strlen(baseUVWcmd),"%f",(args->dec)*pi/180);
@@ -960,7 +963,7 @@ int main(int argc, char *argv[])
 		//dsaX_dbgpu_cleanup (hdu_in, hdu_out);
                 return EXIT_FAILURE;
 	}
-
+	*/
 	fobj = fopen(ufname,"rb");
         double *U;
 	size_t nread;
