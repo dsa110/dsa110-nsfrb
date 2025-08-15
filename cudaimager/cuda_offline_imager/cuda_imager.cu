@@ -178,7 +178,7 @@ void uniform_grid_singlefreq(double *U, double *V, double *W, long nbase, long n
 }
 
 __global__
-void briggs_weight_singlefreq(long nbase, int gridsize, unsigned int *i_indices, unsigned int *j_indices, double *bweights, float robust, unsigned int *Wk, double *vis_weights, int *flagbase, int *flagchans, int *flagcorrs, int *flagants, int nflagbase, int nflagchans, int nflagcorrs, int nflagants, unsigned int *ANT1, unsigned int *ANT2)
+void briggs_weight_singlefreq(long nbase, int gridsize, unsigned int *i_indices, unsigned int *j_indices, double *bweights, float robust, unsigned int *Wk, double *vis_weights, int *flagbase, int *flagchans, int *flagcorrs, int *flagants, int nflagbase, int nflagchans, int nflagcorrs, int nflagants, uint8_t *ANT1, uint8_t *ANT2)
 {
 	/*
 	   This function computes grid weights using Briggs robustness parameter
@@ -416,7 +416,7 @@ void grid_data(int num_chans, int num_time_samples, int num_chans_per_node, int 
                 double *bweights, int gridsize, cuDoubleComplex *vis_grid,
 		int *flagbase, int *flagchans, int *flagcorrs, int *flagants, 
 		int nflagbase, int nflagchans, int nflagcorrs, int nflagants,
-		unsigned int *ANT1, unsigned int *ANT2)
+		uint8_t *ANT1, uint8_t *ANT2)
 {
         /*
            This function applies pre-computed weights to and grids visibilities.
@@ -838,8 +838,8 @@ int main(int argc, char *argv[])
 
 	//read data from file
 	int corrs[16] = {3,4,5,6,7,8,10,11,12,14,15,16,18,19,21,22};
-	char corr[4];
-	char sb_s[5];
+	char corr[5];
+	char sb_s[6];
 	char fname[120];
 	size_t total_samples_per_file = (args->num_time_samples)*(args->num_chans_per_node)*(args->max_base)*2;
 	size_t total_samples = (args->num_chans)*total_samples_per_file;
@@ -854,8 +854,8 @@ int main(int argc, char *argv[])
 	size_t nread = 0;
 	for (int i =0; i<16; i+=1){
 		nread = 0;
-		sprintf(corr,"h%02d",corrs[i]);
-		sprintf(sb_s,"sb%02d",i);
+		sprintf(corr,"h%02d_",corrs[i]);
+		sprintf(sb_s,"sb%02d_",i);
 		if (strlen(args->filedir) == 0)
 		{
 			strcpy(fname,args->path);
@@ -963,20 +963,20 @@ int main(int argc, char *argv[])
         fclose(fobj);
 	
 	fobj = fopen(a1fname,"rb");
-	unsigned int *ANT1;
-	printf("Allocating %ld bytes (%ld values)\n",(args->max_base)*sizeof(unsigned int),args->max_base);
-	cudaMallocManaged(&ANT1,(args->max_base)*sizeof(unsigned int));
+	uint8_t *ANT1;
+	printf("Allocating %ld bytes (%ld values)\n",(args->max_base)*sizeof(uint8_t),args->max_base);
+	cudaMallocManaged(&ANT1,(args->max_base)*sizeof(uint8_t));
 	printf("Done allocating\n");
-	nread = fread(ANT1,sizeof(unsigned int),args->max_base,fobj)*sizeof(unsigned int);
+	nread = fread(ANT1,sizeof(uint8_t),args->max_base,fobj)*sizeof(uint8_t);
 	printf("Successfully read %ld bytes\n",nread);
 	fclose(fobj);
 
-	fobj = fopen(a1fname,"rb");
-        unsigned int *ANT2;
-        printf("Allocating %ld bytes (%ld values)\n",(args->max_base)*sizeof(unsigned int),args->max_base);
-        cudaMallocManaged(&ANT2,(args->max_base)*sizeof(unsigned int));
+	fobj = fopen(a2fname,"rb");
+        uint8_t *ANT2;
+        printf("Allocating %ld bytes (%ld values)\n",(args->max_base)*sizeof(uint8_t),args->max_base);
+        cudaMallocManaged(&ANT2,(args->max_base)*sizeof(uint8_t));
         printf("Done allocating\n");
-        nread = fread(ANT2,sizeof(unsigned int),args->max_base,fobj)*sizeof(unsigned int);
+        nread = fread(ANT2,sizeof(uint8_t),args->max_base,fobj)*sizeof(uint8_t);
         printf("Successfully read %ld bytes\n",nread);
         fclose(fobj);
 
@@ -1165,7 +1165,7 @@ int main(int argc, char *argv[])
 	my2difftshift_quad(args->gridsize, gridsize_out, (args->num_time_samples)*num_tot_chans, image,image_shift);
 
 
-	fobj = fopen("/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/tmpimage.bin","wb");
+	fobj = fopen("/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/tmpimage.bin","wb");
         fwrite(image_shift, sizeof(cufftDoubleReal), (args->num_time_samples)*num_tot_chans*(args->gridsize)*(args->gridsize), fobj);
         fclose(fobj);
 	/*

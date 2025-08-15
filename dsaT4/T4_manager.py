@@ -457,12 +457,12 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
                     tmptoa = np.array([fcand[4] for fcand in finalcands])[np.argmax(tmpsnrs)]
                     printlog("so far so good",output_file=cutterfile)
                     if tmptoa < init_nsamps//2:
-                        data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                        data_array = (image[np.newaxis,:,:,:init_nsamps,:]).repeat(len(finalcands),axis=0)#.repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
                     else:
-                        data_array = (image[np.newaxis,:,:,-init_nsamps:,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                        data_array = (image[np.newaxis,:,:,-init_nsamps:,:]).repeat(len(finalcands),axis=0)#.repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
                     printlog("still ok",output_file=cutterfile)
                 else:
-                    data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                    data_array = (image[np.newaxis,:,:,:init_nsamps,:]).repeat(len(finalcands),axis=0)#.repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
             else:
                 data_array = (image[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
         else:
@@ -886,11 +886,206 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     return
 
 
-def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock,plotlock):
+def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock,plotlock,lightweight):
     """
     Modelled from dsa110-T3/dsaT3/T3_manager.submit_cand(); Given filename of trigger json,
     create DSACand and submit to scheduler for T3 processing
     """
+
+    if lightweight:
+        printlog("Running lightweight T4 pipeline",output_file=cutterfile)
+
+        #post-processing
+        canddict=dict()
+
+        #peak S/N candidate -- skip clustering
+        finalcandnames,finalcands=cc.sort_cands(fname,searched_image,TOAs,args.SNRthresh,RA_axis,DEC_axis,widthtrials,DM_trials_use,
+                            canddict,
+                            np.abs(image.shape[1]-searched_image.shape[1]),
+                            np.abs(image.shape[0]-searched_image.shape[0]),
+                            cutterfile,0,args.maxcands,args.writeraw,args.completeness,False,args.completeness,args.searchradius)
+        useTOA=args.useTOA and len(finalcands[0])==6
+        if useTOA:
+            candRAidx,candDECidx,candWIDTHidx,candDMidx,candTOA,candSNR=finalcands[0]
+        else:
+            candRAidx,candDECidx,candWIDTHidx,candDMidx,candSNR=finalcands[0]
+
+        
+        #classification -- use 3D classification of full image
+        classify_flag = args.classify or args.classify3D
+        if classify_flag:
+            candpredict, candprob = cc.classify_images_3D(image[np.newaxis,:,:,:,:], args.model_weights3D, verbose=args.verbose)
+            candpredict = candpredict[0]
+            candprob = candprob[0]
+        candibox = int(np.ceil(int(widthtrials[int(candWIDTHidx)])*tsamp_use/baseband_tsamp))
+        candmjd_ = Time(cand_mjd + (candTOA*(tsamp_use)/1000/86400),format='mjd').mjd
+        candisot_ = Time(candmjd_,format='mjd').isot
+        candWIDTH=int(widthtrials[int(candWIDTHidx)])
+        candDM=DM_trials_use[int(candDMidx)]
+        candRA = RA_axis_2D[int(candDECidx),int(candRAidx)]
+        candDEC = DEC_axis_2D[int(candDECidx),int(candRAidx)]
+
+        if (not classify_flag) or candpredict==0:
+            printlog("Good candidate found, writing csv and candplot",output_file=cutterfile)
+            #write final candidates to csv
+            prefix = "NSFRB"
+            with open(table_dir+"nsfrb_lastname.txt","r") as lnamefile:
+                lastname = (lnamefile.read()).strip()
+                if lastname == "None":
+                    lastname = None
+            lnamefile.close()
+            lastname = names.increment_name(cand_mjd,lastname=lastname)
+            candname = trigname = prefix+lastname
+            printlog("done getting lastname:"+lastname,output_file=cutterfile)
+
+            #injection_flag,postinjection_flag = cc.is_injection(cand_isot)
+            if injection_flag:
+                with open(recover_file,"a") as csvfile:
+                    wr = csv.writer(csvfile,delimiter=',')
+                    wr.writerow([cand_isot,DM_trials_use[int(finalcands[0][3])],widthtrials[int(finalcands[0][2])],finalcands[0][-1],(None if not classify_flag else candpredict),(None if not classify_flag else candprob)])
+                csvfile.close()
+
+                if args.remote:
+                    printlog("updating injection files on h24...",output_file=cutterfile)
+                    os.system("scp "+recover_file+" h24.pro.pvt:/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-injections/")
+                    printlog("done",output_file=cutterfile)
+
+            print("done updating recoveries")
+            #make final directory for candidates
+            dirlabel = "candidates"
+            if injection_flag:
+                dirlabel = "injections"
+            elif args.completeness:
+                dirlabel = "completeness"
+
+            if args.remote:
+                os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff+"\"")
+            else:
+                os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff)
+
+
+            if args.remote:
+                final_fname = remote_cand_dir + "/final_candidates_" + cand_isot + ".csv"
+            else:
+                final_fname = final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/final_candidates_" + cand_isot + ".csv"
+
+
+            with open(final_fname,"w") as csvfile:
+                if classify_flag and useTOA:
+                    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index", "TOA", "SNR", "PROB"]
+                    cdr = [lastname,candRAidx,candDECidx,candWIDTHidx,candDMidx,candTOA,candSNR,candprob]
+                elif classify_flag:
+                    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index","SNR", "PROB"]
+                    cdr = [lastname,candRAidx,candDECidx,candWIDTHidx,candDMidx,candSNR,candprob]
+                elif useTOA:
+                    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index", "TOA", "SNR"]
+                    cdr = [lastname,candRAidx,candDECidx,candWIDTHidx,candDMidx,candTOA,candSNR]
+                else:
+                    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index","SNR"]
+                    cdr = [lastname,candRAidx,candDECidx,candWIDTHidx,candDMidx,candSNR]
+
+
+                wr = csv.writer(csvfile,delimiter=',')
+                wr.writerow(hdr)
+                wr.writerow(cdr)
+            csvfile.close()
+
+
+
+            with open(table_dir+"nsfrb_lastname.txt","w") as lnamefile:
+                if lastname is not None:
+                    lnamefile.write(lastname)
+                else:
+                    lnamefile.write("None")
+                lnamefile.close()
+            lnamefile.close()
+            printlog("done naming stuff",output_file=cutterfile)
+
+
+            #make folder for each candidate
+            if args.remote:
+                os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname+"\"")
+                os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/voltages\"")
+            else:
+                os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname)
+                os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/voltages")
+
+
+
+            #make diagnostic plot
+            printlog("making diagnostic plot...",output_file=cutterfile)
+            canddict['names'] = [prefix+lastname]
+            if classify_flag:
+                canddict['probs'] = [candprob]
+                canddict['predicts'] = [candpredict]
+            canddict['ra_idxs'] = [candRAidx]
+            canddict['dec_idxs'] = [candDECidx]
+            canddict['wid_idxs'] = [candWIDTHidx]
+            canddict['dm_idxs'] = [candDMidx]
+            canddict['snrs'] = [candSNR]
+            if useTOA:
+                canddict['TOAs'] = [candTOA]
+
+
+            #dedisperse
+            sourceimg = image[int(candDECidx):int(candDECidx)+1,int(candRAidx):int(candRAidx)+1,:,:]
+            if (candDM != 0 and not imgdiff):
+                printlog("COMPUTING SHIFTS FOR DM="+str(candDM)+"pc/cc "+ str(sourceimg.shape),output_file=cutterfile)
+
+                tshift =np.array(np.abs((4.15)*candDM*((1/np.nanmin(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_ms,dtype=int)
+                sourceimg_dm = np.zeros_like(sourceimg)
+                for j in range(len(freq_axis)):
+                     sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(tshift[j],0)),mode='constant')[:,:,:sourceimg.shape[2]]
+            else:
+                sourceimg_dm = sourceimg
+            timeseries = [np.nanmean(sourceimg_dm,(0,1,3))]
+
+
+            plotlock.acquire()
+            candplot=pl.search_plots_new(canddict,image,cand_isot,RA_axis=RA_axis,DEC_axis=DEC_axis,
+                                            DM_trials=DM_trials_use,widthtrials=widthtrials,
+                                            output_dir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",
+                                            show=False,s100=args.SNRthresh/2,
+                                            injection=False,vmax=candSNR,vmin=args.SNRthresh,
+                                            searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
+                                            dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=dict(),output_file=cutterfile)
+            if args.toslack:
+                printlog("sending plot to slack...",output_file=cutterfile)
+                send_candidate_slack(candplot,filedir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/")
+                #printlog("sending plot to pushover...",output_file=cutterfile)
+                #send_candidate_pushover(candplot,filedir=final_cand_dir + str("injections" if injection_flag else "candidates") + "/" + cand_isot + suff + "/")
+                printlog("done!",output_file=cutterfile)
+                printlog("sending plot to custom webserver 9089...",output_file=cutterfile)
+
+                if not args.remote:
+
+                    if slow:
+                        os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_slow)
+                    elif imgdiff:
+                        os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile_imgdiff)
+                    else:
+                        os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + candplotfile)
+                    printlog("sending notification via x11...",output_file=cutterfile)
+                    os.system("cp " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + candplot + " " + os.environ["NSFRBDIR"] + "/scripts/x11display.png")
+                    os.system("echo " + str((2/3) if imgdiff else 1) + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11size.txt")
+                    os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
+                    printlog("done!",output_file=cutterfile)
+            plotlock.release()
+            if args.trigger:
+                T4trigger = event.create_event(fl)
+            
+            printlog(candplot,output_file=cutterfile)
+            if args.remote:
+                fl = nsfrb_to_json(candisot_,candmjd_,candSNR,candWIDTH,candDM,candRA,candDEC,candname,P=-1,final_cand_dir=remote_cand_dir,slow=slow,imgdiff=imgdiff)
+                os.system("scp "+remote_cand_dir+trigname+".json h24.pro.pvt:"+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/")
+            else:
+                fl = nsfrb_to_json(candisot_,candmjd_,candSNR,candWIDTH,candDM,candRA,candDEC,candname,P=-1,final_cand_dir=final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/",slow=slow,imgdiff=imgdiff)
+                printlog(fl,output_file=cutterfile)
+                printlog("writecands done",output_file=cutterfile)
+
+        else:
+            printlog("Classifier rejected candidates",output_file=cutterfile)
+        return
 
 
     #(1) sort candidates
@@ -1357,7 +1552,7 @@ def main(args):
         #submit task
         #tasktimes.append(time.time())
         tasklist.append(submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
-                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_,plotlock_)) 
+                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_,plotlock_,args.lightweight)) 
         """
         poplist = []
         for ti in range(len(tasklist)):
@@ -1375,8 +1570,9 @@ def main(args):
             time.sleep(args.sleep)
         elif args.testtrigger:
             for i in range(len(tasklist)):
-                res = tasklist[i].result()
-                print(res)
+                if tasklist[i] is not None:
+                    res = tasklist[i].result()
+                    print(res)
             printlog("Sleeping for " + str(60/60) + " minutes",output_file=cutterfile)
             time.sleep(600)
 
@@ -1432,6 +1628,7 @@ if __name__=="__main__":
     parser.add_argument('--searchradius',type=float,help='Max search radius in degrees within which to include candidates,default=inf',default=np.inf)
     parser.add_argument('--remote',action='store_true',help='Run T4 manager on remote server; files are scp to/from h24')
     parser.add_argument('--realtime_inject',action='store_true',help='Realtime injection criteria')
+    parser.add_argument('--lightweight',action='store_true',help='Run lightweight T4 post-processing; excludes clustering and periodicity search')
     args = parser.parse_args()
     
     main(args)

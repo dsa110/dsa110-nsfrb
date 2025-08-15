@@ -105,6 +105,7 @@ candplotfile = cwd + "-candplotserver/lastcandplot.png"
 candplotfile_slow = cwd + "-candplotserver/lastcandplot_slow.png"
 candplotfile_imgdiff = cwd + "-candplotserver/lastcandplot_imgdiff.png"
 candplotupdatefile = cwd + "-candplotserver/cand.txt"
+GPofflinestagefile = cwd+"/offline_fbank/searchstage.txt"
 psr_dir = cwd + "-pulsar/"
 #data files
 coordfile = cwd + "/DSA110_Station_Coordinates.csv" #"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/DSA110_Station_Coordinates.csv"

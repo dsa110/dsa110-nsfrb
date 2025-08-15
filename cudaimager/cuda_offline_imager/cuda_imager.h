@@ -4,15 +4,15 @@
 
 
 //filenames
-char baseUVWcmd[] = "python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/_getbaselines.py --pt_dec ";
+char baseUVWcmd[] = "python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/_getbaselines.py --pt_dec ";
 char cwd[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb";
 char table_dir[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/";
-char ufname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/U.bin";
-char vfname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/V.bin";
-char wfname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/W.bin";
-char bfname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/BLEN.bin";
-char a1fname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/ANT1.bin";
-char a2fname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/ANT2.bin";
+char ufname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/U.bin";
+char vfname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/V.bin";
+char wfname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/W.bin";
+char bfname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/BLEN.bin";
+char a1fname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/ANT1.bin";
+char a2fname[] = "/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/cudaimager/cuda_offline_imager/ANT2.bin";
 
 
 //frequency

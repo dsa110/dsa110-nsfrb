@@ -5,12 +5,12 @@ completeness="false"
 rt="true"
 if [ "$completeness" = "true" ];
 then
-	python T4_manager.py --subimgpix 51 --SNRthresh 6 --useTOA --psfpercentile 70 --cluster --avgcluster --psfcluster --clusteriters 2 --maxProcesses 5 --completeness --searchradius 0.25  #--daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D
+	taskset --cpu-list 21 python T4_manager.py --subimgpix 51 --SNRthresh 6 --useTOA --psfpercentile 70 --cluster --avgcluster --psfcluster --clusteriters 2 --maxProcesses 5 --completeness --searchradius 0.25  #--daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D
 else
 	if [ "$rt" = "true" ];
 	then
-		python T4_manager.py --subimgpix 175 --gridsize 175 --SNRthresh 4 --useTOA --psfpercentile 70 --maxcands 10 --classify3D --cluster --avgcluster --psfcluster --clusteriters 2 --maxcand --classcut --maxProcesses 5 --daskaddress "tcp://10.42.0.249:8786" --remote --toslack --realtime_inject "$@" #--cluster --psfcluster --classify3D
+		taskset --cpu-list 21 python T4_manager.py --subimgpix 175 --gridsize 175 --SNRthresh 4 --useTOA --psfpercentile 70 --maxcands 10 --classify3D --cluster --avgcluster --psfcluster --clusteriters 2 --maxcand --classcut --maxProcesses 5 --toslack --realtime_inject --lightweight "$@" #--cluster --psfcluster --classify3D
 	else
-		python T4_manager.py --subimgpix 175 --gridsize 175 --SNRthresh 3 --useTOA --psfpercentile 70 --maxcands 10 --classify3D --cluster --avgcluster --psfcluster --clusteriters 2 --maxcand --classcut --maxProcesses 5 --periods 10 20 30 40 --FFA --FFASNRthresh 0 --FFAbin 5 --FFAgulps 25 --FFAbinchans --toslack --remote --daskaddress "tcp://10.42.0.249:8786" # --daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D
+		taskset --cpu-list 21 python T4_manager.py --subimgpix 175 --gridsize 175 --SNRthresh 3 --useTOA --psfpercentile 70 --maxcands 10 --classify3D --cluster --avgcluster --psfcluster --clusteriters 2 --maxcand --classcut --maxProcesses 5 --periods 10 20 30 40 --FFA --FFASNRthresh 0 --FFAbin 5 --FFAgulps 25 --FFAbinchans --toslack --remote --daskaddress "tcp://10.42.0.249:8786" # --daskaddress "tcp://10.42.0.228:8786" "$@" #--cluster --psfcluster --classify3D
 	fi
 fi

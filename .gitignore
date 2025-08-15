@@ -197,3 +197,6 @@ cudaimager/*nsys-rep
 realtime/rt_c_imager/*.bin
 realtime/rt_c_imager/*log.txt
 cudaimager/cuda_offline_imager/*.bin
+offline_fbank/*.bin
+offline_fbank/*log.txt
+cudaimager/*.bin

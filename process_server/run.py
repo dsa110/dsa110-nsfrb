@@ -485,6 +485,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     """
     #if QSETUP and not (future.result()[1] is None):
     #    QQUEUE.put(future.result()[1])
+    slowlock.acquire()
     if dask_enabled:
         fresult = future
     else:
@@ -493,7 +494,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     imgdiff = fresult[2]
     if etcd_enabled and not (fresult[0] is None):
         printlog("adding " + fresult[0] + "to etcd queue",output_file=processfile)
-        if slow:
+        if slow and (timestepisot in slow_fullimg_dict.keys()):
             ETCD.put_dict(
                     ETCDKEY,
                     {
@@ -504,7 +505,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
                         "img_search_shape":slow_fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
-        elif imgdiff:
+        elif imgdiff and (timestepisot in imgdiff_fullimg_dict.keys()):
             ETCD.put_dict(
                     ETCDKEY,
                     {
@@ -515,7 +516,7 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
                         "img_search_shape":imgdiff_fullimg_dict[timestepisot].image_tesseract_searched.shape
                     }
                 )
-        else:
+        elif timestepisot in fullimg_dict.keys():
             ETCD.put_dict(
                     ETCDKEY,
                     {
@@ -541,7 +542,6 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     printlog("************************",output_file=processfile)
 
     #delete from array
-    slowlock.acquire()
     try:
         if slow:
             printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
@@ -817,7 +817,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,PyTorchDedispersion,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,nchans,executor,slow,imgdiff,etcd_enabled,dask_enabled,
-                                    attachmode,completeness,slowlock,searchlock,forfeit,rtastrocal,testsinglenode,TXsubimg,TXsubint,TXnints,dtype):
+                                    attachmode,completeness,slowlock,searchlock,forfeit,rtastrocal,testsinglenode,TXsubimg,TXsubint,TXnints,dtype,lockdev):
     """
     This task sets up the given socket to accept connections, reads
     data when a client connects, and submits a search task
@@ -959,12 +959,12 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,resources={'GPU': 1,'MEMORY':10e6})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,forfeit,lockdev,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,forfeit,lockdev)
             stask.add_done_callback(lambda future: future_callback_attach(future,SNRthresh,img_id_isot,RA_axis_idx,
                                                                                             str(k) if slowsearch_now else None,
                                                                                             RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:] if slowsearch_now else None,
@@ -983,12 +983,12 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,lockdev,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,lockdev)
             stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
             ret_tasks.append(stask)
             printlog("DID IT SUBMIT?",output_file=processfile)
@@ -1012,12 +1012,12 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 sstask = executor.submit(sl.search_task,searchlock,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,lockdev,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 sstask = executor.submit(sl.search_task,searchlock,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,lockdev)
                     
             sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
             #task_list.append(sstask)
@@ -1041,12 +1041,12 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 ssstask = executor.submit(sl.search_task,searchlock,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,resources={'GPU': 1,'MEMORY':10e6})
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,lockdev,resources={'GPU': 1,'MEMORY':10e6})
             else:
                 ssstask = executor.submit(sl.search_task,searchlock,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
-                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit)
+                                    SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,lockdev)
 
             ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
             #task_list.append(sstask)
@@ -1195,7 +1195,8 @@ def main(args):
 
         if args.completeness:
             #append (normal)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                #sl.default_PSF_gpu_0,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                #sl.corr_shifts_all_gpu_0,
@@ -1205,7 +1206,8 @@ def main(args):
                                                #sl.full_boxcar_filter_gpu_0,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+            if args.lockdev==-1 or args.lockdev==1:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                #sl.default_PSF_gpu_1,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                #sl.corr_shifts_all_gpu_1,
@@ -1217,7 +1219,8 @@ def main(args):
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
 
             #no append (slow)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                #sl.default_PSF_gpu_0,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                #sl.corr_shifts_all_gpu_0,
@@ -1227,7 +1230,8 @@ def main(args):
                                                #sl.full_boxcar_filter_gpu_0,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+            if args.lockdev==-1 or args.lockdev==1:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                #sl.default_PSF_gpu_1,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                #sl.corr_shifts_all_gpu_1,
@@ -1240,7 +1244,8 @@ def main(args):
 
 
             #append (slow)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                #sl.default_PSF_gpu_0,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                #sl.corr_shifts_all_gpu_0,
@@ -1250,7 +1255,8 @@ def main(args):
                                                #sl.full_boxcar_filter_gpu_0,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+            if args.lockdev==-1 or args.lockdev==1:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                #sl.default_PSF_gpu_1,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                #sl.corr_shifts_all_gpu_1,
@@ -1263,7 +1269,8 @@ def main(args):
 
 
             #no append, image differencing
-            jax_funcs.img_diff_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.img_diff_jit_no_append_completeness(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[0]),
                                                #jax_funcs.PSF_1,#
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[0]),
@@ -1281,7 +1288,8 @@ def main(args):
 
         else:
             #append (normal)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                #sl.default_PSF_gpu_0,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                #sl.corr_shifts_all_gpu_0,
@@ -1291,7 +1299,8 @@ def main(args):
                                                #sl.full_boxcar_filter_gpu_0,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+            if args.lockdev==-1 or args.lockdev==1:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,maxshift+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                #sl.default_PSF_gpu_1,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                #sl.corr_shifts_all_gpu_1,
@@ -1303,7 +1312,8 @@ def main(args):
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[1]),past_noise_N=1,noiseth=args.noiseth)
         
             #no append (slow)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                #sl.default_PSF_gpu_0,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                #sl.corr_shifts_all_gpu_0,
@@ -1313,7 +1323,8 @@ def main(args):
                                                #sl.full_boxcar_filter_gpu_0,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+            if args.lockdev==-1 or args.lockdev==1:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                #sl.default_PSF_gpu_1,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                #sl.corr_shifts_all_gpu_1,
@@ -1326,7 +1337,8 @@ def main(args):
 
 
             #append (slow)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[0]),
                                                #sl.default_PSF_gpu_0,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                #sl.corr_shifts_all_gpu_0,
@@ -1336,7 +1348,8 @@ def main(args):
                                                #sl.full_boxcar_filter_gpu_0,
                                                jax.device_put(sl.full_boxcar_filter,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
+            if args.lockdev==-1 or args.lockdev==1:
+                jax_funcs.matched_filter_dedisp_snr_fft_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,sl.maxshift_slow+args.nsamps,args.nchans)),dtype=np.float32),jax.devices()[1]),
                                                #sl.default_PSF_gpu_1,
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                #sl.corr_shifts_all_gpu_1,
@@ -1349,12 +1362,14 @@ def main(args):
 
         
             #no append, image differencing
-            jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[0]),
+            if args.lockdev==-1 or args.lockdev==0:
+                jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[0]),
                                                #jax_funcs.PSF_1,#
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[0]),
                                                jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[0]),
                                                jax.device_put(np.array(np.random.normal(size=len(sl.widthtrials)),dtype=config.noise_data_type),jax.devices()[0]),past_noise_N=1,noiseth=args.noiseth)
-            jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[1]),
+            if args.lockdev==-1 or args.lockdev==1:
+                jax_funcs.img_diff_jit_no_append(jax.device_put(np.array(np.random.normal(size=(args.gridsize,args.gridsize-sl.default_cutoff,args.imgdiffgulps,1)),dtype=np.float32),jax.devices()[1]),
                                                #jax_funcs.PSF_2,#
                                                jax.device_put(np.array(np.random.normal(size=(args.kernelsize,args.kernelsize if args.gridsize > args.kernelsize else args.kernelsize-sl.default_cutoff,1,1)),dtype=np.float32),jax.devices()[1]),
                                                jax.device_put(sl.full_boxcar_filter_imgdiff,jax.devices()[1]),
@@ -1584,7 +1599,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev)#TXsubimg,TXsubint,args.TXnints)
                     else:
                         #multiport_task_list.append(
                         executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
@@ -1593,7 +1608,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev)#TXsubimg,TXsubint,args.TXnints)
                     #multiport_num_list.append(ii)
                 else:
                     #packet_dict["dropped"] += 1
@@ -1670,7 +1685,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype=dtype)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev)#TXsubimg,TXsubint,args.TXnints)
                 else:
                     executor.submit(multiport_task,-1,str(k),fullimg_dict[k].img_id_mjd,fullimg_dict[k].img_uv_diag,fullimg_dict[k].img_dec,fullimg_dict[k].shape[:-1],None,
                                     ii,args.testh23,
@@ -1678,7 +1693,7 @@ def main(args):
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype=dtype)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev)#TXsubimg,TXsubint,args.TXnints)
                     #multiport_num_list.append(ii)    
         slowlock_.release()
         """
@@ -1761,6 +1776,7 @@ if __name__=="__main__":
     parser.add_argument('--TXnints',type=int,help='Number of sub-integrations for TXmode subint',default=5)
     parser.add_argument('--protocol',choices=['tcp','udp'],default='tcp',help='protocol to use to send data to process server,default=tcp')
     parser.add_argument('--udpchunksize',type=int,help='Data chunksize in bytes,default=25886',default=25886)
+    parser.add_argument('--lockdev',type=int,help='Locks all search tasks to a single GPU, 0 or 1',default=-1)
     args = parser.parse_args()
 
     """

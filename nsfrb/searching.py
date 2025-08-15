@@ -1496,7 +1496,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
                    DM_trials=DM_trials,widthtrials=widthtrials,tsamp=tsamp,SNRthresh=SNRthresh,plot=False,
                    off=10,PSF=default_PSF,offpnoise=0.3,verbose=False,output_file="",noiseth=0.9,canddict=dict(),usefft=False,
                    multithreading=False,nrows=1,ncols=1,space_filter=True,
-                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False,imgdiff=False,attach=dict(),completeness=False,forfeit=False):
+                   threadDM=False,samenoise=False,cuda=False,exportmaps=False,kernel_size=len(RA_axis),append_frame=True,DMbatches=1,SNRbatches=1,usejax=True,RA_cutoff=default_cutoff,applySNthresh=True,slow=False,imgdiff=False,attach=dict(),completeness=False,forfeit=False,lockdev=-1,ofb_lastframe=None,ofb_lastframeslow=None,ofb_currentnoise=None):
     """
     This function takes an image cube of shape npixels x npixels x nchannels x ntimes and runs a dedispersion search that returns
     a list of candidates' DM, pulse width, RA, declination, and time of arrival(?)
@@ -1549,8 +1549,18 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     t1 = time.time()
     nwidths,ndms = len(widthtrials),len(DM_trials)
     #get data from previous timeframe
-    global last_frame_slow
-    global last_frame
+    if ofb_lastframeslow is None:
+        global last_frame_slow
+    else:
+        last_frame_slow = ofb_lastframeslow
+    if ofb_lastframe is None: 
+        global last_frame
+    else:
+        last_frame = ofb_lastframe
+    if ofb_currentnoise is None:
+        global current_noise
+    else:
+        current_noise = ofb_currentnoise
     if append_frame:
         #if slow:
         #    global last_frame_slow
@@ -1711,11 +1721,14 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
     #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
-    global jaxdev
-    usedev = ((jaxdev + 1)%2 if ((not forfeit) and (slow or imgdiff)) else jaxdev)
-    if forfeit or (not (slow or imgdiff)):
-        jaxdev += 1
-        jaxdev %= 2
+    if lockdev>=0:
+        usedev = lockdev
+    else:
+        global jaxdev
+        usedev = ((jaxdev + 1)%2 if ((not forfeit) and (slow or imgdiff)) else jaxdev)
+        if forfeit or (not (slow or imgdiff)):
+            jaxdev += 1
+            jaxdev %= 2
     print("DM TRIALS AND WIDTH TRIALS:" + str(corr_shifts_all.shape) + str(tdelays_frac.shape) + str(full_boxcar_filter.shape),file=fout)
     print(corr_shifts_all,file=fout)
     print(tdelays_frac,file=fout)
@@ -1837,7 +1850,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
 #CONTEXTSETUP = False
-def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False):
+def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False,lockdev=-1):
     printlog("starting search task>>[TIME]"+str(time.time()),output_file=processfile)
     searchlock.acquire()
     global current_noise
@@ -1933,7 +1946,7 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
 
     #print("starting process " + str(img_id) + "...")
     if cuda:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,attach=attach,completeness=completeness,forfeit=forfeit) 
+        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,attach=attach,completeness=completeness,forfeit=forfeit,lockdev=lockdev) 
 
     else:
         TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,completeness=completeness,forfeit=forfeit)
