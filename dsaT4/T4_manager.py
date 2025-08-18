@@ -457,12 +457,12 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
                     tmptoa = np.array([fcand[4] for fcand in finalcands])[np.argmax(tmpsnrs)]
                     printlog("so far so good",output_file=cutterfile)
                     if tmptoa < init_nsamps//2:
-                        data_array = (image[np.newaxis,:,:,:init_nsamps,:]).repeat(len(finalcands),axis=0)#.repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                        data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
                     else:
-                        data_array = (image[np.newaxis,:,:,-init_nsamps:,:]).repeat(len(finalcands),axis=0)#.repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                        data_array = (image[np.newaxis,:,:,-init_nsamps:,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
                     printlog("still ok",output_file=cutterfile)
                 else:
-                    data_array = (image[np.newaxis,:,:,:init_nsamps,:]).repeat(len(finalcands),axis=0)#.repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                    data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
             else:
                 data_array = (image[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
         else:
@@ -914,7 +914,17 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
         #classification -- use 3D classification of full image
         classify_flag = args.classify or args.classify3D
         if classify_flag:
-            candpredict, candprob = cc.classify_images_3D(image[np.newaxis,:,:,:,:], args.model_weights3D, verbose=args.verbose)
+            if imgdiff:
+                if useTOA:
+                    if candTOA < init_nsamps//2:
+                        data_array = image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)
+                    else:
+                        data_array = image[np.newaxis,:,:,-init_nsamps:,:].repeat(nchans,axis=4)
+                else:
+                    data_array = image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)
+            else:
+                data_array = image[np.newaxis,:,:,:,:]
+            candpredict, candprob = cc.classify_images_3D(data_array, args.model_weights3D, verbose=args.verbose)
             candpredict = candpredict[0]
             candprob = candprob[0]
         candibox = int(np.ceil(int(widthtrials[int(candWIDTHidx)])*tsamp_use/baseband_tsamp))
@@ -1046,7 +1056,7 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",
                                             show=False,s100=args.SNRthresh/2,
-                                            injection=False,vmax=candSNR,vmin=args.SNRthresh,
+                                            injection=injection_flag,vmax=candSNR,vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=dict(),output_file=cutterfile)
             if args.toslack:

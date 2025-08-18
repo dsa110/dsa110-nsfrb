@@ -375,14 +375,14 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
         #plt.axhspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.4)
         plt.text(stat_noise[1]/np.sqrt(nchans),3,"Measured (" + str(np.around(stat_noise[0]*tsamp_ms*nsamps/1000/3600,2)) + "-hour\nmedian): "+str(np.around(Smin))+" mJy",fontsize=15)
         """
-        plt.axvline(stat_noise["image_noise_median_full"],color='purple',linestyle='--')
-        plt.axvspan(stat_noise["image_noise_median_full"]-stat_noise["image_noise_error_full"],stat_noise["image_noise_median_full"]+stat_noise["image_noise_error_full"],color='purple',alpha=0.25)
+        #plt.axvline(stat_noise["image_noise_median_full"],color='purple',linestyle='--')
+        #plt.axvspan(stat_noise["image_noise_median_full"]-stat_noise["image_noise_error_full"],stat_noise["image_noise_median_full"]+stat_noise["image_noise_error_full"],color='purple',alpha=0.25)
         plt.axvline(stat_noise_search,color='black',linestyle='--')
         #plt.axvline(stat_noise_search*np.sqrt(stat_noise_count),color='black',linestyle=':')
         #plt.axvline(stat_noise_search*stat_noise_count,color='black',linestyle=':')
 
         
-        plt.text(stat_noise["image_noise_median_full"],1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+        #plt.text(stat_noise["image_noise_median_full"],1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
         plt.text(stat_noise_search,2,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
         print("Estimated sensitivity:",Smin_search,"mJy")
     #estimate and plot theoretical sensitivity
@@ -445,9 +445,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
     if not badsoln and not np.isnan(Smin_search):
-        plt.axvline(Smin,color='purple',linestyle='--')
-        plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
-        plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+        #plt.axvline(Smin,color='purple',linestyle='--')
+        #plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
+        #plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
 
         plt.axvline(Smin_search,color='black',linestyle='--')
         plt.axvspan(Smin_search-Smin_loerr_search,Smin_search+Smin_uperr_search,color='black',alpha=0.25)
@@ -489,9 +489,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
     if not badsoln and not np.isnan(Smin_search):
-        plt.axvline(Smin,color='purple',linestyle='--')
-        plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
-        plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+        #plt.axvline(Smin,color='purple',linestyle='--')
+        #plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
+        #plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
 
         plt.axvline(Smin_search,color='black',linestyle='--')
         plt.axvspan(Smin_search-Smin_loerr_search,Smin_search+Smin_uperr_search,color='black',alpha=0.25)
@@ -532,9 +532,9 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     #plt.ylim(np.nanmin(allnvssfluxes)/10,np.nanmax(allnvssfluxes)*1.2)
 
     if not badsoln and not np.isnan(Smin_search):
-        plt.axvline(Smin,color='purple',linestyle='--')
-        plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
-        plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+        #plt.axvline(Smin,color='purple',linestyle='--')
+        #plt.axvspan(Smin-Smin_loerr,Smin+Smin_uperr,color='purple',alpha=0.25)
+        #plt.text(Smin,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
 
         plt.axvline(Smin_search,color='black',linestyle='--')
         plt.axvspan(Smin_search-Smin_loerr_search,Smin_search+Smin_uperr_search,color='black',alpha=0.25)
@@ -579,8 +579,8 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     if not badsoln and not np.isnan(Smin_search):
         plt.axvline(1,color='black',linestyle='--')
         plt.text(1,2/NSFRBsens,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
-        plt.axvline(Smin/Smin_search,color='purple',linestyle='--')
-        plt.text(Smin/Smin_search,1/NSFRBsens,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+        #plt.axvline(Smin/Smin_search,color='purple',linestyle='--')
+        #plt.text(Smin/Smin_search,1/NSFRBsens,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
     plt.axhline(1,color='blue',linestyle='--')
     plt.text(pfunc(5)/Smin_search,1,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     plt.yscale("log")
@@ -616,8 +616,8 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     if not badsoln and not np.isnan(Smin_search):
         plt.axvline(1,color='black',linestyle='--')
         plt.text(1,2,"Searched: " + str(np.around(Smin_search))+" mJy\n("+str(np.around(stat_noise_time,2))+" hr)",fontsize=15)
-        plt.axvline(Smin/Smin_search,color='purple',linestyle='--')
-        plt.text(Smin/Smin_search,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
+        #plt.axvline(Smin/Smin_search,color='purple',linestyle='--')
+        #plt.text(Smin/Smin_search,1,"Imaged: " + str(np.around(Smin))+" mJy\n("+str(np.around(stat_noise_time_im,2))+" hr)",fontsize=15)
     plt.axhline(NSFRBsens,color='blue',linestyle='--')
     plt.text(pfunc(10)/Smin_search,NSFRBsens,"Theoretical: "+str(np.around(NSFRBsens,2))+" mJy",fontsize=15)
     plt.yscale("log")
@@ -1048,7 +1048,7 @@ def astrocal(args):
             found=False
             for f in fs:
                 fisot=os.path.basename(f)[6:-4]
-                if 86400*(np.abs(Time(fisot,format='isot').mjd-besttime[i].mjd))<=(ngulps*config.T/1000):
+                if 86400*(np.abs(Time(fisot,format='isot').mjd-besttime[i].mjd))<=(args.ngulps*config.T/1000):
                     if bright_names[i] not in bright_fnamedict.keys():
                         bright_fnames.append(f)
                         bright_fnamedict[bright_names[i]] = []
@@ -1191,12 +1191,14 @@ def astrocal(args):
             continue
     
         if rtcalflag:
+            dec=search_dec
             mjd = besttime[bright_idx].mjd
             fnum = 0
             print("RT MODE Loading ",bright_fnames[bright_idx],"; ",besttime[bright_idx].mjd,"; ",Time(besttime[bright_idx].mjd,format='mjd').isot)
             ngulps = len(bright_fnamedict[bright_names[bright_idx]])
             gulps = np.arange(ngulps,dtype=int)
-            full_img = np.load(bright_fnames[bright_idx])
+            print(ngulps,gulps)
+            full_img = np.nanmean(np.load(bright_fnames[bright_idx]),(2,3))[:,:,np.newaxis]
             bmin=20
             test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
             pt_dec = search_dec*np.pi/180.
@@ -1212,9 +1214,24 @@ def astrocal(args):
 
 
             ra_grid_2D,dec_grid_2D,elev = uv_to_pix(mjd + (gulps[0]*tsamp_ms*gulpsize/86400/1000),image_size,DEC=search_dec,two_dim=True,manual=False,uv_diag=uv_diag)
+            if ngulps >= 5:
+                racutoff_ = 0
+                print("Running linear fit for RA cutoff")
+            else:
+                racutoff_ = get_RA_cutoff(dec,tsamp_ms*gulpsize,np.abs(ra_grid_2D[decidx,1]-ra_grid_2D[decidx,0]))
+                print("Estimating RA cutoff:",racutoff_,"pixels")
+            if ngulps >= 5:
+                full_img = np.zeros((image_size,image_size,ngulps))
+                RAs_for_fit = []
+                DECs_for_fit = []
+            else:
+                full_img = np.zeros((image_size,image_size,ngulps))
             g = 0
             for gulp in gulps:
-                full_img[:,:,gulp] = np.load(bright_fnamedict[bright_names[bright_idx]][gulp])
+                print("Estimating RA cutoff:",racutoff_,"pixels")
+                print(bright_fnamedict[bright_names[bright_idx]][gulp])
+                copydir = str(os.path.dirname(bright_fnamedict[bright_names[bright_idx]][gulp]))+"/"
+                full_img[:,:,gulp] = np.nanmean(np.load(bright_fnamedict[bright_names[bright_idx]][gulp]),(2,3))
                 ra_grid_2D_g = ra_grid_2D
                 dec_grid_2D_g = dec_grid_2D
                 closepix = np.unravel_index(np.argmin(bright_coords[bright_idx].separation(SkyCoord(ra_grid_2D_g*u.deg,
@@ -1258,9 +1275,11 @@ def astrocal(args):
                 print("Semiminor axis:",(0.5*popt[3]*u.deg).to(u.arcmin))
                 print("Angle (counterclockwise from vertical):",(-popt[4]*u.rad).to(u.deg))
                 print("Errors:",np.sqrt(pcov[np.arange(pcov.shape[0]),np.arange(pcov.shape[1])]))
-                RAs_for_fit.append(bright_pixcoord.ra.value)
-                DECs_for_fit.append(bright_pixcoord.dec.value)
-
+                if ngulps >= 5:
+                    RAs_for_fit.append(bright_pixcoord.ra.value)
+                    DECs_for_fit.append(bright_pixcoord.dec.value)
+                g+=1
+            dat = -1
         else:
             print("Reading data for "+ bright_names[bright_idx])
             fnum = int(bright_fnames[bright_idx])
@@ -1436,8 +1455,9 @@ def astrocal(args):
                     print("Semiminor axis:",(0.5*popt[3]*u.deg).to(u.arcmin))
                     print("Angle (counterclockwise from vertical):",(-popt[4]*u.rad).to(u.deg))
                     print("Errors:",np.sqrt(pcov[np.arange(pcov.shape[0]),np.arange(pcov.shape[1])]))
-                    RAs_for_fit.append(bright_pixcoord.ra.value)
-                    DECs_for_fit.append(bright_pixcoord.dec.value)
+                    if ngulps >= 5:
+                        RAs_for_fit.append(bright_pixcoord.ra.value)
+                        DECs_for_fit.append(bright_pixcoord.dec.value)
                 g += 1
 
         full_img /= (gulpsize*ngulps)
