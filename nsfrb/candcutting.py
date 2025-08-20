@@ -58,6 +58,90 @@ from nsfrb.config import freq_axis
 def PSF_dist_metric(p1,p2,PSFfunc):
     return PSFfunc(p2[0]-p1[0],p2[1]-p2[1])*euclidean_distances(p1,p2)
 
+
+#revised PSF clustering --> for each unique width, DM, check that thresholded binary image resembles the PSF
+def psf_reduction(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
+    printlog(str(len(cands)) + " candidates",output_file=output_file)
+
+    #make list for each param
+    raidxs = []
+    decidxs = []
+    dmidxs = []
+    widthidxs = []
+    snridxs = []
+    TOAflag = (len(cands[0]) == 6) and useTOA
+    if TOAflag:
+        printlog("Using TOA info for clustering",output_file=output_file)
+        TOAs = []
+    for i in range(len(cands)):
+        raidxs.append(cands[i][0])
+        decidxs.append(cands[i][1])
+        dmidxs.append(cands[i][3])
+        widthidxs.append(cands[i][2])
+        if TOAflag:
+            TOAs.append(cands[i][4])
+        snridxs.append(cands[i][-1])
+    raidxs = np.array(raidxs)
+    decidxs = np.array(decidxs)
+    dmidxs = np.array(dmidxs)
+    widthidxs = np.array(widthidxs)
+    snridxs = np.array(snridxs)
+    if TOAflag:
+        TOAs = np.array(TOAs)
+
+    printlog("Done creating arrays of test data",output_file=output_file)
+    if TOAflag:
+        test_data=np.array([raidxs,decidxs,dmidxs,widthidxs,TOAs]).transpose()
+    else:
+        test_data=np.array([raidxs,decidxs,dmidxs,widthidxs]).transpose()
+
+    #create psf binary map
+    PSFbin = PSF>np.nanpercentile(PSF,perc)
+    printlog("Done creating binary map",output_file=output_file)
+
+    widthidxs_unique = np.unique(widthidxs)
+    dmidxs_unique = np.unique(dmidxs)
+    
+    totsnrs = []
+    peakcand_idxs = []
+    for w_i in widthidxs_unique:
+        for d_i in dmidxs_unique:
+
+            #select peak S/N cand in this width/dm bin
+            cand_idxs = np.arange(len(cands),dtype=int)[np.logical_and(widthidxs==w_i,dmidxs==d_i)]
+            for peak_idx in cand_idxs:
+                #peak_idx = np.argmax(snridxs[cand_idxs])
+
+                #sum together the SNRs 
+                cand_PSFbin = PSFbin[int(PSF.shape[0]//2)+np.array(decidxs[cand_idxs]-decidxs[peak_idx],int),int(PSF.shape[1]//2)+np.array(raidxs[cand_idxs]-raidxs[peak_idx],int)]
+                cand_PSFval = PSF[int(PSF.shape[0]//2)+np.array(decidxs[cand_idxs]-decidxs[peak_idx],int),int(PSF.shape[1]//2)+np.array(raidxs[cand_idxs]-raidxs[peak_idx],int)]
+                if peak_idx == cand_idxs[0]:
+                    totsnrs.append(np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nansum(cand_PSFbin*cand_PSFval))
+                    peakcand_idxs.append(peak_idx)
+                elif (np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nansum(cand_PSFbin*cand_PSFval)) > totsnrs[-1]:
+                    totsnrs[-1] = np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nansum(cand_PSFbin*cand_PSFval)
+                    peakcand_idxs[-1] = peak_idx
+    print(peakcand_idxs)
+    print(totsnrs)
+    #we now have the most PSF-like candidate for each width and dm trial. Assuming there's only 1 candidate per pointing, just take the max cand
+    finalcand_idx = peakcand_idxs[np.argmax(totsnrs)]
+    finalcand_raidxs = raidxs[finalcand_idx:finalcand_idx+1]
+    finalcand_decidxs = decidxs[finalcand_idx:finalcand_idx+1]
+    finalcand_dmidxs = dmidxs[finalcand_idx:finalcand_idx+1]
+    finalcand_widthidxs = widthidxs[finalcand_idx:finalcand_idx+1]
+    finalcand_snridxs = snridxs[finalcand_idx:finalcand_idx+1]
+
+    print("Best candidate (out of ",len(cands),": DMidx=",finalcand_dmidxs[0],", Widx=",finalcand_widthidxs[0])
+    if TOAflag:
+        finalcand_TOAs = TOAs[finalcand_idx:finalcand_idx+1]
+        finalcands = [[finalcand_raidxs[i],finalcand_decidxs[i],finalcand_widthidxs[i],finalcand_dmidxs[i],finalcand_TOAs[i],finalcand_snridxs[i]] for i in range(len(finalcand_raidxs))]
+        return finalcands,finalcand_raidxs,finalcand_decidxs,finalcand_dmidxs,finalcand_widthidxs,finalcand_snridxs,finalcand_TOAs
+    else:
+        finalcands = [[finalcand_raidxs[i],finalcand_decidxs[i],finalcand_widthidxs[i],finalcand_dmidxs[i],finalcand_snridxs[i]] for i in range(len(finalcand_raidxs))]
+        return finalcands,finalcand_raidxs,finalcand_decidxs,finalcand_dmidxs,finalcand_widthidxs,finalcand_snridxs
+
+
+
 #initial spatial clustering based on psf shape
 def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     printlog(str(len(cands)) + " candidates",output_file=output_file)
@@ -441,9 +525,9 @@ def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps,realtime
                     if row[0] == isot or ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= (tsamp*nsamps/1000)):
                         injection = True
                         break
-                    elif (tsamp<134*5) and ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= 2*(tsamp*nsamps/1000)):
-                        postinjection = False
-                        break
+                    #elif (tsamp<134*5) and ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= 2*(tsamp*nsamps/1000)):
+                    #    postinjection = False
+                    #    break
                 else:
                     if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
                         injection = True

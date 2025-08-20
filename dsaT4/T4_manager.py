@@ -143,34 +143,40 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
     printlog("PRE-CLUSTERING THERE ARE " + str(len(finalcands)) + " CANDIDATES",output_file=cutterfile)
     finalidxs = np.arange(len(finalcands),dtype=int)
     useTOA=args.useTOA and len(finalcands[0])==6
-    #start clustering
-    printlog("clustering with HDBSCAN...",output_file=cutterfile)
-    #clustering with hdbscan
-    """
-    if args.psfcluster:
-        PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*image.shape[0])+1,dec_obs,nsamps=nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
-        PSF = PSF.mean((2,3))
-        printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
+    
+    if args.psfreduceonly:
+        printlog("psf-based reduction to single candidate...",output_file=cutterfile)
+        finalcands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = cc.psf_reduction(finalcands,PSF,useTOA=useTOA,perc=args.psfpercentile)
+        printlog("done",output_file=cutterfile)
     else:
-        PSF = None
-    """
-    for i in range(args.clusteriters):
-        mincluster = int(np.max([args.mincluster//(i+1),2]))
-
-        printlog("Cluster iteration " + str(i+1) + "/" + str(args.clusteriters) + " with min cluster size " + str(mincluster),output_file=cutterfile)
-        if useTOA:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = cc.hdbscan_cluster(finalcands,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),useTOA=True,perc=args.psfpercentile,avgcluster=args.avgcluster)
+        #startclustering
+        printlog("clustering with HDBSCAN...",output_file=cutterfile)
+        #clustering with hdbscan
+        """
+        if args.psfcluster:
+            PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*image.shape[0])+1,dec_obs,nsamps=nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+            PSF = PSF.mean((2,3))
+            printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
         else:
-            classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = cc.hdbscan_cluster(finalcands,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),perc=args.psfpercentile,avgcluster=args.avgcluster)
-        if np.all(np.array(classes)==-1):
-            printlog("Minimum number of clusters reached",output_file=cutterfile)
-            break
-        else:
-            printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
-            printlog(classes,output_file=cutterfile)
-            printlog(cluster_cands,output_file=cutterfile)
+            PSF = None
+        """
+        for i in range(args.clusteriters):
+            mincluster = int(np.max([args.mincluster//(i+1),2]))
 
-            finalcands = cluster_cands
+            printlog("Cluster iteration " + str(i+1) + "/" + str(args.clusteriters) + " with min cluster size " + str(mincluster),output_file=cutterfile)
+            if useTOA:
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = cc.hdbscan_cluster(finalcands,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),useTOA=True,perc=args.psfpercentile,avgcluster=args.avgcluster)
+            else:
+                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = cc.hdbscan_cluster(finalcands,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),perc=args.psfpercentile,avgcluster=args.avgcluster)
+            if np.all(np.array(classes)==-1):
+                printlog("Minimum number of clusters reached",output_file=cutterfile)
+                break
+            else:
+                printlog("done, made " + str(len(cluster_cands)) + " clusters",output_file=cutterfile)
+                printlog(classes,output_file=cutterfile)
+                printlog(cluster_cands,output_file=cutterfile)
+
+                finalcands = cluster_cands
 
     finalidxs = np.arange(len(finalcands),dtype=int)
 
@@ -788,7 +794,7 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",
                                             show=False,s100=args.SNRthresh/2,
-                                            injection=injection_flag,vmax=np.nanmax(searched_image),vmin=args.SNRthresh,
+                                            injection=injection_flag,vmax=args.SNRthresh*5,vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=finalpcands,output_file=cutterfile)
     printlog(candplot,output_file=cutterfile)
@@ -886,7 +892,7 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     return
 
 
-def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock,plotlock,lightweight):
+def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock,plotlock,lightweight,psfreduceonly):
     """
     Modelled from dsa110-T3/dsaT3/T3_manager.submit_cand(); Given filename of trigger json,
     create DSACand and submit to scheduler for T3 processing
@@ -905,10 +911,18 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
                             np.abs(image.shape[0]-searched_image.shape[0]),
                             cutterfile,0,args.maxcands,args.writeraw,args.completeness,False,args.completeness,args.searchradius)
         useTOA=args.useTOA and len(finalcands[0])==6
+
+        if useTOA:
+            finalcands,fcandRAidx,fcandDECidx,fcandWIDTHidx,fcandDMidx,fcandTOA,fcandSNR = cc.psf_reduction(finalcands,PSF,useTOA=useTOA,perc=args.psfpercentile)
+        else:
+            finalcands,fcandRAidx,fcandDECidx,fcandWIDTHidx,fcandDMidx,fcandSNR = cc.psf_reduction(finalcands,PSF,useTOA=useTOA,perc=args.psfpercentile)
+        finalcandnames = np.arange(len(finalcands))
+
         if useTOA:
             candRAidx,candDECidx,candWIDTHidx,candDMidx,candTOA,candSNR=finalcands[0]
         else:
             candRAidx,candDECidx,candWIDTHidx,candDMidx,candSNR=finalcands[0]
+
 
         
         #classification -- use 3D classification of full image
@@ -1042,7 +1056,7 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
             if (candDM != 0 and not imgdiff):
                 printlog("COMPUTING SHIFTS FOR DM="+str(candDM)+"pc/cc "+ str(sourceimg.shape),output_file=cutterfile)
 
-                tshift =np.array(np.abs((4.15)*candDM*((1/np.nanmin(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_ms,dtype=int)
+                tshift =np.array(np.abs((4.15)*candDM*((1/np.nanmin(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
                 sourceimg_dm = np.zeros_like(sourceimg)
                 for j in range(len(freq_axis)):
                      sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(tshift[j],0)),mode='constant')[:,:,:sourceimg.shape[2]]
@@ -1459,10 +1473,10 @@ def main(args):
             img_shape = tuple(QQUEUE.get())
             img_search_shape = tuple(QQUEUE.get())
             #assert(np.abs((dec_obs*np.pi/180) - pt_dec)<1e-2)
-            if np.abs((dec_obs*np.pi/180) - pt_dec)>1e-2:
+            if np.abs((dec_obs*np.pi/180) - pt_dec)>1e-2 or (img_shape[0]*2 + 1) != PSF.shape[0]:
                 pt_dec = (dec_obs*np.pi/180)
                 if args.psfcluster:
-                    PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*args.gridsize)+1,pt_dec*180/np.pi,nsamps=init_nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+                    PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*img_shape[0])+1,pt_dec*180/np.pi,nsamps=init_nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
                     PSF = PSF.mean((2,3))
                     printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
                 else:
@@ -1475,6 +1489,14 @@ def main(args):
             dec_obs = 71.6
             img_shape = (301,301)
             img_search_shape = (301,301)
+            if np.abs((dec_obs*np.pi/180) - pt_dec)>1e-2 or (img_shape[0]*2 + 1) != PSF.shape[0]:
+                pt_dec = (dec_obs*np.pi/180)
+                if args.psfcluster:
+                    PSF,PSF_params = scPSF.manage_PSF(scPSF.make_PSF_dict(),(2*img_shape[0])+1,pt_dec*180/np.pi,nsamps=init_nsamps)#scPSF.generate_PSF_images(psf_dir,np.nanmean(DEC_axis),image.shape[0],True,nsamps).mean((2,3))
+                    PSF = PSF.mean((2,3))
+                    printlog("PSF shape for clustering:" + str(PSF.shape),output_file=cutterfile)
+                else:
+                    PSF = None
             printlog("Generating injected cand")
         slow = 'slow' in fname
         imgdiff = 'imgdiff' in fname
@@ -1562,7 +1584,8 @@ def main(args):
         #submit task
         #tasktimes.append(time.time())
         tasklist.append(submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
-                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_,plotlock_,args.lightweight)) 
+                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_,plotlock_,
+                        args.lightweight,args.psfreduceonly)) 
         """
         poplist = []
         for ti in range(len(tasklist)):
@@ -1597,6 +1620,7 @@ if __name__=="__main__":
     parser.add_argument('--plotclusters',action='store_true',help='Plot intermediate plots from HDBSCAN clustering')
     parser.add_argument('--mincluster',type=int,help='Minimum number of candidates required to be made a separate HDBSCAN cluster,default=5',default=5)
     parser.add_argument('--minsamples',type=int,help='Minimum number of candidates to be core point,default=2',default=2)
+    parser.add_argument('--psfreduceonly',action='store_true',help='use PSF-based reduction (low latency, low memory) instead of full hdbscan clustering')
     parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
     parser.add_argument('--classify3D',action='store_true', help='Classify candidates with a machine learning convolutional neural network with time dependence')

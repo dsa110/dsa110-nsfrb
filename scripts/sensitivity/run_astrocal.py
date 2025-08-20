@@ -122,6 +122,8 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     else:
         ex_table =  []
     print("sources to exclude:",ex_table)
+    print((np.array(ex_times)[np.array(ex_table)=='ALL']).astype(float))
+    print("times to exclude:",Time((np.array(ex_times)[np.array(ex_table)=='ALL']).astype(float),format='mjd').isot)
 
     #add new sources to table (or update if already there)
     print(bright_nvssnames)
@@ -168,6 +170,13 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
     print(ex_table,ex_times)
     for k in tab[arraykey].keys():
         for kk in tab[arraykey][k].keys():
+            print(str(kk)[-27:-4])
+            if 'mjd' in tab[arraykey][k][kk].keys() and int(tab[arraykey][k][kk]['mjd']) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int):
+                print("mjd=",tab[arraykey][k][kk]['mjd'],"excluded")
+                continue
+            elif '.npy' in str(kk) and int(Time(str(kk)[-27:-4],format='isot').mjd) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int):
+                print("mjd=",Time(str(kk)[-27:-4],format='isot').mjd,"excluded")
+                continue
             if ((str(k) not in ex_table) or (str(k) in ex_table and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))))):
                 #if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' in tab[arraykey][k][kk].keys()) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))):
                 
@@ -670,6 +679,8 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
     else:
         ex_table =  []
     print("sources to exclude:",ex_table)
+    print((np.array(ex_times)[np.array(ex_table)=='ALL']).astype(float))
+    print("times to exclude:",Time((np.array(ex_times)[np.array(ex_table)=='ALL']).astype(float),format='mjd').isot)
 
     #add new sources to table (or update if already there)
     print(bright_nvssnames)
@@ -710,6 +721,13 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         target_obstime = Time(targetMJD,format='mjd')
     for k in tab[arraykey].keys():
         for kk in tab[arraykey][k].keys():
+            print(str(kk)[-27:-4])
+            if 'mjd' in tab[arraykey][k][kk].keys() and int(tab[arraykey][k][kk]['mjd']) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int):
+                print("mjd=",tab[arraykey][k][kk]['mjd'],"excluded")
+                continue
+            elif '.npy' in str(kk) and int(Time(str(kk)[-27:-4],format='isot').mjd) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int):
+                print("mjd=",Time(str(kk)[-27:-4],format='isot').mjd,"excluded")
+                continue
             if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))) and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])

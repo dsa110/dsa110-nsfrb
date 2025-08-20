@@ -1542,7 +1542,10 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
     if not usingGPU:
         print("GPU unavailable")
         return None
-    print("Using device: " + str(device),file=fout)
+    if lockdev>=0:
+        print("Locking device: " + str(jax.devices()[lockdev]),file=fout)
+    else:
+        print("Using device: " + str(device),file=fout)
 
     #REVISED IMPLEMENTATION: DO DEDISP AND BOXCAR TOGETHER SO WE DON'T HAVE TO KEEP MOVING TO/FROM GPU
     total_noise=None
@@ -1721,6 +1724,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
     #jaxdev = random.choice(np.arange(len(jax.devices()),dtype=int))
+    print("LOCKDEVICE??? -->"+str(lockdev),file=fout)
     if lockdev>=0:
         usedev = lockdev
     else:
@@ -1739,6 +1743,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
         while jax_inuse[usedev]:
             continue
     jax_inuse[usedev] = True
+    print("JAX INUSE --> "+str(jax_inuse),file=fout)
     print(str("slow" if slow else "") + " JAX DEVICE",usedev,"AVAILABLE",file=fout)
     
     if completeness:

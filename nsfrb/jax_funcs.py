@@ -16,6 +16,67 @@ PSF_2 = jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.ar
 """
 
 @jax.jit
+def realtime_robust_image_jit_lowmem(weighted_V, visibility_grid, t_indices, i_indices,j_indices,tidx):
+    """
+    This version only takes pre-computed pixel resolution and grid indices to speed-up processing
+    Process visibility data and create a dirty image using FFT and Briggs weighting.
+
+    Parameters:
+    chunk_V: Chunk of visibility data.
+    u, v: u,v coordinates.
+    visibility_grid: time x dec x ra
+    image_size: Size of the output image.
+    robust: Robust parameter for Briggs weighting.
+
+    Returns:
+    The resulting 'dirty' image.
+    """
+
+    print("step 1")
+    visibility_grid = visibility_grid.at[t_indices,
+                                         i_indices,
+                                         j_indices].add(weighted_V.flatten())
+
+    #updated sign convention
+    #return visibility_grid,tidx #jax.device_put(jnp.real(visibility_grid.transpose((1,2,0))),jax.devices("cpu")[0]),tidx
+    return jax.device_put(jnp.real(jnp.fft.ifftshift(jnp.fft.ifft2(jnp.fft.ifftshift(visibility_grid,axes=(1,2)),axes=(1,2)),axes=(1,2))).transpose(1,2,0),jax.devices('cpu')[0]), tidx
+
+
+@jax.jit
+def realtime_robust_image_jit(weighted_V, visibility_grid, i_indices,j_indices,i_conj_indices,j_conj_indices,tidx):
+    """
+    This version only takes pre-computed pixel resolution and grid indices to speed-up processing
+    Process visibility data and create a dirty image using FFT and Briggs weighting.
+
+    Parameters:
+    chunk_V: Chunk of visibility data.
+    u, v: u,v coordinates.
+    visibility_grid: time x dec x ra
+    image_size: Size of the output image.
+    robust: Robust parameter for Briggs weighting.
+
+    Returns:
+    The resulting 'dirty' image.
+    """
+
+    print("step 1")
+    visibility_grid = visibility_grid.at[jnp.repeat(jnp.arange(weighted_V.shape[0],dtype=int),weighted_V.shape[1]),
+                                         jnp.tile(i_indices,weighted_V.shape[0]),
+                                         jnp.tile(j_indices,weighted_V.shape[0])].add(weighted_V.flatten())
+    print("step 2")
+    visibility_grid = visibility_grid.at[jnp.repeat(jnp.arange(weighted_V.shape[0],dtype=int),weighted_V.shape[1]),
+                                         jnp.tile(i_conj_indices,weighted_V.shape[0]),
+                                         jnp.tile(j_conj_indices,weighted_V.shape[0])].add(jnp.conj(weighted_V.flatten()))
+
+    #updated sign convention
+    #return visibility_grid,tidx #jax.device_put(jnp.real(visibility_grid.transpose((1,2,0))),jax.devices("cpu")[0]),tidx
+    return jax.device_put(jnp.real(jnp.fft.ifftshift(jnp.fft.ifft2(jnp.fft.ifftshift(visibility_grid,axes=(1,2)),axes=(1,2)),axes=(1,2))).transpose(1,2,0),jax.devices('cpu')[0]), tidx
+
+
+
+
+
+@jax.jit
 def matched_filter_dedisp_snr_fft_jit_completeness(image_tesseract_input,PSFimg,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth):
     """
     This function replaces pytorch with JAX so that JIT computation can be invoked
