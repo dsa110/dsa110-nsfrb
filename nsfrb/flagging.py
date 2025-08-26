@@ -20,7 +20,7 @@ import os
 from scipy.optimize import curve_fit
 from nsfrb.config import noise_dir
 
-def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf,flagged_chans=np.array([]),flagged_baseline_idxs=np.array([]),verbose=False,returnidxs=False,dat_run_means=[None]):
+def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf,flagged_chans=np.array([]),flagged_baseline_idxs=np.array([]),verbose=False,returnidxs=False,dat_run_means=[]):
     """
     Removes visibilities containing flagged antennas and below minimum 
     baseline length
@@ -92,6 +92,7 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
         else:
             dat[:,:,flagged_chans,:] = np.nan
     if len(flag_channel_templates) > 0:
+        if len(dat_run_means) != len(flag_channel_templates): dat_run_means = [np.nan]*len(flag_channel_templates)
         fct_i=0
         for fct in flag_channel_templates:
             flag_channels,dat_run_mean = fct(dat,dat_run_means[fct_i])
@@ -100,7 +101,7 @@ def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, fla
             if len(flag_channels)>0:
                 dat[:,:,flag_channels,:] = np.nan
             if verbose: print("Flagging channels:",flag_channels,"using template",fct)
-    if np.all(np.array(dat_run_means)== None):
+    if len(dat_run_means)==0 or (np.sum(dat_run_means) is not None and np.all(np.isnan(np.array(dat_run_means)))):
         if returnidxs:
             return dat, bname, blen, UVW, antenna_order,unflagged_vis
         return dat, bname, blen, UVW, antenna_order
@@ -132,7 +133,7 @@ def fct_BPASSBURST(dat,dat_run_mean,noise_dir=noise_dir,weights=[1,1]):
     dat_mean = np.nanmedian(np.nanmean(np.abs(dat_test),0))#np.nanmean(np.nanmedian(np.abs(np.nanmean(dat,axis=3)),0))
 
     #get the current running mean
-    if dat_run_mean is None:
+    if (dat_run_mean is not None) and np.isnan(dat_run_mean):
         dat_run_mean = np.load(noise_dir+"running_vis_mean_burst.npy",allow_pickle=True)
 
     #create new mean
@@ -140,16 +141,16 @@ def fct_BPASSBURST(dat,dat_run_mean,noise_dir=noise_dir,weights=[1,1]):
         dat_new_mean = (dat_mean*weights[0] + dat_run_mean*weights[1])/np.sum(weights)
     else:
         dat_new_mean = dat_mean
-    if dat_run_mean is None:
+    if (dat_run_mean is not None) and np.isnan(dat_run_mean):
         np.save(noise_dir+"running_vis_mean_burst.npy",dat_new_mean)
     
 
     #compare to threshold
     flag_channels= np.arange(dat.shape[2])[np.nanmean(np.abs(dat_test),0)>10*dat_mean]
-    if dat_run_mean is None:
+    if (dat_run_mean is not None) and np.isnan(dat_run_mean):
         return flag_channels
     else:
-        return flag_channels,dat_run_mean
+        return flag_channels,dat_new_mean
 
 def fct_BPASS(dat,dat_run_mean,noise_dir=noise_dir,weights=[1,1]):
     """
@@ -164,7 +165,7 @@ def fct_BPASS(dat,dat_run_mean,noise_dir=noise_dir,weights=[1,1]):
     dat_mean = np.nanmedian(np.nanmean(np.abs(dat_test),0))
 
     #get the current running mean
-    if dat_run_mean is None:
+    if (dat_run_mean is not None) and np.isnan(dat_run_mean):
         dat_run_mean = np.load(noise_dir+"running_vis_mean.npy",allow_pickle=True)
 
     #create new mean
@@ -172,15 +173,15 @@ def fct_BPASS(dat,dat_run_mean,noise_dir=noise_dir,weights=[1,1]):
         dat_new_mean = (dat_mean*weights[0] + dat_run_mean*weights[1])/np.sum(weights)
     else:
         dat_new_mean = dat_mean
-    if dat_run_mean is None:
+    if (dat_run_mean is not None) and np.isnan(dat_run_mean):
         np.save(noise_dir+"running_vis_mean.npy",dat_new_mean)
 
     #compare to threshold
     flag_channels= np.arange(dat.shape[2])[np.nanmean(np.abs(dat_test),0)>5*dat_mean]
-    if dat_run_mean is None:
+    if (dat_run_mean is not None) and np.isnan(dat_run_mean):
         return flag_channels
     else:
-        return flag_channels,dat_run_mean
+        return flag_channels,dat_new_mean
 
 def fct_SWAVE(dat,dat_run_mean,RMS_THRESHOLD=1.0,STD_THRESHOLD=0.2,SLOPE_FIT=945.4546757820716):
     """

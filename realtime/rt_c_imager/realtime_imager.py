@@ -377,7 +377,7 @@ def main(args):
         fcts.append(fct_FRCBAND)
     if args.flagBPASSBURST:
         fcts.append(fct_BPASSBURST)
-    fct_dat_run_mean = [0.0]*len(fcts)
+    fct_dat_run_mean = [None]*len(fcts)
     if len(fcts)>0 and args.verbose: printlog("Bandpass flagging enabled",output_file=rtlog_file)
     while True:
 
