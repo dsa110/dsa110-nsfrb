@@ -32,3 +32,5 @@ scp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/NSFRB_s
 scp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/NSFRB_astrocal.json lxd110h20.pro.pvt:/home/ubuntu/proj/websrv/webPLOTS/nsfrbcal/
 scp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/NSFRB_excludecal.json lxd110h20.pro.pvt:/home/ubuntu/proj/websrv/webPLOTS/nsfrbcal/
 scp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/NSFRB_noisestats.json lxd110h20.pro.pvt:/home/ubuntu/proj/websrv/webPLOTS/nsfrbcal/
+scp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/rt_speccal_timestamps_$caldate*.json lxd110h20.pro.pvt:/home/ubuntu/proj/websrv/webPLOTS/nsfrbcal/
+scp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-tables/rt_astrocal_timestamps_$caldate*.json lxd110h20.pro.pvt:/home/ubuntu/proj/websrv/webPLOTS/nsfrbcal/

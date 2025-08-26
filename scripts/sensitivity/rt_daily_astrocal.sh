@@ -1,6 +1,6 @@
 ####exact
-sleep 32400
-cpunum=21
+sleep 52200
+cpunum=20
 reftime=$(date +%Y-%m-%dT)00:00:00
 echo $reftime
 

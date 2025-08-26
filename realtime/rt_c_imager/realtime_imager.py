@@ -242,6 +242,8 @@ def main(args):
     if len(args.rterr)>0:
         os.system("> "+ args.rterr)
     #verbose = args.verbose
+    rtlog_file = args.rtlog
+    rterr_file = args.rterr
 
     if args.inject:
         inject_count = args.inject_interval - args.inject_delay
@@ -258,6 +260,12 @@ def main(args):
     #initialize UVWs...note we MUST restart when declination is changed
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples))
     test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+    try:
+        assert(np.abs(args.dec - (pt_dec*180/np.pi))<0.1)
+    except:
+        printlog("ALERT: CUSTOMDEC DISAGREES WITH ETCD POINTING DEC, DEFAULTING TO ETCD --> " + str(args.dec) + " | " + str(pt_dec*180/np.pi),output_file=rterr_file)
+        args.dec=pt_dec*180/np.pi
+    Dec = pt_dec*180/np.pi
     fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1))
     
 
@@ -309,15 +317,15 @@ def main(args):
 
 
     #set the dec, sb, and mjd
-    Dec = args.dec
+    #Dec = args.dec
     sb = args.sb
     """
     f = open(args.mjdfile,"r")
     mjd_init = float(f.read())
     f.close()
     """
-    rtlog_file = args.rtlog
-    rterr_file = args.rterr
+    #rtlog_file = args.rtlog
+    #rterr_file = args.rterr
     #if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
     startuperr = False
 
@@ -357,6 +365,20 @@ def main(args):
 
     mjd_init = -1
     inject_count=0
+
+
+    #flagging
+    fcts = []
+    if args.flagSWAVE:
+        fcts.append(fct_SWAVE)
+    if args.flagBPASS:
+        fcts.append(fct_BPASS)
+    if args.flagFRCBAND:
+        fcts.append(fct_FRCBAND)
+    if args.flagBPASSBURST:
+        fcts.append(fct_BPASSBURST)
+    fct_dat_run_mean = [0.0,0.0]
+    if len(fcts)>0: printlog("Bandpass flagging enabled",output_file=rtlog_file)
     while True:
 
 
@@ -400,6 +422,16 @@ def main(args):
             dat[:] = np.nan
         fchans = np.array(args.flagchans,dtype=int)[np.logical_and(np.array(args.flagchans)>=args.sb*args.nchans_per_node,np.array(args.flagchans)<args.sb*args.nchans_per_node)]-(args.sb*args.nchans_per_node)
         dat[:,:,fchans,:]=np.nan
+
+
+        #bandpass flagging
+        
+        if len(fcts)>0:
+            dat, bname_f, blen_f, UVW_f, antenna_order_f,fct_dat_run_mean,keep_f = flag_vis(dat, bname, blen, UVW, antenna_order, [], 0, [], flag_channel_templates = fcts, flagged_chans=[], flagged_baseline_idxs=[], returnidxs=True,dat_run_means=fct_dat_run_mean)
+            printlog("Bandpass flagging successful: "+str(fct_dat_run_mean),output_file=rtlog_file)
+
+
+
         #if args.verbose: printlog("DATA [POST-FLAGGING]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
         
         #np.save(img_dir + "2025-02-16T20:36:48.010_rtvis.npy",dat)

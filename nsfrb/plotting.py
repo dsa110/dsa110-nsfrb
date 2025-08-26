@@ -221,14 +221,14 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
         
         if uv_diag is not None and dec_obs is not None:
             print("making scatter plot...",ra_grid_2D.shape,len(RA_axis))
-            ax.scatter(ra_grid_2D[:,-searched_image.shape[1]:].flatten(),dec_grid_2D[:,-searched_image.shape[1]:].flatten(),c=(searched_image.max((2,3))).flatten(),cmap='binary',vmin=vmin/2,vmax=vmax,alpha=0.1)
+            ax.scatter(ra_grid_2D[:,-searched_image.shape[1]:].flatten(),dec_grid_2D[:,-searched_image.shape[1]:].flatten(),c=(searched_image.max((2,3))).flatten(),cmap='binary',vmin=vmin/2,vmax=vmax,alpha=0.75)
             print("done")
         else:
             ax.imshow((searched_image.max((2,3)))[:,::-1],cmap='binary',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)],vmin=vmin/2,vmax=vmax)
         #ax.contour(searched_image.max((2,3))[:,::-1],cmap='jet',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmax(DEC_axis),np.nanmin(DEC_axis)],linewidths=4,levels=5)
     else:
         if uv_diag is not None:
-            ax.scatter(ra_grid_2D[:,-len(RA_axis):].flatten(),dec_grid_2D[:,-len(RA_axis):].flatten(),c=(img.mean((2,3))).flatten(),cmap='pink_r',alpha=0.1)
+            ax.scatter(ra_grid_2D[:,-len(RA_axis):].flatten(),dec_grid_2D[:,-len(RA_axis):].flatten(),c=(img.mean((2,3))).flatten(),cmap='pink_r',alpha=0.75)
         else:
             ax.imshow((img.mean((2,3)))[:,::-1],cmap='pink_r',aspect='auto',extent=[np.nanmin(RA_axis),np.nanmax(RA_axis),np.nanmin(DEC_axis),np.nanmax(DEC_axis)])
     print("done with new stuff")

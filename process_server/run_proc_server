@@ -8,7 +8,7 @@ echo $multiports
 if [ "$rt" = "true" ]; 
 then
 	echo "realtime process server active"
-	taskset --cpu-list $cpunums python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 4 --noiseth 3 --nsamps 25 --gridsize 175 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --maxProcesses 80 --protocol tcp --initframes --lockdev 1 #--savesearch
+	taskset --cpu-list $cpunums python run.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 4 --noiseth 3 --nsamps 25 --gridsize 175 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --maxProcesses 80 --protocol tcp --initframes --lockdev 1 # --savesearch
 else
 	echo "offline process server active"
 	if [ "$completeness" = "true" ];

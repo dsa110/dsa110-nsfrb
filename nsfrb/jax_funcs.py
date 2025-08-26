@@ -15,6 +15,84 @@ PSF_1 = jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.ar
 PSF_2 = jax.device_put(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(PSF[:,:,0:1,:].sum(3,keepdims=True))),dtype=np.float32),jax.devices()[1])
 """
 
+#note need to repeat as [np.newaxis,np.newaxis,np.newaxis,np.newaxis,:,:].repeat(nwidth,0).repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(nDM,3)
+
+@jax.jit
+def ffa_slow_jit(image_tesseract_point,snrs,corr_shifts_all,tdelays_frac,boxcar,noise,past_noise_N,noiseth,gidxwidth,gidxdec,gidxra,gidxdm,gidxsamp,gidxP,trial_p_folds_factor):#trial_p_samp_idxs,trial_p_folds_factor): 
+
+    """
+    DM=0 FFA brute force implementation
+    """
+
+    #matched filter
+    truensamps = boxcar.shape[3]
+
+    gridsize_DEC,gridsize_RA = image_tesseract_point.shape[:2]
+    nsamps = image_tesseract_point.shape[-2]
+
+
+    #median subtraction
+    """print(truensamps,image_tesseract_input.shape)
+    image_tesseract_point1 = image_tesseract_input[:,:,:nsamps-truensamps,:] - jnp.nanmedian(image_tesseract_input[:,:,:nsamps-truensamps,:],axis=2,keepdims=True)#(jnp.zeros_like(image_tesseract_input[:,:,:nsamps-truensamps,:] if nsamps==truensamps else jnp.nanmedian(image_tesseract_input[:,:,:nsamps-truensamps,:],axis=2,keepdims=True)))
+    image_tesseract_point2 = image_tesseract_input[:,:,nsamps-truensamps:,:] - jnp.nanmedian(image_tesseract_input[:,:,nsamps-truensamps:,:],axis=2,keepdims=True)
+    print(image_tesseract_point1.shape,image_tesseract_point2.shape)
+    image_tesseract_point = jnp.concatenate([image_tesseract_point1,image_tesseract_point2],axis=2)"""
+
+    #dedispersion
+    print("HOWDY" + str(nsamps) + "  " + str(truensamps) + " " + str(image_tesseract_point.shape))
+    nsamps = image_tesseract_point.shape[-2]
+    nDM = tdelays_frac.shape[3]
+
+    image_tesseract_filtered_dm = ((((jnp.take_along_axis(image_tesseract_point[:,:,:,jnp.newaxis,:].repeat(nDM,axis=3).repeat(2,axis=4),indices=corr_shifts_all,axis=2))*tdelays_frac).sum(4))[:,:,-truensamps:,:])
+
+    del tdelays_frac
+    del corr_shifts_all
+
+    #boxcar filter
+    image_tesseract_binned = jnp.nan_to_num(jnp.real(jnp.fft.ifftshift(
+                                            jnp.fft.ifft(
+                                                jnp.fft.fft(image_tesseract_filtered_dm,
+                                                            n=image_tesseract_filtered_dm.shape[2],
+                                                            axis=2,norm='backward')*jnp.fft.fft(boxcar,
+                                                            n=image_tesseract_filtered_dm.shape[2],axis=3,norm='backward'),
+                                                        n=image_tesseract_filtered_dm.shape[2],
+                                                        axis=3,norm='backward'),axes=3)).transpose((0,1,2,4,3)),
+                                            nan=0,posinf=0,neginf=0)##output of shape nwidths x gridsize_DEC x gridsize_RA x ndms x nsamps
+
+    del image_tesseract_filtered_dm
+    print("FROM JAX:",image_tesseract_binned)
+    mask = ((image_tesseract_binned - jnp.nanmedian(image_tesseract_binned,axis=4,keepdims=True) < noiseth*noise[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(nDM,3).repeat(truensamps,4)))*jnp.logical_not(jnp.logical_or(jnp.isinf(image_tesseract_binned),jnp.isnan(image_tesseract_binned))) #not nan or inf
+    mask = mask.at[:].set((mask + ((noise==0)[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis].repeat(gridsize_DEC,1).repeat(gridsize_RA,2).repeat(nDM,3).repeat(truensamps,4)))>0)
+    #compute noise and update
+    noise = noise.at[:].set(((jnp.array(noise*past_noise_N)) + ((jnp.nanmedian(
+                                            jnp.nanmedian(
+                                                jnp.nanstd(
+                                                    image_tesseract_binned[:,:,:,0,:],axis=3,where=mask[:,:,:,0,:]
+                                                ),axis=1
+                                            ),axis=1
+                                        ))))/(past_noise_N+1))
+    print("FROM JAX:",noise)
+
+    #compute SNR
+    image_tesseract_binned = image_tesseract_binned.at[:].add(-jnp.nanmedian(image_tesseract_binned*mask,axis=4,keepdims=True))
+    image_tesseract_binned = image_tesseract_binned.at[:].divide(noise[:,np.newaxis,np.newaxis,np.newaxis,np.newaxis].repeat(nDM,3))
+    image_tesseract_binned = image_tesseract_binned.at[:].apply(jnp.abs)
+    image_tesseract_binned = image_tesseract_binned.at[:].apply(jnp.sqrt)
+
+
+    #folding
+    print(image_tesseract_binned.shape,trial_p_folds_factor.shape)
+    nP = trial_p_folds_factor.shape[-1]#trial_p_samp_idxs.shape[-1]
+    #snrs = jnp.repeat(jnp.zeros_like(image_tesseract_binned)[:,:,:,:,:,np.newaxis],nP,5)
+    print(snrs.shape,snrs.flatten().shape,gidxP.shape)
+    #print(snrs.shape,trial_p_samp_idxs.shape,trial_p_folds_factor.shape)
+    #snrs = snrs.at[:,:,:,:,trial_p_samp_idxs.flatten(),:].add(image_tesseract_binned[:,:,:,:,:,np.newaxis].repeat(nP,5).flatten())
+    #snrs = snrs.at[gidxwidth,gidxdec,gidxra,gidxdm,gidxsamp,gidxP].add(jnp.repeat(jnp.repeat(image_tesseract_binned[:,:,:,:,:,np.newaxis],nP,5),nP,4).flatten())
+    snrs = snrs.at[gidxwidth,gidxdec,gidxra,gidxdm,gidxsamp,gidxP].add(jnp.repeat(image_tesseract_binned[:,:,:,:,:,np.newaxis],nP,5).flatten())
+
+    return jax.device_put(jnp.nanmax(snrs/trial_p_folds_factor,4).transpose((1,2,0,3,4)),jax.devices('cpu')[0]), jax.device_put(noise,jax.devices("cpu")[0]),jax.device_put(image_tesseract_binned,jax.devices('cpu')[0]),jax.device_put(snrs,jax.devices('cpu')[0])
+
+
 @jax.jit
 def realtime_robust_image_jit_lowmem(weighted_V, visibility_grid, t_indices, i_indices,j_indices,tidx):
     """

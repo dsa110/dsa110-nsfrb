@@ -177,7 +177,7 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             elif '.npy' in str(kk) and int(Time(str(kk)[-27:-4],format='isot').mjd) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int):
                 print("mjd=",Time(str(kk)[-27:-4],format='isot').mjd,"excluded")
                 continue
-            if ((str(k) not in ex_table) or (str(k) in ex_table and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))))):
+            if ((str(k) not in ex_table) or (str(k) in ex_table and ('.npy' not in str(kk)) and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and ('.npy' not in str(kk)) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))))):
                 #if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' in tab[arraykey][k][kk].keys()) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))):
                 
                 #if a target is given, check that sources are within range
@@ -728,7 +728,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
             elif '.npy' in str(kk) and int(Time(str(kk)[-27:-4],format='isot').mjd) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int):
                 print("mjd=",Time(str(kk)[-27:-4],format='isot').mjd,"excluded")
                 continue
-            if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))) and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
+            if (str(k) not in ex_table) or (str(k) in ex_table and ('.npy' not in str(kk)) and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table and ('.npy' not in str(kk)) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))) and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th:
                 if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
                     allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
@@ -785,7 +785,15 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         if len(allgulpoffsets)>=2:
             def slopefit(x,m):
                 return m*x
-            popt_gulp,TMP = curve_fit(slopefit,allgulpoffset_times,allgulpoffsets,sigma=allgulpresids)                                        
+
+
+            #adding improved outlier rejection
+            init_slope_estimate = (allgulpoffsets[np.nanmax(allgulpoffset_times)]-allgulpoffsets[np.nanmin(allgulpoffset_times)])/(np.nanmax(allgulpoffset_times)-np.nanmin(allgulpoffset_times))
+            offsets = np.abs(np.array(allgulpoffsets) - (init_slope_estimate*np.array(allgulpoffset_times)))
+            norm_weights = offsets#(offsets/np.nanmax(offsets))*(allgulpresids/np.nanmax(allgulpresids))
+            print(norm_weights)
+
+            popt_gulp,TMP = curve_fit(slopefit,allgulpoffset_times,allgulpoffsets,sigma=norm_weights)#allgulpresids)                                        
             #popt_gulp = np.polyfit(allgulpoffset_times,allgulpoffsets,1,w=1/allgulpresids)
             popt_gulp = (float(popt_gulp),0)
             print("Gulp offset curve:",popt_gulp)
@@ -809,7 +817,16 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         if len(allgulpoffsets)>=2:
             def slopefit(x,m):
                 return m*x
-            popt_gulp,TMP = curve_fit(slopefit,allgulpoffset_times,allgulpoffsets,sigma=allgulpresids)
+            #adding improved outlier rejection
+            init_slope_estimate = (allgulpoffsets[np.argmax(allgulpoffset_times)]-allgulpoffsets[np.argmin(allgulpoffset_times)])/(np.nanmax(allgulpoffset_times)-np.nanmin(allgulpoffset_times))
+            offsets = np.abs(np.array(allgulpoffsets) - (init_slope_estimate*np.array(allgulpoffset_times)))
+            offsets[offsets==0] = np.min(offsets[offsets!=0])
+            print(offsets)
+            print(allgulpresids)
+            norm_weights = (offsets/np.nanmax(offsets))*(allgulpresids/np.nanmax(allgulpresids))
+            print(norm_weights)
+
+            popt_gulp,TMP = curve_fit(slopefit,allgulpoffset_times,allgulpoffsets,sigma=norm_weights)#allgulpresids)       
             #popt_gulp = np.polyfit(allgulpoffset_times,allgulpoffsets,1,w=1/allgulpresids)
             popt_gulp = (float(popt_gulp),0)
             print("Gulp offset curve:",popt_gulp)
@@ -1734,6 +1751,7 @@ def speccal(args):
         search_dec = get_declination(elev).value
     else:
         search_dec = args.search_dec
+    print("-->SEARCH DECLINATION:"+str(search_dec))
     #read sources to exclude
     exclude_table = str("" if args.includeall else table_dir + "/NSFRB_excludecal.json")
     if len(exclude_table) > 0:

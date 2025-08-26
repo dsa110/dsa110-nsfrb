@@ -243,6 +243,8 @@ def main(args):
     if len(args.rterr)>0:
         os.system("> "+ args.rterr)
     #verbose = args.verbose
+    rtlog_file = args.rtlog
+    rterr_file = args.rterr
 
     if args.inject:
         inject_count = args.inject_interval - args.inject_delay
@@ -259,6 +261,12 @@ def main(args):
     #initialize UVWs...note we MUST restart when declination is changed
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples),dtype=np.float64)
     test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+    try:
+        assert(np.abs(args.dec - (pt_dec*180/np.pi))<0.1)
+    except:
+        printlog("ALERT: CUSTOMDEC DISAGREES WITH ETCD POINTING DEC, DEFAULTING TO ETCD --> " + str(args.dec) + " | " + str(pt_dec*180/np.pi),output_file=rterr_file)
+        args.dec=pt_dec*180/np.pi
+    Dec = pt_dec*180/np.pi
     fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1))
     
 
@@ -341,15 +349,15 @@ def main(args):
 
 
     #set the dec, sb, and mjd
-    Dec = args.dec
+    #Dec = args.dec
     sb = args.sb
     """
     f = open(args.mjdfile,"r")
     mjd_init = float(f.read())
     f.close()
     """
-    rtlog_file = args.rtlog
-    rterr_file = args.rterr
+    #rtlog_file = args.rtlog
+    #rterr_file = args.rterr
     #if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
     startuperr = False
 

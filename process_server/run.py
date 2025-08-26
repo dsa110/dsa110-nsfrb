@@ -194,7 +194,7 @@ class fullimg:
             for i in range(self.imgdiffgulps):
                 for j in range(self.bin_imgdiff):
                     self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*config.nsamps*(self.bin_imgdiff*i + j)/1000/86400))
-                self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=j*config.tsamp*config.nsamps*i/1000))
+                self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=self.bin_imgdiff*config.tsamp*config.nsamps*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.imgdiffstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)

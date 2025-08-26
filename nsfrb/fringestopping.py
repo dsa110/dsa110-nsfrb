@@ -62,3 +62,38 @@ def make_fstable(my_pt_dec,iNode,bfweights_path = "/home/ubuntu/proj/dsa110-shel
         fout.close()
         print(f"written {caltable_path}")
     return output_table
+
+
+
+### --> create function to re-fringestop for slow and image differenceing search (only use with offline system b/c it requires re-imaging...
+from nsfrb.config import table_dir
+def refstop_SLOW(bin_slow,Dec,fobs_GHz=None,iNode=0,fname="",vis_path=table_dir+"/tmp_visModel.npz"):
+
+    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None,nsfrb=False)
+    pt_dec = Dec*np.pi/180
+    if fobs_GHz is None:
+        ff = 1.53-np.arange(8192)*0.25/8192
+        fobs = ff[1024+(iNode)*384:1024+(iNode+1)*384]
+    else:
+        fobs = fobs_GHz
+
+    # calc uvw
+    bname, blen, uvw = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+
+    # make ORIGINAL vis model
+    vis_model = pu.load_visibility_model(vis_path,blen, 25, fobs, pt_dec, tsamp, antenna_order, outrigger_delays, bname, refmjd)
+    vis_model = vis_model[0,:,:,:,0] # now [time, baseline, channel]
+
+    # make NEW vis model
+    vis_model_slow = pu.load_visibility_model(vis_path,blen, 25*bin_slow, fobs, pt_dec, tsamp, antenna_order, outrigger_delays, bname, refmjd)
+    vis_model_slow = vis_model_slow[0,:,:,:,0] # now [time, baseline, channel]
+
+    #combine
+    refstop_table = np.zeros_like(vis_model_slow)
+    for i in range(bin_slow):
+        refstop_table[i*25:(i+1)*25,:,:] = vis_model/vis_model_slow[i*25:(i+1)*25,:,:]
+    refstop_table /= np.abs(refstop_table)
+
+    if len(fname)>0:
+        np.save(fname,refstop_table)
+    return refstop_table

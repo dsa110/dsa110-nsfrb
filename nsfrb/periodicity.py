@@ -17,6 +17,17 @@ from nsfrb.config import nsamps,ngulps_per_file,bin_imgdiff
 Simple periodicity search algorithms
 """
 
+def gen_p_trials(nsamps,trial_p_samp):
+    trial_p_samp_idxs = np.zeros((nsamps,len(trial_p_samp)),dtype=int)
+    trial_p_folds_factor = np.zeros((nsamps,len(trial_p_samp)))
+    for i in range(len(trial_p_samp)):
+        nfolds = int(nsamps//trial_p_samp[i])
+        trial_p_samp_idxs[:,i] = np.array(list(np.arange(trial_p_samp[i],dtype=int))*nfolds + list(np.arange(nsamps - (nfolds*trial_p_samp[i]),dtype=int)),dtype=int)
+        trial_p_folds_factor[:trial_p_samp[i],i] +=  nfolds
+        trial_p_folds_factor[:int(nsamps%trial_p_samp[i]),i] +=1
+        trial_p_folds_factor[:,i] = (trial_p_folds_factor[:,i])**(3/2)
+    trial_p_folds_factor[trial_p_folds_factor==0] = np.nan
+    return trial_p_samp_idxs,trial_p_folds_factor
 
 def ffa_slow(timeseries,trial_p_samp):
     """
