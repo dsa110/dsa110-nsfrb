@@ -377,8 +377,8 @@ def main(args):
         fcts.append(fct_FRCBAND)
     if args.flagBPASSBURST:
         fcts.append(fct_BPASSBURST)
-    fct_dat_run_mean = [0.0,0.0]
-    if len(fcts)>0: printlog("Bandpass flagging enabled",output_file=rtlog_file)
+    fct_dat_run_mean = [0.0]*len(fcts)
+    if len(fcts)>0 and args.verbose: printlog("Bandpass flagging enabled",output_file=rtlog_file)
     while True:
 
 
@@ -428,7 +428,7 @@ def main(args):
         
         if len(fcts)>0:
             dat, bname_f, blen_f, UVW_f, antenna_order_f,fct_dat_run_mean,keep_f = flag_vis(dat, bname, blen, UVW, antenna_order, [], 0, [], flag_channel_templates = fcts, flagged_chans=[], flagged_baseline_idxs=[], returnidxs=True,dat_run_means=fct_dat_run_mean)
-            printlog("Bandpass flagging successful: "+str(fct_dat_run_mean),output_file=rtlog_file)
+            if args.verbose: printlog("Bandpass flagging successful: "+str(fct_dat_run_mean),output_file=rtlog_file)
 
 
 
