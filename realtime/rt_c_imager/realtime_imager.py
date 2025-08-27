@@ -364,7 +364,6 @@ def main(args):
         printlog("Will send data to IP " + str(args.ipaddress),output_file=rtlog_file)
 
     mjd_init = -1
-    inject_count=0
 
 
     #flagging
@@ -446,14 +445,15 @@ def main(args):
         inject_flat = False
         inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         inject_now=False
+        printlog("AHHHH "+str((args.inject,inject_count,args.inject_interval)),output_file=rtlog_file)
         if args.inject and (inject_count>=args.inject_interval):
             inject_count = 0
-            #if verbose: printlog("Injecting pulse",output_file=logfile)
+            if args.verbose: printlog("Injecting pulse",output_file=rtlog_file)
 
             #look for an injection in etcd
             injection_params = etcd_get_dict_catch(ETCD, ETCDKEY_INJECT, output_file=rterr_file) #ETCD.get_dict(ETCDKEY_INJECT)
             if injection_params is None:
-                #if verbose: printlog("Injection not ready, postponing",output_file=logfile)
+                if args.verbose: printlog("Injection not ready, postponing",output_file=rtlog_file)
                 inject_count = args.inject_interval
             else:
                 #update dict
@@ -468,7 +468,7 @@ def main(args):
                     injection_params["ack"][args.sb] = True
 
                 #check if correct time
-                if time_start_isot == injection_params['ISOT']:
+                if True:#time_start_isot == injection_params['ISOT']:
                     if args.testh23:
                         for sbi in range(16):
                             injection_params["injected"][sbi] = True
@@ -476,7 +476,7 @@ def main(args):
                         injection_params["injected"][args.sb] = True
                 etcd_put_dict_catch(ETCD,ETCDKEY_INJECT,injection_params,output_file=rterr_file) #ETCD.put_dict(ETCDKEY_INJECT,injection_params)
 
-                if time_start_isot == injection_params['ISOT']:
+                if True:#time_start_isot == injection_params['ISOT']:
                     #if verbose: printlog("Injection" + injection_params['ID'] + "found",output_file=logfile)
                     fname = "injection_" + str(injection_params['ID']) + "_sb" +str("0" if args.sb<10 else "")+ str(args.sb) + ".npy"
                     fname = injection_params['fname'] + str(args.sb) + ".npy"
