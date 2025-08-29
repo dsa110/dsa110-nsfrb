@@ -264,8 +264,8 @@ def main(args):
     try:
         assert(np.abs(args.dec - (pt_dec*180/np.pi))<0.1)
     except:
-        printlog("ALERT: CUSTOMDEC DISAGREES WITH ETCD POINTING DEC, DEFAULTING TO ETCD --> " + str(args.dec) + " | " + str(pt_dec*180/np.pi),output_file=rterr_file)
-        args.dec=pt_dec*180/np.pi
+        printlog("ALERT: CUSTOMDEC DISAGREES WITH ETCD POINTING DEC, DEFAULTING TO CUSTOMDEC --> " + str(args.dec) + " | " + str(pt_dec*180/np.pi),output_file=rterr_file)
+        pt_dec = args.dec*np.pi/180 #args.dec=pt_dec*180/np.pi
     Dec = pt_dec*180/np.pi
     fobs = (1e-3)*(np.reshape(freq_axis_fullres,(len(corrs)*args.nchans_per_node,int(NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1))
     

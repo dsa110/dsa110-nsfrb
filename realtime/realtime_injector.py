@@ -252,7 +252,7 @@ def main(args):
             while time.time() - t1 < args.waittime*60:
             
                 #check to see its been injected on all corr nodes
-                time.sleep(args.waittime*60/90)
+                time.sleep(tsamp/1000)#args.waittime*60/90)
                 injection_dict = ETCD.get_dict(ETCDKEY)
                 if 'ISOT' in injection_dict.keys() and np.any(injection_dict['ack']) and not acked:
                     #write to csv
