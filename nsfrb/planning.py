@@ -50,12 +50,13 @@ def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000
                     print("New RA cutoff:",cutoff_pix)
                     return cutoff_pix
         else:
+            print("Using Astrocal solution from dec=71.6 sources")
             f = open(table_dir + "/NSFRB_astrocal.json","r")
             table = json.load(f)
             f.close()
             if 'core_gulp_RA_drift_slope' in table.keys():
                 print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
-                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)
+                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s*(np.cos(dec*np.pi/180)/np.cos(71.6*np.pi/180)))
                 print("New RA cutoff:",cutoff_pix)
                 return cutoff_pix
 
