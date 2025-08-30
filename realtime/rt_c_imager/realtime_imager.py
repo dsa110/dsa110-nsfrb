@@ -426,7 +426,7 @@ def main(args):
 
         #bandpass flagging
         
-        if len(fcts)>0:
+        if len(fcts)>0 and not (args.sb in list(flagged_corrs) + list(args.flagcorrs)):
             dat, bname_f, blen_f, UVW_f, antenna_order_f,fct_dat_run_mean,keep_f = flag_vis(dat, bname, blen, UVW, antenna_order, [], 0, [], flag_channel_templates = fcts, flagged_chans=[], flagged_baseline_idxs=[], returnidxs=True,dat_run_means=fct_dat_run_mean)
             if args.verbose: printlog("Bandpass flagging successful: "+str(fct_dat_run_mean),output_file=rtlog_file)
 
@@ -446,7 +446,6 @@ def main(args):
         inject_flat = False
         inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
         inject_now=False
-        printlog("AHHHH "+str((args.inject,inject_count,args.inject_interval)),output_file=rtlog_file)
         if args.inject and (inject_count>=args.inject_interval):
             inject_count = 0
             if args.verbose: printlog("Injecting pulse",output_file=rtlog_file)
@@ -659,7 +658,8 @@ def main(args):
                                             args.rttimeout,corrstagger_future,args.flagcorrs,
                                             rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe)
         """
-        inject_count += 1
+        if args.inject:
+            inject_count += 1
 
         """
 
