@@ -25,6 +25,8 @@ from event import names
 #from gen_dmtrials_copy import gen_dm
 import argparse
 from astropy.time import Time
+from astropy.coordinates import SkyCoord
+from astropy import units as u
 from scipy.ndimage import convolve
 from scipy.signal import convolve2d
 from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor,wait
@@ -188,6 +190,17 @@ class fullimg:
             self.slowstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
         elif imgdiff:
             printlog("starting object for image difference mode with " + str(self.imgdiffgulps) + " gulps at a time",output_file=processfile)
+
+            self.image_tesseract = self.image_tesseract.repeat(self.bin_imgdiff,2)
+            self.img_id_mjd_list = []
+            self.slow_RA_cutoffs = []
+            for i in range(self.imgdiffgulps*self.bin_imgdiff):
+                self.img_id_mjd_list.append(self.img_id_mjd + (config.tsamp*config.nsamps*i/1000/86400))
+                self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=config.tsamp*config.nsamps*i/1000))
+            self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
+            self.imgdiffstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
+
+            """
             #make list of possible mjds
             self.img_id_mjd_list = []
             self.slow_RA_cutoffs = []
@@ -197,6 +210,7 @@ class fullimg:
                 self.slow_RA_cutoffs.append(get_RA_cutoff(self.img_dec,usefit=True,offset_s=self.bin_imgdiff*config.tsamp*config.nsamps*i/1000))
             self.img_id_mjd_list = np.array(self.img_id_mjd_list,dtype=np.float64)
             self.imgdiffstatus = np.zeros(len(self.img_id_mjd_list),dtype=int)
+            """
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
@@ -270,10 +284,15 @@ class fullimg:
             printlog("Stacked slow images:" + str(self.image_tesseract.shape),output_file=processfile)
         return
     def imgdiff_append_img(self,data,img_idx):
+        printlog(data.shape,output_file=processfile)
+        self.image_tesseract[:,:,int(img_idx),0] +=np.nanmean(data-np.nanmedian(data,2,keepdims=True),(2,3))
+        """
         self.image_tesseract[:,:,int(img_idx//self.bin_imgdiff),0] += np.nanmean(data,(2,3)) 
         printlog("FROM IMGDIFF APPEND_1 " + str(img_idx) + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
         self.image_tesseract[:,:,int(img_idx//self.bin_imgdiff),0] -= np.nanmedian(np.nanmean(data,3),axis=2)
         printlog("FROM IMGDIFF APPEND_2 " + str(img_idx)  + ":" + str(self.image_tesseract[:,:,img_idx:(img_idx+1),:]),output_file=processfile)
+        """
+        printlog("FROM IMGDIFF APPEND_NEW "+ str(img_idx),output_file=processfile)
         self.imgdiffstatus[img_idx] = 1
         printlog("MJD LIST:" + str(self.img_id_mjd_list),output_file=processfile)
         printlog("IMGDIFF STATUS:" + str(self.imgdiffstatus),output_file=processfile)
@@ -282,11 +301,21 @@ class fullimg:
         #align if full
         if self.imgdiff_is_full():
             printlog("STACKING IMAGES",output_file=processfile)
+
+
+            stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i:(i+1),:] for i in range(self.image_tesseract.shape[2])],self.slow_RA_cutoffs)
+            self.RA_axis = self.RA_axis[:min_gridsize]
+            self.imgdiff_RA_cutoff = self.shape[0] - min_gridsize
+            self.image_tesseract = np.nanmean(np.concatenate(stack,axis=2).reshape((self.image_tesseract.shape[0],min_gridsize,self.image_tesseract.shape[2]//self.bin_imgdiff,self.bin_imgdiff,1)),3)
+            self.shape = self.image_tesseract.shape
+
+            """
             stack,tmp,tmp,min_gridsize = stack_images([self.image_tesseract[:,:,i:(i+1),:] for i in range(self.imgdiffgulps)],self.slow_RA_cutoffs)
             self.RA_axis = self.RA_axis[:min_gridsize]
             self.imgdiff_RA_cutoff = self.shape[1] - min_gridsize
             self.image_tesseract = np.concatenate(stack,axis=2)
             self.shape = self.image_tesseract.shape
+            """
             printlog("Stacked imgdiff images:" + str(self.image_tesseract.shape),output_file=processfile)
         return
 
@@ -871,7 +900,8 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 f.close()
                 for k in speccaldict.keys():
                     printlog(k,output_file=processfile)
-                    if 0< (img_id_mjd-speccaldict[k])<(config.T/1000/86400):
+                    printlog(str(k)[str(k).index("J"):],output_file=processfile)
+                    if (0< (img_id_mjd-speccaldict[k])<(config.T/1000/86400)) and (np.abs(img_dec - SkyCoord(str(k)[str(k).index("J"):],unit=(u.hourangle,u.deg),frame='icrs').dec.value)<1.5):
                         printlog(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",output_file=processfile)
                         np.save(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",fullimg_dict[img_id_isot].image_tesseract)
             if len(glob.glob(table_dir + "/rt_astrocal_timestamps_"+reftime.isot+".json"))>0:
@@ -881,7 +911,8 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 f.close()
                 for k in astrocaldict.keys():
                     printlog(k,output_file=processfile)
-                    if 0<(img_id_mjd-astrocaldict[k])<(15*config.T/1000/86400):
+                    printlog(str(k)[str(k).index("J"):],output_file=processfile)
+                    if (0<(img_id_mjd-astrocaldict[k])<(15*config.T/1000/86400)) and (np.abs(img_dec - SkyCoord(str(k)[str(k).index("J"):],unit=(u.hourangle,u.deg),frame='icrs').dec.value)<1.5):
                         printlog(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",output_file=processfile)
                         np.save(vis_dir + "/"+str(k).replace(" ","")+"/image_"+img_id_isot+".npy",fullimg_dict[img_id_isot].image_tesseract)
 
