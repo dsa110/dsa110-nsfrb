@@ -169,7 +169,38 @@ def set_pflag(flag=None,on=True,reset=False):
         flagfileio.close()
     return pflags
 
-    
+def write_raw_vis(fname,dat,mjd,sb,Dec,datasize=4):
+    """
+    Write raw visibility data from given file.
+    fname: file name
+    datasize: size of data in bytes
+    headersize: size of header in bytes (1/2 headersize is sub-band number, 1/2 headersize is mjd as float)
+    """
+    if datasize==4:
+        dtype = np.float32
+        dtypecomplex = np.complex64
+    elif datasize==2:
+        dtype = np.float16
+        dtypecomplex = np.complex32
+    elif datasize==8:
+        dtype = np.float64
+        dtypecomplex = np.complex128
+    elif datasize==16:
+        dtype = np.float128
+        dtypecomplex = np.complex256
+    else:
+        print("Invalid datasize")
+        return None
+
+
+    with open(fname,"wb") as f:
+        f.write(bytearray(struct.pack("d",np.float64(mjd))))
+        f.write(int(sb).to_bytes(4,sys.byteorder,signed=False))
+        f.write(bytearray(struct.pack("f",np.float32(Dec))))
+        print(len((dat.astype(dtypecomplex)).tobytes()),dtypecomplex)
+        f.write((dat.astype(dtypecomplex)).tobytes())
+    f.close()
+    return     
 # functions for reading raw visibility data
 influx = DataFrameClient('influxdbservice.pro.pvt', 8086, 'root', 'root', 'dsa110')
 def read_raw_vis(fname,datasize=4,nbase=4656,nchan=384,npol=2,nsamps=-1,gulp=0,headersize=16,oldformat=False,get_header=False):

@@ -1,4 +1,5 @@
 import argparse
+import struct
 import etcd3
 import tracemalloc
 from dsacalib import constants as ct
@@ -397,6 +398,9 @@ def main(args):
             if tmpfile != sys.stdout: tmpfile.close()
         else:
             dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
+
+
+
         #if args.verbose: printlog("DATA [PRE-FLAGGING]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
         if mjd_init == -1:
 
@@ -415,6 +419,8 @@ def main(args):
         #if args.testh23:
         #    mjd = Time.now().mjd
 
+        if np.save:
+            pipeline.write_raw_vis("/tmp/NSFRB_VIS_TMP.out",dat,mjd,args.sb,Dec,datasize=args.datasize)
         
         #manual flagging
         dat = dat[:,keep,:,:]
@@ -643,6 +649,8 @@ def main(args):
         #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
 
         rtwriter.rtwrite(dirty_img,key=DSAX_PSRDADA_KEY,addheader=False,header=dict(),dtype=np.float64)
+        if args.save:
+            np.save("/tmp/NSFRB_IMAGE_TMP.npy",dirty_img)
 
         """
         if args.search:
@@ -830,7 +838,7 @@ if __name__=="__main__":
     #parser.add_argument('--outpath',type=str,help='Output path for images',default=imgpath)
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--search', action='store_true', default=False, help='Send resulting image to process server')
-    parser.add_argument('--save',action='store_true',default=False,help='Save image as a numpy and fits file')
+    parser.add_argument('--save',action='store_true',default=False,help='Save image and visibilities as a temporary numpy file')
     parser.add_argument('--inject',action='store_true',default=False,help='Inject a burst into the gridded visibilities. Unless the --solo_inject flag is set, a noiseless injection will be integrated into the data.')
     parser.add_argument('--num_chans',type=int,help='Number of channels',default=int(NUM_CHANNELS//AVERAGING_FACTOR))
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=1)
