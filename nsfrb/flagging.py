@@ -20,6 +20,14 @@ import os
 from scipy.optimize import curve_fit
 from nsfrb.config import noise_dir
 
+
+def simple_flag_image(image):
+    mx,my = np.unravel_index(np.argmax(np.nanmean(image,(2,3))),image.shape[:2])
+    spec = (np.nanmedian(image[mx,my,:,:],0))#np.nanmedian(image,(0,1,2)))
+    flagchans = np.arange(len(spec),dtype=int)[np.abs(spec-np.nanmedian(np.abs(spec)))>10*np.nanmedian(np.abs(spec))]
+    print("SIMPLE IMAGE FLAGGING --> ",flagchans)
+    return flagchans
+
 def flag_vis(dat, bname, blen, UVW, antenna_order, flagged_antennas, bmin=0, flagged_corrs=np.array([]),flag_channel_templates=[],realtime=False,sb=0,bmax=np.inf,flagged_chans=np.array([]),flagged_baseline_idxs=np.array([]),verbose=False,returnidxs=False,dat_run_means=[]):
     """
     Removes visibilities containing flagged antennas and below minimum 

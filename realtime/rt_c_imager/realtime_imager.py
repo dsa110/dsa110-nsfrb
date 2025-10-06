@@ -433,9 +433,19 @@ def main(args):
         #bandpass flagging
         
         if len(fcts)>0 and not (args.sb in list(flagged_corrs) + list(args.flagcorrs)):
+            tmp_output =  flag_vis(dat, bname, blen, UVW, antenna_order, [], 0, [], flag_channel_templates = fcts, flagged_chans=[], flagged_baseline_idxs=[], returnidxs=True,dat_run_means=fct_dat_run_mean)
+            if len(tmp_output)==7:
+                dat, bname_f, blen_f, UVW_f, antenna_order_f,fct_dat_run_mean,keep_f = tmp_output
+                if args.verbose: printlog("Bandpass flagging successful: "+str(fct_dat_run_mean),output_file=rtlog_file)
+            else:
+                dat, bname_f, blen_f, UVW_f, antenna_order_f,keep_f = tmp_output
+                if np.all(np.isnan(fct_dat_run_mean)):
+                    fct_dat_run_mean = [None]*len(fcts)
+                if args.verbose: printlog("Bandpass flagging unsuccessful: "+str(fct_dat_run_mean),output_file=rtlog_file)
+            """
             dat, bname_f, blen_f, UVW_f, antenna_order_f,fct_dat_run_mean,keep_f = flag_vis(dat, bname, blen, UVW, antenna_order, [], 0, [], flag_channel_templates = fcts, flagged_chans=[], flagged_baseline_idxs=[], returnidxs=True,dat_run_means=fct_dat_run_mean)
             if args.verbose: printlog("Bandpass flagging successful: "+str(fct_dat_run_mean),output_file=rtlog_file)
-
+            """
 
 
         #if args.verbose: printlog("DATA [POST-FLAGGING]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
