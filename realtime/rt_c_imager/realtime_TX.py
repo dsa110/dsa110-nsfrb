@@ -161,7 +161,7 @@ def etcd_get_dict_catch(ETCD,ekey,edict=None,output_file=""):
 
 
 
-def corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, retries,multiport,ipaddress,udpchunksize,protocol,sb,timage,rttimeout,corrstagger_future,flagcorrs,rtlog_file="",rterr_file="",verbose=False,debug=False,failsafe=False):
+def corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, retries,multiport,ipaddress,udpchunksize,protocol,sb,timage,rttimeout,corrstagger_future,flagcorrs,rtlog_file="",rterr_file="",verbose=False,debug=False,failsafe=False,portiter=0):
     corrstaggerdict = etcd_get_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,edict=None if corrstagger_future is None else corrstagger_future.result(),output_file=rterr_file) #ETCD.get_dict(ETCDKEY_CORRSTAGGER)
     if corrstaggerdict is None:
         corrstaggerdict = dict()
@@ -196,7 +196,10 @@ def corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, retries,mult
         return corrstaggerdict
 
     try:
-        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=retries,keepalive_time=(rttimeout - (time.time()-timage)),port=multiport[int(sb%len(multiport))],ipaddress=ipaddress,udpchunksize=udpchunksize,protocol=protocol)
+        useport = multiport[int((sb + (portiter*16))%len(multiport))]
+        printlog("USING PORT "+str(useport),output_file=rtlog_file)
+
+        msg=send_data(time_start_isot, uv_diag, Dec, dirty_img ,verbose=verbose,retries=retries,keepalive_time=(rttimeout - (time.time()-timage)),port=useport,ipaddress=ipaddress,udpchunksize=udpchunksize,protocol=protocol)
     except Exception as exc:
         if failsafe:
             raise(exc)
@@ -397,6 +400,7 @@ def main(args):
 
     mjd_init = -1
     inject_count=0
+    portiter=0
     while True:
 
 
@@ -498,13 +502,14 @@ def main(args):
                                             time_start_isot, uv_diag, Dec, dirty_img, args.retries,
                                             args.multiport,args.ipaddress,args.udpchunksize,args.protocol,args.sb,time.time(),
                                             args.rttimeout,corrstagger_future,args.flagcorrs,
-                                            rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe)
+                                            rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe,portiter)
             else:
                 corrstaggerdict = corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, args.retries,
                                             args.multiport,args.ipaddress,args.udpchunksize,args.protocol,args.sb,timage,
                                             args.rttimeout,corrstagger_future,args.flagcorrs,
-                                            rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe)
+                                            rtlog_file,rterr_file,args.verbose,args.debug,args.failsafe,portiter)
         inject_count += 1
+        portiter +=1
 
         if args.debug:
             printlog("--->TX TIME: "+str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
