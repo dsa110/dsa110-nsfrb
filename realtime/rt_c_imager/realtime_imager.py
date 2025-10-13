@@ -419,7 +419,7 @@ def main(args):
         #if args.testh23:
         #    mjd = Time.now().mjd
 
-        if np.save:
+        if args.save:
             pipeline.write_raw_vis("/tmp/NSFRB_VIS_TMP.out",dat,mjd,args.sb,Dec,datasize=args.datasize)
         
         #manual flagging
