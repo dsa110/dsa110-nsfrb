@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import json
 from astropy.io import fits
 import glob
@@ -28,7 +29,7 @@ This module contains functions for observation planning, including making DSA-11
 """
 
 
-def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000,pixperFWHM=3):
+def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000,pixperFWHM=3,current_cal_dec=71.6):
     """
     dec: current declination
     T: integration time in milliseconds
@@ -39,24 +40,24 @@ def get_RA_cutoff(dec,T=T,pixsize=pixsize,asint=True,usefit=True,offset_s=T/1000
             print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
             decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
             idx = np.argmin(np.abs(decs-dec))
-            if np.abs(decs[idx]-dec)<1:
+            #if np.abs(decs[idx]-dec)<1:
 
-                f = open(srcs[idx],"r")
-                table = json.load(f)
-                f.close()
-                if 'core_gulp_RA_drift_slope' in table.keys():
-                    print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
-                    cutoff_pix = -int((table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s)*(pixperFWHM/3))
-                    print("New RA cutoff:",cutoff_pix)
-                    return cutoff_pix
+            f = open(srcs[idx],"r")
+            table = json.load(f)
+            f.close()
+            if 'core_gulp_RA_drift_slope' in table.keys():
+                print("Using " + str(os.path.basename(srcs[idx])) + " for drift calibration")
+                cutoff_pix = -int(np.rint(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s*(np.cos(dec*np.pi/180)/np.cos(decs[idx]*np.pi/180))))
+                print("New RA cutoff:",cutoff_pix)
+                return cutoff_pix
         else:
-            print("Using Astrocal solution from dec=71.6 sources")
+            print("Using Astrocal solution from dec=" + str(current_cal_dec) + " sources")
             f = open(table_dir + "/NSFRB_astrocal.json","r")
             table = json.load(f)
             f.close()
             if 'core_gulp_RA_drift_slope' in table.keys():
                 print("Using " + table_dir + "/NSFRB_astrocal.json for drift calibration")
-                cutoff_pix = -int(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s*(np.cos(dec*np.pi/180)/np.cos(71.6*np.pi/180)))
+                cutoff_pix = -int(np.rint(table['core_gulp_RA_drift_int'] + table['core_gulp_RA_drift_slope']*offset_s*(np.cos(dec*np.pi/180)/np.cos(current_cal_dec*np.pi/180))))
                 print("New RA cutoff:",cutoff_pix)
                 return cutoff_pix
 
@@ -1017,12 +1018,14 @@ def read_vlac(fname=table_dir + "VLA_CALIBRATORS_DICT.pkl"):
     f.close()
     coords = []
     fluxs = []
+    names = []
     for k in dat.keys():#range(len(k)):
         #print(k)
         if 'FLUX' in str(k) and dat[k]!=0:
             coords.append(dat[str(k)[:8]])
             fluxs.append(dat[k]*1000) #mJy
-    return SkyCoord(coords),np.array(fluxs)
+            names.append(str(k)[:8])
+    return names,SkyCoord(coords),np.array(fluxs)
 
 def vlac_cat(mjd,dd,sep=2.0*u.deg,decstrip=False):
 
@@ -1030,7 +1033,7 @@ def vlac_cat(mjd,dd,sep=2.0*u.deg,decstrip=False):
     dec = dd*u.deg
 
     c = SkyCoord(ra,dec)
-    coords,flux = read_vlac()
+    names,coords,flux = read_vlac()
 
     if decstrip:
         d2d = np.abs(c.dec - coords.dec)
@@ -1277,9 +1280,11 @@ def read_atnf(fl=table_dir + "ATNF_CATALOG_FULL.csv"):
     ras = []
     decs = []
     Ps = []
+    P1s = []
     DMs = []
     Ws = []
     fluxs = []
+    dists = []
     with open(fl,"r") as csvfile:
         rdr = csv.reader(csvfile,delimiter=';')
         for row in rdr:
@@ -1297,36 +1302,49 @@ def read_atnf(fl=table_dir + "ATNF_CATALOG_FULL.csv"):
                 Ps.append(np.nan)
             else:
                 Ps.append(float(row[4]))
-
+            
             if '*' in row[5]:
-                DMs.append(np.nan)
+                P1s.append(np.nan)
             else:
-                DMs.append(float(row[5]))
+                P1s.append(float(row[5]))
 
             if '*' in row[6]:
-                Ws.append(np.nan)
+                DMs.append(np.nan)
             else:
-                Ws.append(float(row[6]))
+                DMs.append(float(row[6]))
 
             if '*' in row[7]:
+                Ws.append(np.nan)
+            else:
+                Ws.append(float(row[7]))
+
+            if '*' in row[8]:
                 fluxs.append(np.nan)
             else:
-                fluxs.append(float(row[7]))
+                fluxs.append(float(row[8]))
+
+            if '*' in row[9]:
+                dists.append(np.nan)
+            else:
+                dists.append(float(row[9]))
+
 
     coords = SkyCoord(ra=ras,dec=decs,frame='icrs')
     names = np.array(names)
     Ps = np.array(Ps)
+    P1s = np.array(P1s)
     DMs = np.array(DMs)
     Ws = np.array(Ws)
     fluxs = np.array(fluxs)
-    return coords,names,Ps,DMs,Ws,fluxs
+    dists = np.array(dists)
+    return coords,names,Ps,P1s,DMs,Ws,fluxs,dists
 
 def atnf_cat(mjd,dd,sep=2.0*u.deg):
     ra = (get_ra(mjd,dd))*u.deg
     dec = dd*u.deg
 
     c = SkyCoord(ra,dec)
-    coords,names,Ps,DMs,Ws,fluxs = read_atnf()
+    coords,names,Ps,P1s,DMs,Ws,fluxs,dists = read_atnf()
     idx = np.arange(len(coords))
     
     d2d = c.separation(coords)
@@ -1344,8 +1362,12 @@ def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
     names = []
     coords = []
     Ps = []
+    Pdots = []
+    Pdotuplims = []
     Ws = []
     S1400s = []
+    DISTs = []
+    WDs=[]
     with open(fl,"r") as csvfile:
         i = 0
         rdr = csv.reader(csvfile,delimiter=',')
@@ -1356,21 +1378,29 @@ def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
                 coords.append(SkyCoord(row[1],unit=(u.hourangle,u.deg),frame='icrs'))
                 
                 Ps.append(np.nan if len(row[2])==0 else float(row[2]))
-                Ws.append(np.nan if len(row[3])==0 else float(row[3]))
-                S1400s.append(np.nan if len(row[4])==0 else float(row[4]))
+                Pdots.append(np.nan if len(row[3])==0 else float(row[3]))
+                Pdotuplims.append( False if row[4]=="N" else True)#str(row[4]))
+                Ws.append(np.nan if len(row[5])==0 else float(row[5]))
+                S1400s.append(np.nan if len(row[6])==0 else float(row[6]))
+                DISTs.append(np.nan if len(row[7])==0 else float(row[7]))
+                WDs.append(False if row[8]=='N' else True)
 
     names = np.array(names)
     Ps = np.array(Ps)
+    Pdots = np.array(Pdots)
+    Pdotuplims = np.array(Pdotuplims)
     Ws = np.array(Ws)
     S1400s = np.array(S1400s)
-    return names,SkyCoord(coords),Ps,Ws,S1400s
+    DISTs = np.array(DISTs)
+    WDs = np.array(WDs)
+    return names,SkyCoord(coords),Ps,Pdots,Pdotuplims,Ws,S1400s,DISTs,WDs
 
 def LPT_cat(mjd,dd,sep=2.0*u.deg):
     ra = (get_ra(mjd,dd))*u.deg
     dec = dd*u.deg
 
     c = SkyCoord(ra,dec)
-    names,coords,Ps,Ws,S1400s = read_LPTs()
+    names,coords,Ps,Pdots,Pdotuplims,Ws,S1400s,WDs= read_LPTs()
     idx = np.arange(len(coords))
 
     #print(coords)
@@ -1441,6 +1471,7 @@ def read_magnetars(fl=table_dir + "MCGILL_CATALOG.csv"):
     ras = []
     decs = []
     radio = []
+    dists = []
     with open(fl,"r") as csvfile:
         rdr = csv.reader(csvfile,delimiter=',')
         i = 0
@@ -1453,17 +1484,23 @@ def read_magnetars(fl=table_dir + "MCGILL_CATALOG.csv"):
                 ras.append(coord.ra)
                 decs.append(coord.dec)
                 radio.append('R' in row[-6])
+                try:
+                    dists.append(float(row[31]))
+                except Exception as exc:
+                    print(exc)
+                    dists.append(np.nan)
     coords = SkyCoord(ra=ras,dec=decs,frame='icrs')
     names = np.array(names)
     radio = np.array(radio)
-    return coords,names,radio
+    dists = np.array(dists)
+    return coords,names,radio,dists
 
 def magnetar_cat(mjd,dd,sep=2.0*u.deg):
     ra = (get_ra(mjd,dd))*u.deg
     dec = dd*u.deg
 
     c = SkyCoord(ra,dec)
-    coords,names,radio = read_magnetars()
+    coords,names,radio,dists = read_magnetars()
     idx = np.arange(len(coords))
 
     d2d = c.separation(coords)

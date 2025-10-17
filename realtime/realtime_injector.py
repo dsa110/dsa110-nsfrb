@@ -1,4 +1,5 @@
 import argparse
+import json
 import random
 from inject import injecting
 from nsfrb.outputlogging import printlog
@@ -42,7 +43,7 @@ import os
 #imgpath = cwd + "-images"
 #inject_file = cwd + "-injections/injections.csv"
 
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,inject_log_file
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,flagged_antennas,Lon,Lat,maxrawsamps,flagged_corrs,inject_log_file,table_dir
 
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
@@ -245,7 +246,7 @@ def main(args):
                                "ack":[False]*args.num_chans,
                                "inject_only":cleardataflag,
                                "inject_flat":injectflatflag})
-
+    
             #sleep...sort of
             t1 = time.time()
             acked = False
@@ -267,7 +268,30 @@ def main(args):
                     #os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
                     #break
                     acked=True
-        
+
+                    # read timestamp files and add to exclude table 
+                    printlog("updating exclude tables...",output_file=inject_log_file)
+                    s_table_list = glob.glob(table_dir + "/rt_speccal_timestamps_" + injection_dict['ISOT'][:10] +"*.json")
+                    if len(s_table_list)>0:
+                        for s_table_name in s_table_list:
+                            printlog(s_table_name,output_file=inject_log_file)
+                            f = open(s_table_name,"r")
+                            s_table = json.load(f)
+                            f.close()
+                            for k in s_table.keys():
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                    a_table_list = glob.glob(table_dir + "/rt_astrocal_timestamps_" + injection_dict['ISOT'][:10] +"*.json")
+                    if len(a_table_list)>0:
+                        for a_table_name in a_table_list:
+                            printlog(a_table_name,output_file=inject_log_file)
+                            f = open(a_table_name,"r")
+                            a_table = json.load(f)
+                            f.close()
+                            for k in a_table.keys():
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                    printlog("Done",output_file=inject_log_file)
     return
 
 if __name__=="__main__":

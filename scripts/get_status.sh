@@ -40,7 +40,7 @@ do
                         echo ""
                         echo  ">>>>>>>>>>>>>>> ${cwd}-logfiles/$f.txt"
 			echo  "<<grep ${grepword}"
-                        tail -$2 ${cwd}-logfiles/$f.txt | grep "$grepword"
+                        tail -$2 ${cwd}-logfiles/$f.txt | grep -a "$grepword"
                         echo  ">>>>>>>>>>>>>>>"
 
                 done
@@ -48,7 +48,7 @@ do
 		echo ""
                 echo ">>>>>>>>>>>>>>> $3.txt"
                 echo  "<<grep ${grepword}"
-		tail -$2 ${cwd}-logfiles/$3.txt | grep "$grepword"
+		tail -$2 ${cwd}-logfiles/$3.txt | grep -a "$grepword"
 		#/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/tmpoutput/search_log.txt
                 echo ">>>>>>>>>>>>>>>"
 	fi

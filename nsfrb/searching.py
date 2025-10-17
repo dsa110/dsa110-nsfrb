@@ -1852,10 +1852,68 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
     
+import struct
+from realtime import rtreader
+class dummy_fullimg:
+    def __init__(self,reader=None,psrdadakey=NSFRB_SRCHDADA_KEY,verbose=False):
+        self.databytes = rtreader.rtread_searching(psrdadakey,reader,verbose=verbose,verbosefile=processfile)
+        #self.flag,self.thash,self.nbytes,self.shape,self.img_dec,self.isinjection,self.img_id_isot,self.image_tesseract,self.RA_axis,self.DEC_axis = self.frombytes(self.databytes)
+        self.frombytes(self.databytes)
+        self.slow = False
+        self.imgdiff = False
+    def frombytes(self,databytes):
+        #flag
+        self.flag = bytes.decode(databytes[:1],'utf-8')
+        if self.flag == 'S': self.slow = True
+        elif self.flag == 'I': self.slow = True
+        printlog("??SRCH??: FLAG-"+str(self.flag),output_file=processfile)
 
+        #thash
+        self.thash = databytes[1:5].hex()
+        printlog("??SRCH??: THASH-"+str(self.thash),output_file=processfile)
+
+        #nbytes
+        self.nbytes = int.frombytes(databytes[5:6],byteorder=sys.byteorder)
+        if self.nbytes == 8:
+            self.dtype = np.float64
+        elif self.nbtyes == 16:
+            self.dtype = np.float128
+        elif self.nbytes == 32:
+            self.dtype = np.float32
+        printlog("??SRCH??: nbytes-"+str(self.nbytes),output_file=processfile)
+
+        #shape
+        self.shape = tuple(np.frombuffer(databytes[6:38],dtype=np.int64))
+        printlog("??SRCH??: SHAPE-"+str(self.shape),output_file=processfile)
+
+        #dec
+        self.img_dec = struct.unpack(('>' if sys.byteorder=='big' else '<') + 'd', databytes[38:46])[0]
+
+        #isinjection
+        self.isinjection = tuple(np.frombuffer(databytes[46:48],dtype=np.int8))
+        self.isinjection = (bool(self.isinjection[0]),bool(self.isinjection[1]))
+        printlog("??SRCH??: ISINJECTION-"+str(self.isinjection),output_file=processfile)
+
+        #isot
+        self.img_id_isot = bytes.decode(databytes[48:71],'utf-8')
+        printlog("??SRCH??: IMG_ID_ISOT-"+str(self.img_id_isot),output_file=processfile)
+
+        #image
+        self.image_tesseract = (np.frombuffer(databytes[71:71+self.shape[0]*self.shape[0]*self.shape[2]*self.shape[3]*self.nbytes],dtype=self.dtype).reshape((self.shape[0],self.shape[0],self.shape[2],self.shape[3])))[:,-self.shape[1]:,:,:]
+        printlog("??SRCH??: image-"+str(self.image_tesseract),output_file=processfile)
+        offset = 63+self.shape[0]*self.shape[0]*self.shape[2]*self.shape[3]*self.nbytes
+
+        #axes
+        self.RA_axis = np.frombuffer(databytes[offset:offset+self.shape[0]*8],dtype=np.float64)[-self.shape[1]:]
+        self.DEC_axis = np.frombuffer(databytes[offset+self.shape[0]*8:offset+self.shape[0]*2*8],dtype=np.float64)
+        printlog("??SRCH??: RA_axis-"+str(self.RA_axis),output_file=processfile)
+        printlog("??SRCH??: DEC_axis-"+str(self.DEC_axis),output_file=processfile)
+        return
+        
+        
 
 #CONTEXTSETUP = False
-def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False,lockdev=-1):
+def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,space_filter,kernel_size,exportmaps,savesearch,fprtest,fnrtest,append_frame,DMbatches,SNRbatches,usejax,noiseth,nocutoff,realtime,slow,imgdiff,attach_fullimg_slow=None,attach_fullimg_imgdiff=None,attach_mode=False,completeness=False,forfeit=False,lockdev=-1,appendinit=True,rejectnoiseoutliers=False):
     printlog("starting search task>>[TIME]"+str(time.time()),output_file=processfile)
     searchlock.acquire()
     global current_noise
@@ -1871,7 +1929,7 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
 
 
 
-    if imgdiff:#slow or imgdiff:
+    if imgdiff:# or (not appendinit):#slow or imgdiff:
         append_frame = False
 
     #define search params
@@ -1899,7 +1957,11 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
     global last_frame_slow
     global last_frame_slow_init_idx
     printlog("LAST FRAME: " + str(last_frame_init_idx) + str(last_frame.shape) + str(last_frame) + "...",output_file=processfile,end='')
-    if (not slow) and (last_frame.shape[:2] != fullimg.image_tesseract.shape[:2] or last_frame_init_idx==0):
+    if (not slow) and (not imgdiff) and (not appendinit):
+        printlog("APPENDINIT IN SEARCH",output_file=processfile)
+        last_frame = copy.deepcopy(fullimg.image_tesseract)#np.nanmedian(fullimg.image_tesseract,2,keepdims=True).repeat(fullimg.image_tesseract.shape[2],2)
+        nocutoff = True
+    elif (not slow) and (last_frame.shape[:2] != fullimg.image_tesseract.shape[:2] or last_frame_init_idx==0):
         last_frame = get_last_frame()
         last_frame_init_idx += 1
         printlog("AFTER UPDATE LAST FRAME: " + str(last_frame_init_idx) + str(last_frame.shape) + str(last_frame) + "...",output_file=processfile,end='')
@@ -1982,26 +2044,38 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
 
 
     #update noise
-    if (not slow) and (not imgdiff) and (total_noise is not None):
+    if (not slow) and (not imgdiff) and (total_noise is not None) and (not fullimg.isinjection[0] and not fullimg.isinjection[1]):
         #global current_noise
-        current_noise = (noise_update_all(total_noise,gridsize,gridsize,DM_trials,widthtrials,writeonly=True),current_noise[1] + 1)
-
+        printlog("CHECKING FOR OUTLIER NOISE:"+str(np.abs(total_noise[0,0] - current_noise[0][0,0])/current_noise[0][0,0]),output_file=processfile)
+        if (current_noise[0][0,0] != 0) and rejectnoiseoutliers and ((np.abs(total_noise[0,0] - current_noise[0][0,0])>3*current_noise[0][0,0]) or current_noise[1] == 0):
+            printlog("REJECTING OUTLIER NOISE",output_file=processfile)
+        else:
+            current_noise = (noise_update_all(total_noise,gridsize,gridsize,DM_trials,widthtrials,writeonly=True),current_noise[1] + 1)
+    
     #update last frame
-    if not slow and not imgdiff and append_frame:
+    if (savesearch or cands_found or fprtest) and not imgdiff:
+        #f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_last.npy","wb")
+        #np.save(f,(last_frame_slow if slow else last_frame))
+        #f.close()
+        printlog("cp " + frame_dir + "/last_frame"+ ("_slow" if slow else "")+".npy " + cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_last.npy",output_file=processfile)
+        os.system("cp " + frame_dir + "/last_frame"+ ("_slow" if slow else "")+".npy " + cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_last.npy") 
+
+    if not slow and not imgdiff and append_frame and (not fullimg.isinjection[0] and not fullimg.isinjection[1]):
         #global last_frame
         save_last_frame(last_frame,full=True)
         printlog("Writing to last_frame.npy",output_file=processfile)
-    elif slow and not imgdiff and append_frame:
+    elif slow and not imgdiff and append_frame and (not fullimg.isinjection[0] and not fullimg.isinjection[1]):
         save_last_frame(last_frame_slow,full=True,slow=True)
         printlog("Writing to last_frame_slow.npy",output_file=processfile)
     
-    if cuda and (attach_fullimg_slow is not None) and attach['slow']['append_frame']:
+    if cuda and (attach_fullimg_slow is not None) and (attach['slow']['append_frame']) and (not fullimg.isinjection[0] and not fullimg.isinjection[1]):
         save_last_frame(last_frame_slow,full=True,slow=True)
         printlog("Writing to last_frame_slow.npy",output_file=processfile)
     searchlock.release()
 
     srchtime = time.time()-timing1
     srchtxtime = time.time()
+    
     if savesearch or cands_found or fprtest:
         if (not fprtest):# and (not realtime):
             #save image
@@ -2015,24 +2089,6 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
             #save fits
             numpy_to_fits(fullimg.image_tesseract_searched.astype(np.float32),cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") +"_searched.fits")
             
-        #save image OR if realtime, write to psrdada buffers
-        """
-        if False:#realtime:
-            printlog(">>>SHAPES>>>"+str(fullimg.image_tesseract_searched.shape) + str(fullimg.image_tesseract.shape),output_file=processfile)
-            if not (slow or imgdiff):
-                rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_KEY)
-                rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_KEY)
-                rtwrite(TOAs,key=NSFRB_TOADADA_KEY)
-            elif slow:
-                rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_SLOW_KEY)
-                rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_SLOW_KEY)
-                rtwrite(TOAs,key=NSFRB_TOADADA_SLOW_KEY)
-            #elif imgdiff:
-            #    rtwrite(fullimg.image_tesseract_searched,key=NSFRB_SRCHDADA_SLOW_KEY)
-            #    rtwrite(fullimg.image_tesseract,key=NSFRB_CANDDADA_SLOW_KEY)
-            #    rtwrite(TOAs,key=NSFRB_TOADADA_SLOW_KEY)
-        else:
-        """
         f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_searched.npy","wb")
         np.save(f,fullimg.image_tesseract_searched)
         f.close()
@@ -2044,6 +2100,21 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
         f = open(cand_dir + "raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_input.npy","wb")
         np.save(f,fullimg.image_tesseract)
         f.close()
+
+        if savesearch:
+            f = open(cand_dir + "backup_raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_searched.npy","wb")
+            np.save(f,fullimg.image_tesseract_searched)
+            f.close()
+
+            f = open(cand_dir + "backup_raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_TOAs.npy","wb")
+            np.save(f,TOAs)
+            f.close()
+    
+            f = open(cand_dir + "backup_raw_cands/" + fullimg.img_id_isot + ("_slow" if slow else "") + ("_imgdiff" if (imgdiff and not slow) else "") + "_input.npy","wb")
+            np.save(f,fullimg.image_tesseract)
+            f.close()
+            
+
 
         if fprtest:
             f = open(cand_dir + "fpr_test.csv","a")
@@ -2082,7 +2153,7 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
         f = open(cand_dir + "raw_cands/" + attach_fullimg_slow.img_id_isot + "_slow_input.npy","wb")
         np.save(f,attach_fullimg_slow.image_tesseract)
         f.close()
-
+            
     if (cuda and (attach_fullimg_imgdiff is not None)) and (savesearch or attach['imgdiff']['cands_found'] or fprtest):
         if (not fprtest):# and (not realtime):
             #save image
@@ -2107,7 +2178,6 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
         f = open(cand_dir + "raw_cands/" + attach_fullimg_imgdiff.img_id_isot + "_imgdiff_input.npy","wb")
         np.save(f,attach_fullimg_imgdiff.image_tesseract)
         f.close()
-
     srchtxtime = time.time()-srchtxtime
     fulltime=time.time()-timing1
     printlog(fullimg.image_tesseract_searched,output_file=processfile)
@@ -2123,7 +2193,7 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
     ftime = open(srchtime_file,"a")
     ftime.write(str(srchtime) + "\n")
     ftime.close()
-
+        
     if attach_mode:
         ret1 = []
         ret2 = []

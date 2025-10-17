@@ -198,7 +198,7 @@ def uniform_grid(u, v, image_size, pixel_resolution, pixperFWHM):
     i_conj_indices = image_size - i_indices - 1
     j_conj_indices = image_size - j_indices - 1
     
-    return (i_indices,j_indices,i_conj_indices,j_conj_indices)
+    return (np.array(i_indices,dtype=int),np.array(j_indices,dtype=int),np.array(i_conj_indices,dtype=int),np.array(j_conj_indices,dtype=int))
 
 def revised_robust_image(chunk_V: np.ndarray, u: np.ndarray, v: np.ndarray, image_size: int,  robust: float = 0.0, uniform=False, return_complex=False, inject_img=None, inject_flat=False, pixel_resolution=None, wstack=False, w=None, Nlayers_w=18,pixperFWHM=pixperFWHM, briggs_weights=None,i_indices=None,j_indices=None,i_conj_indices=None,j_conj_indices=None,clipuv=True,keeptime=False, wstack_parallel=False) -> np.ndarray:
     """

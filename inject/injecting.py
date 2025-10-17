@@ -62,7 +62,7 @@ PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
 
 
-def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True,bmin=bmin,robust=2):
+def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True,bmin=bmin,robust=2,dtype=np.float64,outputdir=inject_dir,RFI=False,rfi_type='far'):
     """
     Uses functions from simulations_and_classifications to make injections
     """
@@ -98,13 +98,15 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         print("SOURCE HA DEC:",HA_axis[int(len(HA_axis)//2) + offsetRA],DEC_axis[int(len(DEC_axis)//2) + offsetDEC],file=fout)
 
     #create a noiseless image
-    os.system("mkdir " + inject_dir + "dataset_" + isot +"/")
-    dataset_dir = inject_dir + "dataset_" + isot +"/"
+    os.system("mkdir " + outputdir)
+    #os.system("mkdir " + inject_dir + "dataset_" + isot +"/")
+    dataset_dir = outputdir + "dataset_" + isot +"/"
+    os.system("mkdir " + dataset_dir)
     if not noiseonly:
-        PSFimg = np.abs(scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize,True,nsamps=width,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,
+        PSFimg = np.abs(scPSF.generate_PSF_images(dataset_dir,DEC*np.pi/180,gridsize,True,nsamps=width,dtype=dtype,HA=HA*np.pi/180,injectnoise=injectnoise,
                                     srcHAoffset=0 if HA_axis is None else (HA_axis[int(len(HA_axis)//2) + offsetRA]-HA)*np.pi/180,
                                     srcDECoffset=0 if DEC_axis is None else (DEC_axis[int(len(DEC_axis)//2) + offsetDEC]-DEC)*np.pi/180,
-                                    bmin=bmin,robust=robust))
+                                    bmin=bmin,robust=robust,RFI=RFI,rfi_type=rfi_type))
         if width == 1:
             PSFimg = PSFimg[:,:,np.newaxis,:]
 
@@ -114,7 +116,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         if offline:
             nn = nsamps+maxshift+maxshift
             if not noiseonly: nn -=width
-            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True,bmin=bmin,robust=robust)*visnoise/injectnoise
+            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=dtype,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True,bmin=bmin,robust=robust)*visnoise/injectnoise
             if nsamps-width+maxshift+maxshift == 1:
                 noiseimg = noiseimg[:,:,np.newaxis,:]
             last_frame = noiseimg[:,:,:maxshift,:]
@@ -126,7 +128,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
         else:
             nn = nsamps+maxshift
             if not noiseonly: nn -= width
-            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=np.float64,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True,bmin=bmin,robust=robust)*visnoise/injectnoise
+            noiseimg = scPSF.generate_PSF_images(psf_dir,DEC*np.pi/180,gridsize,True,nn,dtype=dtype,HA=HA*np.pi/180,injectnoise=injectnoise,noise_only=True,bmin=bmin,robust=robust)*visnoise/injectnoise
             if nsamps-width+maxshift == 1:
                 noiseimg = noiseimg[:,:,np.newaxis,:]
         

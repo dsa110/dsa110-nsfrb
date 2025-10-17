@@ -60,7 +60,7 @@ def PSF_dist_metric(p1,p2,PSFfunc):
 
 
 #revised PSF clustering --> for each unique width, DM, check that thresholded binary image resembles the PSF
-def psf_reduction(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
+def psf_reduction(cands,candnames,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     printlog(str(len(cands)) + " candidates",output_file=output_file)
 
     #make list for each param
@@ -130,20 +130,21 @@ def psf_reduction(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     finalcand_dmidxs = dmidxs[finalcand_idx:finalcand_idx+1]
     finalcand_widthidxs = widthidxs[finalcand_idx:finalcand_idx+1]
     finalcand_snridxs = snridxs[finalcand_idx:finalcand_idx+1]
+    finalcand_names = candnames[finalcand_idx:finalcand_idx+1]
 
     print("Best candidate (out of ",len(cands),": DMidx=",finalcand_dmidxs[0],", Widx=",finalcand_widthidxs[0])
     if TOAflag:
         finalcand_TOAs = TOAs[finalcand_idx:finalcand_idx+1]
         finalcands = [[finalcand_raidxs[i],finalcand_decidxs[i],finalcand_widthidxs[i],finalcand_dmidxs[i],finalcand_TOAs[i],finalcand_snridxs[i]] for i in range(len(finalcand_raidxs))]
-        return finalcands,finalcand_raidxs,finalcand_decidxs,finalcand_dmidxs,finalcand_widthidxs,finalcand_snridxs,finalcand_TOAs
+        return finalcands,finalcand_names,finalcand_raidxs,finalcand_decidxs,finalcand_dmidxs,finalcand_widthidxs,finalcand_snridxs,finalcand_TOAs
     else:
         finalcands = [[finalcand_raidxs[i],finalcand_decidxs[i],finalcand_widthidxs[i],finalcand_dmidxs[i],finalcand_snridxs[i]] for i in range(len(finalcand_raidxs))]
-        return finalcands,finalcand_raidxs,finalcand_decidxs,finalcand_dmidxs,finalcand_widthidxs,finalcand_snridxs
+        return finalcands,finalcand_names,finalcand_raidxs,finalcand_decidxs,finalcand_dmidxs,finalcand_widthidxs,finalcand_snridxs
 
 
 
 #initial spatial clustering based on psf shape
-def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
+def psf_cluster(cands,candnames,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     printlog(str(len(cands)) + " candidates",output_file=output_file)
 
     #make list for each param
@@ -188,6 +189,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     binned_snridxs = []
     binned_raidxs = []
     binned_decidxs = []
+    binned_names = []
     if TOAflag:
         binned_TOAs = []
     for i in range(len(cands)):
@@ -217,6 +219,7 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
                 condition = np.logical_and(condition,TOAs[inc_idxs]==unique_cands[2,j])
             snrs_i[j] += np.sum(snridxs[inc_idxs][condition])
         binned_snridxs = np.concatenate([binned_snridxs,snrs_i])
+        binned_names = np.concatenate([binned_names,[candnames[i]]*len(snrs_i)])
         printlog("finished getting binned snrs",output_file=output_file)
         """
         if TOAflag:
@@ -238,17 +241,18 @@ def psf_cluster(cands,PSF,output_file=cuttertaskfile,useTOA=False,perc=90):
     binned_dmidxs = np.array(binned_dmidxs)
     binned_widthidxs = np.array(binned_widthidxs)
     binned_snridxs = np.array(binned_snridxs)
+    binned_names = np.array(binned_names)
 
     if TOAflag:
         binned_TOAs = np.array(binned_TOAs)
     
     if TOAflag:
-        return binned_raidxs,binned_decidxs,binned_dmidxs,binned_widthidxs,binned_snridxs,binned_TOAs
+        return binned_names,binned_raidxs,binned_decidxs,binned_dmidxs,binned_widthidxs,binned_snridxs,binned_TOAs
     else:
-        return binned_raidxs,binned_decidxs,binned_dmidxs,binned_widthidxs,binned_snridxs
+        return binned_names,binned_raidxs,binned_decidxs,binned_dmidxs,binned_widthidxs,binned_snridxs
 
 #hdbscan clustering function; clusters in DM, width, RA, DEC space
-def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2,useTOA=False,perc=90,avgcluster=False,out_dir=""):
+def hdbscan_cluster(cands,candnames,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,plot=False,show=False,output_file=cuttertaskfile,PSF=None,min_samples=2,useTOA=False,perc=90,avgcluster=False,out_dir=""):
     printlog("WHY ISN'T IT STARTING?",output_file=output_file)
     #f = open(output_file,"a")
     printlog(str(len(cands)) + " candidates",output_file=output_file)
@@ -259,9 +263,9 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     if PSF is not None:
         printlog("Clustering in space with PSF...",output_file=output_file)
         if TOAflag:
-            raidxs,decidxs,dmidxs,widthidxs,snridxs,TOAs = psf_cluster(cands,PSF,output_file=output_file,useTOA=TOAflag,perc=perc)
+            candnames,raidxs,decidxs,dmidxs,widthidxs,snridxs,TOAs = psf_cluster(cands,candnames,PSF,output_file=output_file,useTOA=TOAflag,perc=perc)
         else:
-            raidxs,decidxs,dmidxs,widthidxs,snridxs = psf_cluster(cands,PSF,output_file=output_file,useTOA=TOAflag,perc=perc)
+            candnames,raidxs,decidxs,dmidxs,widthidxs,snridxs = psf_cluster(cands,candnames,PSF,output_file=output_file,useTOA=TOAflag,perc=perc)
         printlog((len(raidxs),len(decidxs),len(dmidxs),len(snridxs)),output_file)
         printlog(str(len(raidxs)) + " candidates remain after PSF clustering",output_file=output_file)
         """
@@ -351,6 +355,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     centroid_dms = []
     centroid_widths = []
     centroid_snrs = []
+    centroid_names = []
     if TOAflag:
         centroid_TOAs = []
     for k in classnames:
@@ -363,7 +368,6 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
                 centroid_snrs.append(np.average(snridxs[classes==k],weights=snridxs[classes==k]))
                 if TOAflag:
                     centroid_TOAs.append(np.average(TOAs[classes==k],weights=snridxs[classes==k]))
-            
             else:
                 centroid_ras.append(raidxs[classes==k][np.nanargmax(snridxs[classes==k])])
                 centroid_decs.append(decidxs[classes==k][np.nanargmax(snridxs[classes==k])])
@@ -372,6 +376,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
                 centroid_snrs.append(snridxs[classes==k][np.nanargmax(snridxs[classes==k])])
                 if TOAflag:
                     centroid_TOAs.append(TOAs[classes==k][np.nanargmax(snridxs[classes==k])])
+            centroid_names.append(candnames[classes==k][np.nanargmax(snridxs[classes==k])])
             #csvwriter.writerow([centroid_ras[-1],centroid_decs[-1],centroid_widths[-1],centroid_dms[-1],centroid_snrs[-1]])
     #fcsv.close()
     centroid_ras = np.array(centroid_ras)
@@ -381,6 +386,7 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     centroid_snrs = np.array(centroid_snrs)
     if TOAflag:
         centroid_TOAs = np.array(centroid_TOAs)
+    centroid_names = np.array(centroid_names)
     printlog("Done gathering centroids",output_file)
 
     if TOAflag:
@@ -431,9 +437,9 @@ def hdbscan_cluster(cands,min_cluster_size=50,dmt=[0]*16,wt=[0]*5,SNRthresh=1,pl
     #f.close()
     printlog("finished clustering",output_file)
     if TOAflag:
-        return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs
+        return classes,centroid_cands,centroid_names,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs
     else:
-        return classes,centroid_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
+        return classes,centroid_cands,centroid_names,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs
 
 
 
@@ -448,13 +454,15 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
     """
     gridsize = image_tesseract.shape[0]
     fname = output_dir + prefix + "_" + str(ra_idx) + "_" + str(dec_idx)
+    """
     if subimgpix%2 == 0:
         printlog("subimgpix must be odd",output_file=output_file)
         #if output_file != "":
         #    fout.close()
         return None
+    """
 
-
+    printlog("STARTING GET_SUBIMAGE",output_file=cutterfile)
     #dedisperse if given a dm
     if dm is not None:
         fname = fname + "_dedisp" + str(dm) + ".npy"
@@ -477,7 +485,19 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
         fname = fname + ".npy"
         image_tesseract_dm = copy.deepcopy(image_tesseract)
 
-
+    printlog("HERE>>"+str((ra_idx,dec_idx)),output_file=cutterfile)
+    minx = max(0,dec_idx-subimgpix//2)
+    maxx = min(minx+subimgpix,image_tesseract_dm.shape[0])
+    minx -= (subimgpix- (maxx-minx))
+    miny = max(0,ra_idx-subimgpix//2)
+    maxy = min(miny+subimgpix,image_tesseract_dm.shape[1])
+    miny -= (subimgpix - (maxy-miny))
+    minraidx = int(miny)
+    maxraidx = int(maxy)
+    mindecidx = int(minx)
+    maxdecidx = int(maxx)
+    
+    """
     #pad w/ nans
     image_tesseract_dm = np.pad(image_tesseract_dm,((gridsize,gridsize),
                                                    (gridsize,gridsize),
@@ -491,9 +511,10 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
     maxraidx = int(gridsize + ra_idx + subimgpix//2 + 1)#np.min([ra_idx + subimgpix//2 + 1,gridsize-1])
     mindecidx = int(gridsize + dec_idx - subimgpix//2)#np.max([dec_idx - subimgpix//2,0])
     maxdecidx = int(gridsize + dec_idx + subimgpix//2 + 1)#np.min([dec_idx + subimgpix//2 + 1,gridsize-1])
+    """
 
     #print(minraidx_cut,maxraidx_cut,mindecidx_cut,maxdecidx_cut)
-    printlog(str((minraidx,maxraidx,mindecidx,maxdecidx)),output_file=output_file)
+    printlog("THERE>>"+str((minraidx,maxraidx,mindecidx,maxdecidx)),output_file=output_file)
 
     image_cutout = image_tesseract_dm[mindecidx:maxdecidx,minraidx:maxraidx,:,:]
 
@@ -512,7 +533,7 @@ def get_subimage(image_tesseract,ra_idx,dec_idx,subimgpix=11,save=False,prefix="
 
 
 #checks injection file to see if a candidate is an injection
-def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps,realtime=False):
+def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps,realtime=False,output_file=cutterfile):
     #check if the candidate is an injection
     injection = False
     postinjection = False
@@ -521,19 +542,26 @@ def is_injection(isot,inject_file=inject_file,tsamp=tsamp,nsamps=nsamps,realtime
         i = 0
         for row in re:
             if i != 0:
-                if realtime:
-                    if row[0] == isot or ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= (tsamp*nsamps/1000)):
-                        injection = True
-                        break
-                    #elif (tsamp<134*5) and ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= 2*(tsamp*nsamps/1000)):
-                    #    postinjection = False
-                    #    break
-                else:
-                    if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
-                        injection = True
-                        if row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
-                            postinjection = True
-                        break
+                try:
+                    if realtime:
+                        #print(row)
+                        #if row[0] == isot or (((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 >=0 and ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= (tsamp*nsamps/1000)))):
+                        #if row[0] == isot or (((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= (tsamp*nsamps/1000)) and ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 >= -(tsamp/1000))):
+                        if row[0] == isot or (((Time(row[0],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= (tsamp*nsamps/1000)) and ((Time(row[0],format='isot').mjd - Time(isot,format='isot').mjd)*86400 >= -(tsamp/1000))):
+                            #print("-->"+str(row))
+                            injection = True
+                            break
+                        #elif (tsamp<134*5) and ((Time(row[0][:-1],format='isot').mjd - Time(isot,format='isot').mjd)*86400 <= 2*(tsamp*nsamps/1000)):
+                        #    postinjection = False
+                        #    break
+                    else:
+                        if row[0] == isot or row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
+                            injection = True
+                            if row[0][:-1] == Time(Time(isot,format='isot').mjd - (tsamp*nsamps/1000/86400),format='mjd').isot[:-1]:
+                                postinjection = True
+                            break
+                except Exception as exc:
+                    printlog(str(exc),output_file=output_file)
             i += 1
     csvfile.close()
     return injection,postinjection

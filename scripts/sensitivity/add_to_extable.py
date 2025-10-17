@@ -10,6 +10,9 @@ def main(args):
     f = open(table_dir+"/NSFRB_excludecal.json","r")
     tab = json.load(f)
     f.close()
+    for k in tab.keys():
+        print(k,len(tab[k]))
+    #return
 
 
     print(args)
@@ -17,7 +20,7 @@ def main(args):
         if args.remove:
             idxs = np.arange(len(tab['NVSS_exclude']),dtype=int)[np.array(tab['NVSS_exclude'])==args.name]
             while len(idxs)>0:
-                for idx in idxs:
+                for idx in idxs[:1]:
                      print(tab['NVSS_exclude'].pop(idx))
                      print(tab['NVSS_reason'].pop(idx))
                      print(tab['NVSS_MJD'].pop(idx))
@@ -31,11 +34,12 @@ def main(args):
         if args.remove:
             idxs = np.arange(len(tab['RFC_exclude']),dtype=int)[np.array(tab['RFC_exclude'])==args.name]
             while len(idxs)>0:
-                for idx in idxs:
+                for idx in idxs[:1]:
                      print(tab['RFC_exclude'].pop(idx))
                      print(tab['RFC_reason'].pop(idx))
                      print(tab['RFC_MJD'].pop(idx))
                 idxs = np.arange(len(tab['RFC_exclude']),dtype=int)[np.array(tab['RFC_exclude'])==args.name]
+                print(idxs)
             print("Done, removed " + args.name)
         else:
             tab['RFC_exclude'].append(args.name)
@@ -55,7 +59,7 @@ def main(args):
             print("Removing "+Time(args.mjd,format='mjd').isot+" from exclude table")
             idxs = np.arange(len(tab['NVSS_exclude']),dtype=int)[np.logical_and(np.array(tab['NVSS_exclude'])=="ALL",np.array(tab['NVSS_MJD'])==args.mjd)]
             while len(idxs)>0:
-                for idx in idxs:
+                for idx in idxs[:1]:
                      print(tab['NVSS_exclude'].pop(idx))
                      print(tab['NVSS_reason'].pop(idx))
                      print(tab['NVSS_MJD'].pop(idx))
@@ -64,7 +68,7 @@ def main(args):
 
             idxs = np.arange(len(tab['RFC_exclude']),dtype=int)[np.logical_and(np.array(tab['RFC_exclude'])=="ALL",np.array(tab['RFC_MJD'])==args.mjd)]
             while len(idxs)>0:
-                for idx in idxs:
+                for idx in idxs[:1]:
                      print(tab['RFC_exclude'].pop(idx))
                      print(tab['RFC_reason'].pop(idx))
                      print(tab['RFC_MJD'].pop(idx))

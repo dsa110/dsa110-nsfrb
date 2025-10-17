@@ -18,6 +18,7 @@ This script waits for visibilities to pass their 1-day expiration, then deletes 
 operations_dir = Path(os.environ['NSFRBDATA'] + "dsa110-nsfrb-fast-visibilities/")
 raw_cand_dir = Path(os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/raw_cands/")
 cand_dir = Path(os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/final_cands/")
+trig_dir = Path(os.environ['NSFRBDATA'] + "dsa110-nsfrb-candidates/init_cands/")
 subdirs_to_clear_init = [
     ("lxd110h03","*.out"),
     ("lxd110h04","*.out"),
@@ -79,8 +80,11 @@ def main(args):
         for file in (raw_cand_dir).glob("*"):
             #print(os.path.basename(str(file)),type(file))
 
-
-            modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
+            try:
+                modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
+            except Exception as exc:
+                print(exc)
+                continue
             # modtime is timezone naive, so we set it to utc
             # lxc managed containers are all using utc
             modtime = modtime.replace(tzinfo=rawcutoff.tzinfo)
@@ -149,6 +153,35 @@ def main(args):
             print("Done")
             """
 
+        #CLEAR T4A AND T4B
+        for file in (trig_dir / "T4A").glob("*"):
+            modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
+            modtime = modtime.replace(tzinfo=cutoff.tzinfo)
+            if modtime < cutoff:
+                print(modtime,cutoff)                    
+                print(f'Removing {file}')
+
+                try:
+                    file.unlink()                        
+                except Exception as exc:
+                    print("File unlink failed:",exc)
+                    shutil.rmtree(file)
+
+        for file in (trig_dir / "T4B").glob("*"):
+            modtime = datetime.datetime.fromtimestamp(file.stat().st_mtime)
+            modtime = modtime.replace(tzinfo=cutoff.tzinfo)
+            if modtime < cutoff:
+                print(modtime,cutoff)
+                print(f'Removing {file}')
+
+                try:
+                    file.unlink()
+                except Exception as exc:
+                    print("File unlink failed:",exc)
+                    shutil.rmtree(file)
+
+
+        
         print("SUBDIRS TO CLEAR:",subdirs_to_clear)
 
         #read vis files

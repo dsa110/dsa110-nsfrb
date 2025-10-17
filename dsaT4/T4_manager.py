@@ -6,6 +6,7 @@ from nsfrb import periodicity
 from nsfrb.flagging import flag_vis
 #from nsfrb.planning import find_fast_vis_label
 from nsfrb.config import tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol_slow,DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis,freq_axis_fullres,raw_cand_dir,bad_antennas,flagged_antennas,lambdaref,pixperFWHM,remote_cand_dir,minDM,maxDM,fc,chanbw,final_cand_dir
+from nsfrb.config import T4A_cand_dir,T4B_cand_dir
 from nsfrb.config import tsamp as tsamp_ms
 from nsfrb import plotting as pl
 from nsfrb import pipeline
@@ -13,6 +14,7 @@ from event import names
 import csv
 from nsfrb.classifying import classify_images, EnhancedCNN, NumpyImageCubeDataset
 from nsfrb.classifying_with_time import classify_images_3D
+from nsfrb.classifying_two_stage import classify_images_2stage
 from concurrent.futures import ThreadPoolExecutor
 from nsfrb.imaging import uv_to_pix,single_pix_image
 from nsfrb.noise import noise_update_all
@@ -118,11 +120,56 @@ def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,P=-1,final_cand_di
 #LOCK = Lock('update_json')
 from nsfrb.config import cutterfile
 from simulations_and_classifications import generate_PSF_images as scPSF
-def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF):
+def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF,cand_isot,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,slow,imgdiff,tsamp_use,namelock):
     if len(args.daskaddress) > 0:
         raw_cand_names,finalcands = d_future
     else:
         raw_cand_names,finalcands = d_future.result()
+    useTOA=args.useTOA and len(finalcands[0])==6
+
+    #write T4A triggers
+    namelock.acquire()
+    printlog("><><><><> START NEW T4A CSV WRITE <><><><><",output_file=cutterfile)
+    allcandnames,csvfilename = nsfrb_to_csv(args,finalcands,np.arange(len(finalcands),dtype=int),cand_isot,cand_mjd,
+                                            finalcandnames=None,finalpcands=dict(),
+                                            predictions=None,probabilities=None,
+                                            prefix='NSFRB',output_directory=remote_cand_dir+ "/T4A_candidates_" + cand_isot if args.remote else T4A_cand_dir + "/",
+                                            TLEVEL="T4A",useTOA=useTOA,suff=suff)
+
+    printlog("><><><><> DONE NEW T4A CSV WRITE <><><><><",output_file=cutterfile)
+    namelock.release()
+    printlog("><><><><> START NEW T4A JSON WRITE <><><><",output_file=cutterfile)
+
+    for j in range(len(allcandnames)):
+        #create json file
+        print(finalcands[j],allcandnames[j])
+        snr=finalcands[j][-1] #canddict['snrs'][i]
+        width=int(widthtrials[int(finalcands[j][2])])
+        print("HERE")
+        dm=DM_trials_use[int(finalcands[j][3])]
+        print(dm,finalcands[j][3],finalcands[j][2],RA_axis_2D.shape)
+        ra=RA_axis_2D[int(finalcands[j][1]),int(finalcands[j][0])] #RA_axis[int(canddict['ra_idxs'][i])]
+        print("HEREHERE")
+        dec=DEC_axis_2D[int(finalcands[j][1]),int(finalcands[j][0])] #DEC_axis[int(canddict['dec_idxs'][i])]
+        print("HALO")
+        trigname = allcandnames[j]
+        printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
+        print("ALMOST DONE")
+        if useTOA:
+            toa = finalcands[j][4] #canddict['TOAs'][i]
+            cand_mjd_ = Time(Time(cand_isot,format='isot').mjd + (toa*(tsamp_use)/1000/86400),format='mjd').mjd
+        else:
+            cand_mjd_ = Time(cand_isot,format='isot').mjd
+        P = -1
+        if args.remote:
+            fl = nsfrb_to_json(cand_isot,cand_mjd_,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=remote_cand_dir,slow=slow,imgdiff=imgdiff)
+            os.system("scp "+remote_cand_dir+trigname+".json h24.pro.pvt:"+T4A_cand_dir +"/")
+        else:
+            fl = nsfrb_to_json(cand_isot,cand_mjd_,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=T4A_cand_dir + "/",slow=slow,imgdiff=imgdiff)
+
+        printlog(fl,output_file=cutterfile)
+    printlog("><><><><> DONE NEW T4A JSON WRITE <><><><",output_file=cutterfile)
+
     if not (args.cluster and len(finalcands)>=args.mincluster):
         #cut by S/N if still too many
         if args.maxcand:
@@ -130,15 +177,18 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
             sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
             finalcands = sortedcands[0:1]
             finalidxs = np.arange(1)
+            allcandnames = allcandnames[0:1]
         elif len(finalcands) >args.maxcands_postcluster:
             printlog(cand_isot + "has too many candidates to process post-clustering (" + str(len(finalcands)) + ">" + str(args.maxcands_postcluster) + ") limit...",output_file=cutterfile)
+            allcandnames = allcandnames[np.argsort(np.array(finalcands)[:,-1])[::-1]]
             sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
             finalcands = sortedcands[:int(args.maxcands_postcluster)]
+            allcandnames = allcandnames[:int(args.maxcands_postcluster)]
             finalidxs = np.arange(len(finalcands),dtype=int)
-            printlog("done, cut to " + str(len(finalcands)) + " candidates",output_file=cutterfile)
+            printlog("done, cut to " + str(len(finalcands)) +"|"+ str(len(allcandnames)) + " candidates",output_file=cutterfile)
 
 
-        return finalcands,finalidxs
+        return allcandnames,finalcands,finalidxs
     
     printlog("PRE-CLUSTERING THERE ARE " + str(len(finalcands)) + " CANDIDATES",output_file=cutterfile)
     finalidxs = np.arange(len(finalcands),dtype=int)
@@ -146,7 +196,7 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
     
     if args.psfreduceonly:
         printlog("psf-based reduction to single candidate...",output_file=cutterfile)
-        finalcands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = cc.psf_reduction(finalcands,PSF,useTOA=useTOA,perc=args.psfpercentile)
+        finalcands,allcandnames,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = cc.psf_reduction(finalcands,allcandnames,PSF,useTOA=useTOA,perc=args.psfpercentile)
         printlog("done",output_file=cutterfile)
     else:
         #startclustering
@@ -165,9 +215,9 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
 
             printlog("Cluster iteration " + str(i+1) + "/" + str(args.clusteriters) + " with min cluster size " + str(mincluster),output_file=cutterfile)
             if useTOA:
-                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = cc.hdbscan_cluster(finalcands,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),useTOA=True,perc=args.psfpercentile,avgcluster=args.avgcluster)
+                classes,cluster_cands,allcandnames,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs,centroid_TOAs = cc.hdbscan_cluster(finalcands,allcandnames,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),useTOA=True,perc=args.psfpercentile,avgcluster=args.avgcluster)
             else:
-                classes,cluster_cands,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = cc.hdbscan_cluster(finalcands,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),perc=args.psfpercentile,avgcluster=args.avgcluster)
+                classes,cluster_cands,allcandnames,centroid_ras,centroid_decs,centroid_dms,centroid_widths,centroid_snrs = cc.hdbscan_cluster(finalcands,allcandnames,min_cluster_size=mincluster,min_samples=args.minsamples,dmt=DM_trials_use,wt=widthtrials,plot=False,show=False,SNRthresh=args.SNRthresh,PSF=(PSF if i==0 else None),perc=args.psfpercentile,avgcluster=args.avgcluster)
             if np.all(np.array(classes)==-1):
                 printlog("Minimum number of clusters reached",output_file=cutterfile)
                 break
@@ -185,17 +235,21 @@ def cluster_manage(d_future,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,w
     #cut by S/N if still too many
     if args.maxcand:
         printlog("Identifying max S/N candidate",output_file=cutterfile)
+        allcandnames = allcandnames[np.argsort(np.array(finalcands)[:,-1])[::-1]]
         sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
         finalcands = sortedcands[0:1]
         finalidxs = np.arange(1)
+        allcandnames = allcandnames[0:1]
     elif len(finalcands) >args.maxcands_postcluster:
         printlog(cand_isot + "has too many candidates to process post-clustering (" + str(len(finalcands)) + ">" + str(args.maxcands_postcluster) + ") limit...",output_file=cutterfile)
+        allcandnames = allcandnames[np.argsort(np.array(finalcands)[:,-1])[::-1]]
         sortedcands = list(np.array(finalcands)[np.argsort(np.array(finalcands)[:,-1])[::-1],:])
         finalcands = sortedcands[:int(args.maxcands_postcluster)]
+        allcandnames = allcandnames[:int(args.maxcands_postcluster)]
         finalidxs = np.arange(len(finalcands),dtype=int)
         printlog("done, cut to " + str(len(finalcands)) + " candidates",output_file=cutterfile)
     
-    return finalcands,finalidxs
+    return allcandnames,finalcands,finalidxs
 
 #ffa_semaphore = False
 def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_use,ffalock,suff):
@@ -214,11 +268,11 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
 
     if ret is None:
         return None
-    if len(ret)==4:
-        finalcands,finalidxs,predictions,probabilities = ret
+    if len(ret)==5:
+        allcandnames,finalcands,finalidxs,predictions,probabilities = ret
         classify_flag = True
-    elif len(ret)==2:
-        finalcands,finalidxs = ret
+    elif len(ret)==3:
+        allcandnames,finalcands,finalidxs = ret
         classify_flag = False
     else:
         #ffa_semaphore = False
@@ -227,9 +281,9 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     if (not args.FFA) or args.completeness or args.remote:# or slow or imgdiff:
         #ffa_semaphore = False
         if classify_flag:
-            return finalcands,finalidxs,dict(),predictions,probabilities 
+            return allcandnames,finalcands,finalidxs,dict(),predictions,probabilities 
         else:
-            return finalcands,finalidxs,dict()
+            return allcandnames,finalcands,finalidxs,dict()
 
     printlog("FFA START",output_file=cutterfile)
 
@@ -264,9 +318,9 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     if offset == -1:
         #ffa_semaphore = False
         if classify_flag:
-            return finalcands,finalidxs,dict(),predictions,probabilities
+            return allcandnames,finalcands,finalidxs,dict(),predictions,probabilities
         else:
-            return finalcands,finalidxs,dict()
+            return allcandnames,finalcands,finalidxs,dict()
     candgulp = int(offset//25)
     ngulps = args.FFAgulps
     mingulp = max([0,candgulp-(ngulps//2)])
@@ -400,26 +454,28 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     #ffa_semaphore = False
     #ffalock.release()
     if classify_flag:
-        return finalcands,finalidxs,finalpcands,predictions,probabilities
+        return allcandnames,finalcands,finalidxs,finalpcands,predictions,probabilities
     else:
-        return finalcands,finalidxs,finalpcands
+        return allcandnames,finalcands,finalidxs,finalpcands
 
-def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff):
+def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,tsamp_use,namelock):
     if len(args.daskaddress) > 0:
-        finalcands,finalidxs = d_future
+        allcandnames,finalcands,finalidxs = d_future
     else:
-        finalcands,finalidxs = d_future.result()
+        allcandnames,finalcands,finalidxs = d_future.result()
     printlog("CLASSIFY STARTED",output_file=cutterfile)
-    classify_flag = (args.classify or args.classify3D)
+    classify_flag = (args.classify or args.classify3D or args.classify2stage)
     useTOA=args.useTOA and len(finalcands[0])==6
     if not classify_flag:
-        return finalcands,finalidxs
+        return allcandnames,finalcands,finalidxs
+
+
     
     if args.classify:
 
         if args.subimgpix == image.shape[0]:
             printlog(str("IMGDIFF: " if imgdiff else "") + "Using full image for classification and cutouts;"+str(image.shape),output_file=cutterfile)
-            data_array = (cc.img_to_classifier_format(np.repeat(image.mean(2),nchans,axis=2),cand_isot,img_dir)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
+            data_array = (cc.img_to_classifier_format(np.repeat((image-np.nanmedian(image,2,keepdims=True)).mean(2),nchans,axis=2),cand_isot,img_dir)[np.newaxis,:,:,:]).repeat(len(finalcands),axis=0)
         else:
             #make a binned copy for each candidate
             data_array = np.zeros((len(finalcands),args.subimgpix,args.subimgpix,image.shape[3]),dtype=np.float64)
@@ -427,7 +483,7 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
                 printlog(finalcands[j],output_file=cutterfile)
 
                 #don't need to dedisperse(?)
-                subimg = cc.get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
+                subimg = cc.get_subimage(image-np.nanmedian(image,2,keepdims=True),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
                 if useTOA:
                     printlog("using TOA...",output_file=cutterfile)
                     loc = int(finalcands[j][4])
@@ -454,7 +510,7 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
         #only save bursts likely to be real
         #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
 
-    elif args.classify3D:
+    elif args.classify3D or args.classify2stage:
         if args.subimgpix == image.shape[0]:
             printlog("Using full image for classification and cutouts",output_file=cutterfile)
             if imgdiff:
@@ -463,28 +519,50 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
                     tmptoa = np.array([fcand[4] for fcand in finalcands])[np.argmax(tmpsnrs)]
                     printlog("so far so good",output_file=cutterfile)
                     if tmptoa < init_nsamps//2:
-                        data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                        data_array = ((image - np.nanmedian(image,2,keepdims=True))[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
                     else:
-                        data_array = (image[np.newaxis,:,:,-init_nsamps:,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                        data_array = ((image - np.nanmedian(image,2,keepdims=True))[np.newaxis,:,:,-init_nsamps:,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
                     printlog("still ok",output_file=cutterfile)
                 else:
-                    data_array = (image[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
+                    data_array = ((image - np.nanmedian(image,2,keepdims=True))[np.newaxis,:,:,:init_nsamps,:].repeat(nchans,axis=4)).repeat(len(finalcands),axis=0)
             else:
-                data_array = (image[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
+                data_array = ((image - np.nanmedian(image,2,keepdims=True))[np.newaxis,:,:,:,:]).repeat(len(finalcands),axis=0)
         else:
             #make a binned copy for each candidate
-            data_array = np.zeros((len(finalcands),args.subimgpix,args.subimgpix,image.shape[2],image.shape[3]),dtype=np.float32)
-            for j in range(len(finalcands)):
-                printlog(finalcands[j],output_file=cutterfile)
+            data_array = np.zeros((len(finalcands),args.subimgpix,args.subimgpix,init_nsamps,nchans))
+            if imgdiff:
+                if useTOA:
+                    tmpsnrs = np.array([fcand[-1] for fcand in finalcands])
+                    tmptoa = np.array([fcand[4] for fcand in finalcands])[np.argmax(tmpsnrs)]
+                    printlog("so far so good",output_file=cutterfile)
+                    if tmptoa < init_nsamps//2:
+                        for j in range(len(finalcands)):
+                            printlog(finalcands[j],output_file=cutterfile)
+                            data_array[j,:,:,:,:] = cc.get_subimage(((image - np.nanmedian(image,2,keepdims=True))[:,:,:init_nsamps,:].repeat(nchans,axis=3)),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
+                            printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
+                    else:
+                        for j in range(len(finalcands)):
+                            printlog(finalcands[j],output_file=cutterfile)
+                            data_array[j,:,:,:,:] = cc.get_subimage(((image - np.nanmedian(image,2,keepdims=True))[:,:,-init_nsamps:,:].repeat(nchans,axis=3)),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
+                            printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
+                    printlog("still ok",output_file=cutterfile)
+                else:
+                    data_array[j,:,:,:,:] = cc.get_subimage(((image - np.nanmedian(image,2,keepdims=True))[:,:,:init_nsamps,:].repeat(nchans,axis=3)),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
+            else:
+                for j in range(len(finalcands)):
+                    printlog(finalcands[j],output_file=cutterfile)
 
-                #don't need to dedisperse(?)
-                data_array[j,:,:,:,:] = cc.get_subimage(image,int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
-                printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
+                    #don't need to dedisperse(?)
+                    data_array[j,:,:,:,:] = cc.get_subimage(image-np.nanmedian(image,2,keepdims=True),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=args.subimgpix)
+                    printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
 
         #run classifier
         printlog("still fine",output_file=cutterfile)
         printlog("Start classifying " + str(data_array.shape),output_file=cutterfile)
-        predictions, probabilities = classify_images_3D(data_array, args.model_weights3D, verbose=args.verbose)
+        if args.classify3D:
+            predictions, probabilities = classify_images_3D(data_array, args.model_weights3D, verbose=args.verbose, pthreshold=args.pthreshold)
+        elif args.classify2stage:
+            predictions, probabilities = classify_images_2stage(data_array, args.model_weights2stage, verbose=args.verbose)
         if args.testtrigger:
             predictions = np.zeros(len(finalcands))
             probabilities = np.zeros(len(finalcands))
@@ -495,9 +573,54 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
         #finalidxs = finalidxs[~np.array(predictions,dtype=bool)]
 
 
+    #write T4B triggers
+    namelock.acquire()
+    printlog("><><><><> START NEW T4B CSV WRITE <><><><><",output_file=cutterfile)
+    allcandnames,csvfilename = nsfrb_to_csv(args,finalcands,finalidxs,cand_isot,cand_mjd,
+                                            finalcandnames=allcandnames,finalpcands=dict(),
+                                            predictions=predictions,probabilities=probabilities,
+                                            prefix='NSFRB',output_directory=remote_cand_dir+ "/T4B_candidates_" + cand_isot if args.remote else T4B_cand_dir + "/",
+                                            TLEVEL="T4B",useTOA=useTOA,suff=suff)
+    printlog("><><><><> DONE NEW T4B CSV WRITE <><><><><",output_file=cutterfile)
+    namelock.release()
+    printlog("><><><><> START NEW T4B JSON WRITE <><><><",output_file=cutterfile)
+
+    for j in range(len(allcandnames)):
+        #create json file
+        print(finalcands[j],allcandnames[j])
+        snr=finalcands[j][-1] #canddict['snrs'][i]
+        width=int(widthtrials[int(finalcands[j][2])])
+        print("HERE")
+        dm=DM_trials_use[int(finalcands[j][3])]
+        print(dm,finalcands[j][3],finalcands[j][2],RA_axis_2D.shape)
+        ra=RA_axis_2D[int(finalcands[j][1]),int(finalcands[j][0])] #RA_axis[int(canddict['ra_idxs'][i])]
+        print("HEREHERE")
+        dec=DEC_axis_2D[int(finalcands[j][1]),int(finalcands[j][0])] #DEC_axis[int(canddict['dec_idxs'][i])]
+        print("HALO")
+        trigname = allcandnames[j]
+        printlog(str(snr) +","+ str(width)+","+str(dm) + ","+ str(ra) + "," + str(dec) + "," + trigname,output_file=cutterfile)
+        print("ALMOST DONE")
+        if useTOA:
+            toa = finalcands[j][4] #canddict['TOAs'][i]
+            cand_mjd_ = Time(Time(cand_isot,format='isot').mjd + (toa*(tsamp_use)/1000/86400),format='mjd').mjd
+        else:
+            cand_mjd_ = Time(cand_isot,format='isot').mjd
+        P = -1
+        if args.remote:
+            fl = nsfrb_to_json(cand_isot,cand_mjd_,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=remote_cand_dir,slow=slow,imgdiff=imgdiff)
+            os.system("scp "+remote_cand_dir+trigname+".json h24.pro.pvt:"+T4B_cand_dir +"/")
+        else:
+            fl = nsfrb_to_json(cand_isot,cand_mjd_,snr,width,dm,ra,dec,trigname,P=P,final_cand_dir=T4B_cand_dir + "/",slow=slow,imgdiff=imgdiff)
+
+        printlog(fl,output_file=cutterfile)
+    printlog("><><><><> DONE NEW T4B JSON WRITE <><><><",output_file=cutterfile)
+
+
+
     #if set, cut out candidates rejected by the classifier
     if classify_flag and args.classcut:
         printlog("Classifier rejected " + str(np.sum(predictions)) + "/" + str(len(predictions)) + " candidates",output_file=cutterfile)
+        printlog("xxxxx "+str((len(finalcands),len(probabilities),len(predictions),len(allcandnames))),output_file=cutterfile)
         finalcands_new = []
         for i in range(len(finalcands)):
             if predictions[i] == 0:
@@ -512,10 +635,94 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
             return
         probabilities = probabilities[predictions==0]
         predictions = predictions[predictions==0]
+        allcandnames = allcandnames[predictions==0]
         finalidxs = np.arange(len(finalcands),dtype=int)
-    return finalcands,finalidxs,predictions,probabilities
 
-def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile):
+    return allcandnames,finalcands,finalidxs,predictions,probabilities
+
+
+def nsfrb_to_csv(args,finalcands,finalidxs,cand_isot,cand_mjd,finalcandnames=None,finalpcands=dict(),predictions=None,probabilities=None,prefix='NSFRB',output_directory=T4A_cand_dir,TLEVEL="T4A",useTOA=False,suff=""):
+    #write final candidates to csv
+    printlog("TOCSV",output_file=cutterfile)
+    try:
+        printlog(finalcandnames,output_file=cutterfile)
+    except Exception as exc:
+        printlog(exc,output_file=cutterfile)
+
+    #get cand name
+    if finalcandnames is None:
+        finalcandnames = []
+        prefix = "NSFRB"
+        with open(table_dir+"nsfrb_lastname.txt","r") as lnamefile:
+            lastname = (lnamefile.read()).strip()
+            if lastname == "None" or lastname == "":
+                lastname = None
+        lnamefile.close()
+        printlog(str(lastname),output_file=cutterfile)
+        
+        for j in range(len(finalcands)):
+            sysstdout = sys.stdout
+            with open(cutterfile,"a") as sys.stdout:
+                lastname = names.increment_name(cand_mjd,lastname=lastname)
+            sys.stdout = sysstdout
+            finalcandnames.append(prefix+lastname)
+        finalcandnames = np.array(finalcandnames)
+        with open(table_dir+"nsfrb_lastname.txt","w") as lnamefile:
+            if lastname is not None:
+                lnamefile.write(lastname)
+            else:
+                lnamefile.write("None")
+        lnamefile.close()
+        printlog("done generating trigger names: "+str(finalcandnames),output_file=cutterfile)
+    printlog("writing cands "+str(finalcandnames)+" to " +output_directory,output_file=cutterfile)
+
+    useTOA=useTOA and len(finalcands[0])==6
+    classify_flag = (predictions is not None) and (probabilities is not None)
+    FFAflag = args.FFA and (not args.completeness) and (len(finalpcands)>0)
+
+    printlog("set flags",output_file=cutterfile)
+    csvfilename = output_directory + "/" + TLEVEL + "_candidates_" + cand_isot + suff + ".csv"
+    printlog(csvfilename,output_file=cutterfile)
+    csvfile = open(csvfilename,"w")
+    wr = csv.writer(csvfile,delimiter=',')
+    hdr = ["candname","RA index","DEC index","WIDTH index", "DM index"]
+    if useTOA: hdr += ["TOA"]
+    if (args.FFA and not args.completeness): hdr += ["Period_s"]
+    hdr += ["SNR"]
+    if classify_flag: hdr += ["PROB"]
+    printlog(hdr,output_file=cutterfile)
+    wr.writerow(hdr)
+    for j in finalidxs:#range(len(finalidxs)):
+        
+        candname = finalcandnames[j]
+        printlog(candname,output_file=cutterfile)
+        printlog(prefix + ","+str(len(prefix)),output_file=cutterfile)
+        lastname = candname[len(prefix):]
+        if classify_flag:
+            if FFAflag: #(args.FFA and not args.completeness): #args.FFA:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),["" if j not in finalpcands.keys() else finalpcands[j]["fineP_secs"]],[finalcands[j][-1]],[probabilities[j]]]))
+            else:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]],[probabilities[j]]]))
+        else:
+            if FFAflag: #(args.FFA and not args.completeness): #args.FFA:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),["" if j not in finalpcands.keys() else finalpcands[j]["fineP_secs"]],[finalcands[j][-1]]]))
+            else:
+                wr.writerow(np.concatenate([[lastname],np.array(finalcands[j][:-1],dtype=int),[finalcands[j][-1]]]))
+        printlog("doneloop",output_file=cutterfile)
+    csvfile.close()
+
+    with open(table_dir+"nsfrb_lastname.txt","w") as lnamefile:
+        if lastname is not None:
+            lnamefile.write(lastname)
+        else:
+            lnamefile.write("None")
+    lnamefile.close()
+    printlog("done naming stuff",output_file=cutterfile)
+    return finalcandnames,csvfilename
+
+
+
+def writecands_manage(d_future,image,last_frame,searched_image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile,namelock):
     if len(args.daskaddress) > 0:
         res = d_future
     else:
@@ -523,11 +730,11 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     print("RIGHT HERE",res)
     if res is None:
         return
-    elif len(res) == 5:
-        finalcands,finalidxs,finalpcands,predictions,probabilities = res
+    elif len(res) == 6:
+        allcandnames,finalcands,finalidxs,finalpcands,predictions,probabilities = res
         classify_flag = True
-    elif len(res) == 3:
-        finalcands,finalidxs,finalpcands = res
+    elif len(res) == 4:
+        allcandnames,finalcands,finalidxs,finalpcands = res
         classify_flag = False
     else:
         return
@@ -561,6 +768,17 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     else:
         os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff)
 
+    namelock.acquire()
+    printlog("><><><><> START NEW CSV WRITE <><><><><",output_file=cutterfile)
+    allcandnames,csvfilename = nsfrb_to_csv(args,finalcands,finalidxs,cand_isot,cand_mjd,finalcandnames=allcandnames,finalpcands=dict() if not (args.FFA and not args.completeness) else finalpcands,
+                                            predictions=None if not classify_flag else predictions,
+                                            probabilities=None if not classify_flag else probabilities,
+                                            prefix='NSFRB',output_directory=remote_cand_dir + "/final_candidates_" + cand_isot if args.remote else final_cand_dir+ dirlabel  + "/" + cand_isot + suff,
+                                            TLEVEL="final",useTOA=useTOA)
+    printlog("><><><><> DONE NEW CSV WRITE <><><><><",output_file=cutterfile)
+    namelock.release()
+    
+    """
     #write final candidates to csv
     prefix = "NSFRB"
     with open(table_dir+"nsfrb_lastname.txt","r") as lnamefile:
@@ -615,6 +833,23 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
 
     print("dones writing to csv")
     print(finalidxs,finalcands)
+    """
+    if args.remote:
+        printlog("copying cand file to h24...",output_file=cutterfile)
+        os.system("scp "+remote_cand_dir + "/final_candidates_" + cand_isot + ".csv h24.pro.pvt:"+final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/")
+        #os.system("scp "+csvfilename + " h24.pro.pvt: "+final_cand_dir+ dirlabel  + "/" + cand_isot + suff + "/")
+        printlog("done")
+
+    #copy npy files
+    printlog("copying files",output_file=cutterfile)
+    if args.remote:
+        printlog("ssh h24.pro.pvt \"cp " + raw_cand_dir + "/*" + cand_isot + suff + "* " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/\"",output_file=cutterfile)
+        os.system("ssh h24.pro.pvt \"cp " + raw_cand_dir + "/*" + cand_isot + suff + "* " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/\"")
+    else:
+        printlog("cp " + raw_cand_dir + "/*" + cand_isot + suff + "* " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",output_file=cutterfile)
+        os.system("cp " + raw_cand_dir + "/*" + cand_isot + suff + "* " + final_cand_dir + dirlabel + "/" + cand_isot + suff + "/")
+    printlog("done",output_file=cutterfile)
+
     #make subdirectories for candidates
     for j in finalidxs:
 
@@ -653,15 +888,25 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
             print(i)
             DM = DM_trials_use[int(canddict['dm_idxs'][i])]
 
-            sourceimg = image[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
+            truensamps = image.shape[2]
+            RA_cutoff = np.abs(searched_image.shape[1]-image.shape[1])
+            printlog("COM "+str(image.shape) + str(searched_image.shape),output_file=cutterfile)
+            if RA_cutoff>0:
+                image_cut = np.concatenate([last_frame[:,:-RA_cutoff,:,:],image[:,RA_cutoff:,:,:]],axis=2)
+            else:
+                image_cut = np.concatenate([last_frame,image],axis=2)
+
+            sourceimg = image_cut[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
-            if (DM != 0 and not imgdiff):
+            if not imgdiff:#(DM != 0 and not imgdiff):
                 printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc "+ str(sourceimg.shape),output_file=cutterfile)
 
-                tshift =np.array(np.abs((4.15)*DM*((1/np.nanmin(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
-                sourceimg_dm = np.zeros_like(sourceimg)
+                tshift =np.array(np.abs((4.15)*DM*((1/np.nanmax(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
+                sourceimg_dm = np.zeros((sourceimg.shape[0],sourceimg.shape[1],truensamps,sourceimg.shape[3]))
+                printlog("COM"+str(sourceimg_dm.shape),output_file=cutterfile)
                 for j in range(len(freq_axis)):
-                    sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(tshift[j],0)),mode='constant')[:,:,:sourceimg.shape[2]]
+                    sourceimg_dm[:,:,:,j] = sourceimg[:,:,sourceimg.shape[2]-tshift[j]-truensamps:sourceimg.shape[2]-tshift[j],j]
+                    #sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(0,tshift[j])),mode='constant')[:,:,:truensamps]#:sourceimg.shape[2]]
                 """
 
 
@@ -724,9 +969,9 @@ def writecands_manage(d_future,image,args,DM_trials_use,widthtrials,suff,cand_is
     
         print("writecands done")
         if not injection_flag:
-            return list(res) + [canddict,allcandnames,timeseries,fl]
+            return list(res[1:]) + [canddict,allcandnames,timeseries,fl]
         else:
-            return list(res) + [canddict,allcandnames,timeseries]
+            return list(res[1:]) + [canddict,allcandnames,timeseries]
     return
 
 def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag,plotlock):
@@ -794,7 +1039,8 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",
                                             show=False,s100=args.SNRthresh/2,
-                                            injection=injection_flag,vmax=args.SNRthresh*5,vmin=args.SNRthresh,
+                                            injection=injection_flag,vmax=None,#args.SNRthresh*25,
+                                            vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=finalpcands,output_file=cutterfile)
     printlog(candplot,output_file=cutterfile)
@@ -892,7 +1138,7 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     return
 
 
-def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock,plotlock,lightweight,psfreduceonly):
+def submit_cand_nsfrb(image,last_frame,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock,plotlock,namelock,lightweight,psfreduceonly):
     """
     Modelled from dsa110-T3/dsaT3/T3_manager.submit_cand(); Given filename of trigger json,
     create DSACand and submit to scheduler for T3 processing
@@ -1051,15 +1297,24 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
                 canddict['TOAs'] = [candTOA]
 
 
-            #dedisperse
-            sourceimg = image[int(candDECidx):int(candDECidx)+1,int(candRAidx):int(candRAidx)+1,:,:]
+            #dedisperse, first concatenating previous frame
+            truensamps = image.shape[2]
+            RA_cutoff = np.abs(searched_image.shape[1]-image.shape[1])
+            if RA_cutoff>0:
+                image_cut = np.concatenate([last_frame[:,:-RA_cutoff,:,:],image[:,RA_cutoff:,:,:]],axis=2)
+            else:
+                image_cut = np.concatenate([last_frame,image],axis=2)
+            sourceimg = image_cut[int(candDECidx):int(candDECidx)+1,int(candRAidx):int(candRAidx)+1,:,:]
             if (candDM != 0 and not imgdiff):
                 printlog("COMPUTING SHIFTS FOR DM="+str(candDM)+"pc/cc "+ str(sourceimg.shape),output_file=cutterfile)
 
-                tshift =np.array(np.abs((4.15)*candDM*((1/np.nanmin(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
-                sourceimg_dm = np.zeros_like(sourceimg)
+                tshift =np.array(np.abs((4.15)*DM*((1/np.nanmax(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
+                sourceimg_dm = np.zeros((sourceimg.shape[0],sourceimg.shape[1],truensamps,sourceimg.shape[3]))
+
                 for j in range(len(freq_axis)):
-                     sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(tshift[j],0)),mode='constant')[:,:,:sourceimg.shape[2]]
+                    sourceimg_dm[:,:,:,j] = sourceimg[:,:,sourceimg.shape[2]-tshift[j]-truensamps:sourceimg.shape[2]-tshift[j],j]
+                #for j in range(len(freq_axis)):
+                #     sourceimg_dm[:,:,:,j] = np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(0,tshift[j])),mode='constant')[:,:,:truensamps]#sourceimg.shape[2]]
             else:
                 sourceimg_dm = sourceimg
             timeseries = [np.nanmean(sourceimg_dm,(0,1,3))]
@@ -1070,7 +1325,8 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
                                             DM_trials=DM_trials_use,widthtrials=widthtrials,
                                             output_dir=remote_cand_dir if args.remote else final_cand_dir + dirlabel + "/" + cand_isot + suff + "/",
                                             show=False,s100=args.SNRthresh/2,
-                                            injection=injection_flag,vmax=candSNR,vmin=args.SNRthresh,
+                                            injection=injection_flag,vmax=None,#args.SNRthresh*25,
+                                            vmin=args.SNRthresh,
                                             searched_image=searched_image,timeseries=timeseries,uv_diag=uv_diag,
                                             dec_obs=dec_obs,slow=slow,imgdiff=imgdiff,pcanddict=dict(),output_file=cutterfile)
             if args.toslack:
@@ -1120,16 +1376,16 @@ def submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,
                             cutterfile,0,args.maxcands,args.writeraw,args.completeness,False,args.completeness,args.searchradius)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(2) clustering
-    d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF,cand_isot,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,slow,imgdiff,tsamp_use,namelock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3) classifying
-    d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,tsamp_use,namelock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3.5) fast folding
     d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_ms,ffalock,suff)
 
     #(4) writing csvs and jsons for remaining cands (might not be any remaining cands)
-    d_write = client.submit(writecands_manage,d_ffa,image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_write = client.submit(writecands_manage,d_ffa,image,last_frame,searched_image,args,DM_trials_use,widthtrials,suff,cand_isot,cand_mjd,slow,imgdiff,injection_flag,postinjection_flag,tsamp_use,nsamps,RA_axis_2D,DEC_axis_2D,cutterfile,namelock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(5) sending alerts (slack, triggers, etc)
     d_trigger = client.submit(sendtrigger_manage,d_write,image,searched_image,args,uv_diag,dec_obs,slow,imgdiff,RA_axis,DEC_axis,DM_trials_use,widthtrials,cand_isot,suff,cutterfile,injection_flag,postinjection_flag,plotlock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
@@ -1436,9 +1692,11 @@ def main(args):
     if len(args.daskaddress)==0:
         ffalock_ = Lock()
         plotlock_ = Lock()
+        namelock_ = Lock()
     else:
         ffalock_ = Lock_DASK()
         plotlock_ = Lock_DASK()
+        namelock_ = Lock_Dask()
     #sys.stderr = open(error_file,"w")
     printlog("Starting T4 Manager (realtime candcutter)...",output_file=cutterfile)
     printlog("Adding ETCD watch on key "+ETCDKEY,output_file=cutterfile)
@@ -1544,13 +1802,23 @@ def main(args):
                     os.system("scp h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + ".npy "+remote_cand_dir)
                     os.system("scp h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_searched.npy "+remote_cand_dir)
                     os.system("scp h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_TOAs.npy "+remote_cand_dir)
+                    if not imgdiff:
+                        os.system("scp h24.pro.pvt:"+raw_cand_dir + cand_isot + suff + "_last.npy "+remote_cand_dir)
                     image = np.load(remote_cand_dir + cand_isot + suff + ".npy")
                     searched_image = np.load(remote_cand_dir+ cand_isot + suff + "_searched.npy")
                     TOAs = np.load(remote_cand_dir+ cand_isot + suff + "_TOAs.npy").astype(int)
+                    if not imgdiff:
+                        last_frame = np.load(remote_cand_dir + cand_isot + suff + "_last.npy")
+                    else:
+                        last_frame = None
                 else:
                     image = np.load(raw_cand_dir + cand_isot + suff + ".npy")
                     searched_image = np.load(raw_cand_dir + cand_isot + suff + "_searched.npy")
                     TOAs = np.load(raw_cand_dir + cand_isot + suff + "_TOAs.npy").astype(int)
+                    if not imgdiff:
+                        last_frame = np.load(raw_cand_dir + cand_isot + suff + "_last.npy")
+                    else:
+                        last_frame = None
             except Exception as e:
                 printlog("No image found for candidate " + cand_isot,output_file=cutterfile)
                 printlog(str(e),output_file=cutterfile)
@@ -1564,6 +1832,10 @@ def main(args):
             searched_image = uniform.rvs(loc=0,scale=args.SNRthresh+1,size=((301,301,5,16)))
             image = uniform.rvs(size=((301,301,25,16)))
             TOAs = np.zeros((301,301,25,16),dtype=int)
+            if not imgdiff:
+                last_frame = uniform.rvs(size=((301,301,25,16)))
+            else:
+                last_frame = None
         cand_mjd = Time(cand_isot,format='isot').mjd
         if args.realtime_inject:
             injection_flag,postinjection_flag = cc.is_injection(cand_isot,tsamp=tsamp_use,nsamps=image.shape[2],realtime=args.realtime_inject)
@@ -1579,12 +1851,35 @@ def main(args):
         nsamps = image.shape[2]
 
         
+        printlog("applying astrometric calibration...")
+        srcs = glob.glob(table_dir + "/NSFRB_J*_astrocal.json")
+        if len(srcs)>0:
+            print([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs])
+            decs = SkyCoord([s[s.index("_astrocal")-14:s.index("_astrocal")] for s in srcs],unit=(u.hourangle,u.deg),frame='icrs').dec.value
+            idx = np.argmin(np.abs(decs-dec_obs))
+            astrocaltable_f = open(srcs[idx],"rb")
+            astrocaltable = json.load(astrocaltable_f)
+            astrocaltable_f.close()
+            astrocaldec = decs[idx]
+        else:
+            astrocaltable_f = open(table_dir + "NSFRB_astrocal.json","rb")
+            astrocaltable = json.load(astrocaltable_f)
+            astrocaltable_f.close()
+            astrocaldec = 71.6
+
+        if 'core_RA_offset_deg' in astrocaltable.keys() and 'core_DEC_offset_deg' in astrocaltable.keys():
+            print("applying best astrometric correction:",astrocaltable['core_RA_offset_deg'],astrocaltable['core_DEC_offset_deg'])
+            RA_axis_2D -= astrocaltable['core_RA_offset_deg']*(np.cos(dec_obs*np.pi/180)/np.cos(astrocaldec*np.pi/180))
+            DEC_axis_2D -= astrocaltable['core_DEC_offset_deg']
+        else:
+            print("no correction available")
+
 
 
         #submit task
         #tasktimes.append(time.time())
-        tasklist.append(submit_cand_nsfrb(image,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
-                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_,plotlock_,
+        tasklist.append(submit_cand_nsfrb(image,last_frame,searched_image,TOAs,fname,uv_diag,dec_obs,args,suff,tsamp_use,DM_trials_use,cand_isot,cand_mjd,
+                        RA_axis,DEC_axis,RA_axis_2D,DEC_axis_2D,nsamps,injection_flag,postinjection_flag,slow,imgdiff,client,PSF,ffalock_,plotlock_,namelock_,
                         args.lightweight,args.psfreduceonly)) 
         """
         poplist = []
@@ -1624,9 +1919,12 @@ if __name__=="__main__":
     parser.add_argument('--verbose',action='store_true', help='Enable verbose output')
     parser.add_argument('--classify',action='store_true', help='Classify candidates with a machine learning convolutional neural network')
     parser.add_argument('--classify3D',action='store_true', help='Classify candidates with a machine learning convolutional neural network with time dependence')
+    parser.add_argument('--classify2stage',action='store_true',help='Classify candidates with 2-stage CNN')
     parser.add_argument('--classcut',action='store_true',help='Only save candidates that the classifier passes')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights_20250212.pth")
     parser.add_argument('--model_weights3D',type=str, help='Path to the model weights file for 3D classifying',default=cwd + "/simulations_and_classifications/enhanced3dcnn_weights_final_remote.pth")
+    parser.add_argument('--model_weights2stage',type=str,help='Path to the model weights file for 2stage classifying',default=training_dir + "/model_weights_two_stage_2025-09-05T23:21:17.050.pth")
+    parser.add_argument('--pthreshold',type=float,help='Confidence level with which to reject RFI; default = 0.5',default=0.5)
     parser.add_argument('--toslack',action='store_true',help='Sends Candidate Summary Plots to Slack')
     parser.add_argument('--sleep',type=float,help='Time in seconds to sleep between successive cand_cutter runs; default=0',default=0)
     parser.add_argument('--runtime',type=float,help='Minimum time in seconds to run before sleep cycle; default=60',default=60)

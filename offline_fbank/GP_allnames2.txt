@@ -1,0 +1,3 @@
+/dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/GP_observations_2025-04-21T18:36:00.000
+/dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/GP_observations_2025-04-22T18:36:00.000
+/dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/GP_observations_2025-04-23T18:36:00.000

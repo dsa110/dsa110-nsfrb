@@ -1,4 +1,5 @@
 import sys
+import copy
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -7,14 +8,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm  
-from nsfrb.simulating import compute_uvw, add_complex_gaussian_noise, get_all_coordinates, get_core_coordinates, apply_spectral_index, apply_phase_shift
+from nsfrb.simulating import compute_uvw, add_complex_gaussian_noise, get_all_coordinates, get_core_coordinates, apply_spectral_index, apply_phase_shift,simulate_far_field_rfi, rfi_source_position, simulate_near_field_rfi
 from nsfrb.imaging import revised_robust_image
-from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, flagged_antennas,bmin,robust,lambdaref
+from nsfrb.config import NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, flagged_antennas,bmin,robust,lambdaref,Lat
 from nsfrb.flagging import flag_vis
 from dsamfs import utils as pu
 
 
-def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust):
+def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_high, exclude_antenna_percentage, HA_point, HA_source, Dec_point, Dec_source, spectral_index_low, spectral_index_high, zoom_pix, tonumpy,inflate=False,noise_only=False,N_NOISE=1,flagged_antennas=flagged_antennas,bmin=bmin,robust=robust,RFI=False,rfi_type='near'):
     """
     This function generates images of sources observed with DSA-110 core antennas.
     It takes various parameters such as the dataset directory, the number of observations, 
@@ -49,7 +50,8 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
     #if core:
     #    x_core, y_core, z_core = get_core_coordinates(flagged_antennas=flagged_antennas)
     #else:
-    x_core, y_core, z_core = get_all_coordinates(flagged_antennas=flagged_antennas)
+    #x_core, y_core, z_core = get_all_coordinates(flagged_antennas=flagged_antennas)
+    x_core, y_core, z_core,n_core = get_all_coordinates(flagged_antennas=[],return_names=True)
     #pixel_resolution = (0.20 / np.max(np.sqrt(x_core**2 + y_core**2))) / 3
 
     ANTENNA_COUNT = len(x_core)  # Assuming x_core length represents the antenna count
@@ -83,6 +85,18 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
         v_core = v_core_new = UVW[0,:,1]
         w_core = w_core_new = UVW[0,:,2]
 
+        x_core_new = []
+        y_core_new = []
+        z_core_new = []
+        n_core_new = []
+        print(len(x_core),len(antenna_order))
+        
+        for i in range(len(x_core)):
+            if n_core[i] in antenna_order:
+                x_core_new.append(x_core[i])
+                y_core_new.append(y_core[i])
+                z_core_new.append(z_core[i])
+                n_core_new.append(n_core[i])
         pt_dec = Dec_source*np.pi/180.
         bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
         tmp, bname, blen, UVW, antenna_order = flag_vis(np.zeros((1,4656,8*16,2,2)), bname, blen, UVW, antenna_order, list(exclude_antennas) + list(flagged_antennas),flagged_corrs=[],flag_channel_templates=[],bmin=bmin)
@@ -97,7 +111,37 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
         u_core, v_core, w_core = compute_uvw(x_core, y_core, z_core, HA_point, Dec_point) #core antennas -- this will make the PSF show up at the center
         u_core_s, v_core_s, w_core_s = compute_uvw(x_core, y_core, z_core, HA_source, Dec_source) #use this to offset to the source
         """
-        V = V_new = [np.ones(len(u_core)) + 0j for _ in range(NUM_CHANNELS)]#[np.ones(len(u_core)) + 1j*np.ones(len(v_core)) for _ in range(NUM_CHANNELS)]
+    
+        
+        if RFI:
+            if rfi_type == "far":
+                # Applying the RFI and random shifts
+                V  = simulate_far_field_rfi(u_core, v_core, NUM_CHANNELS, UVW.shape[1], pixel_resolution)
+                V = [(UVW.shape[1]*((zoom_pix + (1 if zoom_pix%2==0 else 0))**2))*v for v in V]
+                V_new = V
+            elif rfi_type == "near":
+                #azimuth = np.random.uniform(azimuth_low, azimuth_high)  # Specify azimuth in degrees
+                #elevation = np.random.uniform(elevation_low, elevation_high)  # Elevation
+                dist_low = 1
+                dist_high = 1000
+                dist = np.random.uniform(dist_low, dist_high)
+                azimuth = 0
+                elevation = Dec_source - Lat + 90
+                rfi_position = rfi_source_position(x_core_new, y_core_new, z_core_new, azimuth, elevation, distance=dist)
+
+                # Simulate near-field RFI
+                rfi_amplitude = 100
+                V = []
+                for channel in range(NUM_CHANNELS):
+                    frequency = (CH0 + CH_WIDTH * channel) * 1e6  # Calculate frequency for current channel
+                    V.append((UVW.shape[1]*((zoom_pix + (1 if zoom_pix%2==0 else 0))**2))*simulate_near_field_rfi(x_core_new, y_core_new, z_core_new, np.zeros(len(u_core),dtype=complex), rfi_position, rfi_amplitude, frequency,bnames=list(bname),anames=n_core_new))
+                V_new = V
+
+            else:
+                print("Invalid rfi_type, must be one of: 'far','near'")
+                raise(Exception)
+        else:
+            V = V_new = [(UVW.shape[1]*((zoom_pix + (1 if zoom_pix%2==0 else 0))**2))*np.ones(len(u_core)) + 0j for _ in range(NUM_CHANNELS)]#[np.ones(len(u_core)) + 1j*np.ones(len(v_core)) for _ in range(NUM_CHANNELS)]
         """
         u_core_new, v_core_new, w_core_new, V_new = [], [], [], []
         u_core_s_new, v_core_s_new, w_core_s_new = [], [], []
@@ -160,7 +204,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
             
                 #chunk_V_shifted = [apply_phase_shift(v, u_shift_rad, v_shift_rad) for v in chunk_V]
                 #dirty_img = revised_uniform_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0))
-                dirty_img = revised_robust_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0),robust=robust,pixel_resolution=pixel_resolution)
+                dirty_img = revised_robust_image(chunk_V,chunk_u_core,chunk_v_core,zoom_pix + (1 if zoom_pix%2==0 else 0),robust=robust,pixel_resolution=pixel_resolution).transpose()
                 """
                 if xidxs is not None and yidxs is not None:
                     dirty_img = revised_robust_image(chunk_V
@@ -196,7 +240,7 @@ def generate_src_images(dataset_dir, num_observations, noise_std_low, noise_std_
                 avg_freq = CH0 + CH_WIDTH * i * AVERAGING_FACTOR
                 filename = f'subband_avg_{avg_freq:.2f}_MHz.png'
                 filepath = os.path.join(observation_dir, filename)
-                im_zoom = np.array(np.fliplr(dirty_img))
+                im_zoom = copy.deepcopy(dirty_img)#np.array(np.fliplr(dirty_img))
                 """
                 if not inflate:
                     #im_zoom = im_zoom[(IMAGE_SIZE // 2 - zoom_pix - 1):(IMAGE_SIZE // 2 + zoom_pix + 1), (IMAGE_SIZE // 2 - zoom_pix - 1):(IMAGE_SIZE // 2 + zoom_pix + 1)]

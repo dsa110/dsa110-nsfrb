@@ -5,7 +5,7 @@ from dsacalib import constants as ct
 # Constants
 NUM_CHANNELS = 768
 AVERAGING_FACTOR = 48
-IMAGE_SIZE = 301#301#300  # pixels
+IMAGE_SIZE = 175#301#300  # pixels
 pixperFWHM = 3
 
 # Speed of light
@@ -70,7 +70,7 @@ robust=-2 #default to uniform weighting
 #flagged_antennas = [48,103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 outrigger_antennas = [103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 flagged_corrs = []
-bad_antennas = [48]#,85,76,77,78,48,36,37,30]
+bad_antennas = [48,77,51,49]#,85,76,77,78,48,36,37,30]
 flagged_antennas = bad_antennas+outrigger_antennas
 
 import numpy as np
@@ -92,6 +92,8 @@ if 'NSFRBDATA' in os.environ:
     raw_cand_dir = cand_dir + "raw_cands/"
     backup_cand_dir = cand_dir + "backup_raw_cands/"#cwd + "-candidates/backup_raw_cands/"
     final_cand_dir = cand_dir + "final_cands/"#cwd + "-candidates/final_cands/"
+    T4A_cand_dir = cand_dir + "init_cands/T4A/"
+    T4B_cand_dir = cand_dir + "init_cands/T4B/"
     training_dir = os.environ['NSFRBDATA'] + "dsa110-nsfrb-training/"
 remote_cand_dir = cwd +"-tmp-candidates/"
 sslogfile = cwd + "-logfiles/srchstartstoptime_log.txt"

@@ -195,7 +195,7 @@ def rfi_source_position(x_core, y_core, z_core, azimuth, elevation, distance=1e7
 
     return rfi_x, rfi_y, rfi_z
 
-def simulate_near_field_rfi(x, y, z, visibilities, rfi_position, rfi_amplitude, frequency):
+def simulate_near_field_rfi(x, y, z, visibilities, rfi_position, rfi_amplitude, frequency,bnames=[],anames=[]):
     """
     Simulate the effect of near-field RFI on visibilities.
 
@@ -217,11 +217,19 @@ def simulate_near_field_rfi(x, y, z, visibilities, rfi_position, rfi_amplitude, 
     rfi_signal = rfi_amplitude * np.exp(2j * np.pi * frequency * delays)
 
     num_antennas = len(x)
-    k = 0
-    for i in range(num_antennas):
-        for j in range(i + 1, num_antennas):
+    if len(bnames) == 0 or len(anames)==0:
+        if len(visibilities) != (num_antennas*(num_antennas-1)/2):
+            visibilities = np.zeros(num_antennas*(num_antennas-1)//2,dtype=complex)
+        k = 0
+        for i in range(num_antennas):
+            for j in range(i + 1, num_antennas):
+                visibilities[k] += rfi_signal[i] + rfi_signal[j]
+                k += 1
+    else:
+        for k in range(len(bnames)):
+            i = anames.index(int(bnames[k][:bnames[k].index("-")]))
+            j = anames.index(int(bnames[k][bnames[k].index("-")+1:]))
             visibilities[k] += rfi_signal[i] + rfi_signal[j]
-            k += 1
 
     return visibilities
 
