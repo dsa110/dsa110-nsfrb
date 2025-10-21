@@ -386,23 +386,24 @@ def main(args):
         if args.debug: tbuffer = tbuffer1=time.time()
         #dat = None
         #try:
-        try:
-            if args.verbose and args.debug:
-                tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
-                tmpfile2 = open(rtbench_file,"a")
-                dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2)
-                if tmpfile != sys.stdout: tmpfile.close()
-                tmpfile2.close()
-            elif args.verbose:
-                tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
-                dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile)
-                if tmpfile != sys.stdout: tmpfile.close()
-            else:
-                dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
-        except Exception as exc:
-            printlog("NULL READ",output_file=rtlog_file)
-            printlog(exc,output_file=rtlog_file)
-            continue
+        #try:
+        #    assert(False)
+        if args.verbose and args.debug:
+            tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+            tmpfile2 = open(rtbench_file,"a")
+            dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2)
+            if tmpfile != sys.stdout: tmpfile.close()
+            tmpfile2.close()
+        elif args.verbose:
+            tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+            dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile)
+            if tmpfile != sys.stdout: tmpfile.close()
+        else:
+            dat = rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
+        #except Exception as exc:
+        #    printlog("NULL READ",output_file=rtlog_file)
+        #    printlog(exc,output_file=rtlog_file)
+        #    dat = np.nan*(np.ones((nsamps,4656,args.nchans_per_node,2))+1j*np.ones((nsamps,4656,args.nchans_per_node,2)))#continue
 
 
         #if args.verbose: printlog("DATA [PRE-FLAGGING]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
