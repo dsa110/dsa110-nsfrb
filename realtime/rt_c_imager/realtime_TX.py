@@ -407,23 +407,23 @@ def main(args):
         if args.debug: tbuffer = tbuffer1=time.time()
         #dat = None
         #try:
-        try:
-            if args.verbose and args.debug:
-                tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
-                tmpfile2 = open(rtbench_file,"a")
-                dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2)
-                if tmpfile != sys.stdout: tmpfile.close()
-                tmpfile2.close()
-            elif args.verbose:
-                tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
-                dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile)
-                if tmpfile != sys.stdout: tmpfile.close()
-            else:
-                dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
-        except Exception as exc:
-            printlog("NULL READ",output_file=rtlog_file)
-            printlog(exc,output_file=rtlog_file)
-            continue        
+        #try:
+        if args.verbose and args.debug:
+            tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+            tmpfile2 = open(rtbench_file,"a")
+            dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2)
+            if tmpfile != sys.stdout: tmpfile.close()
+            tmpfile2.close()
+        elif args.verbose:
+            tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+            dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile)
+            if tmpfile != sys.stdout: tmpfile.close()
+        else:
+            dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
+        #except Exception as exc:
+        #    printlog("NULL READ",output_file=rtlog_file)
+        #    printlog(exc,output_file=rtlog_file)
+        #    continue        
 
 
         
