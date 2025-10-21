@@ -181,7 +181,11 @@ NSFRB_PSRDADA_TESTKEYS = {0:0xcab0,
                           15:0xcabf}
 #main
 NSFRB_CANDDADA_KEY = 0xcada
-NSFRB_SRCHDADA_KEY = 0xcaea
+NSFRB_SRCHDADA_KEY = 0xcbba
+NSFRB_SRCHDADA_KEYS = [0xcbba,0xcbbb,0xcbbc,0xcbbd,
+                       0xcbbe,0xcbbf,0xcbca,0xcbcb,
+                       0xcbcc,0xcbcd,0xcbce,0xcbcf,
+                       0xcbda,0xcbdb,0xcbdc,0xcbdd]
 NSFRB_TOADADA_KEY = 0xcafa
 #slow
 NSFRB_CANDDADA_SLOW_KEY = 0xcadb

@@ -725,7 +725,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
     t_ = time.time()
     socksuffix = "SOCKET " + str(ii) + " >>"
     printlog(socksuffix + "STARTUP, WAITING FOR LOCK ON "+str(port),output_file=processfile)
-    #readlocks_[port].acquire()
+    readlocks_[port].acquire()
     printlog(socksuffix + "ACQUIRED LOCK ON "+str(port),output_file=processfile)
     if protocol=='udp':
         lastbyte=-1
@@ -755,7 +755,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
                     printlog(socksuffix + "Timeout?: "+str(exc),output_file=processfile)
                     if len(recdatabytes)==0:
                         printlog(socksuffix + "Timed out on first read, data unavailable",output_file=processfile)
-                        #readlocks_[port].release()
+                        readlocks_[port].release()
                         return ECODE_BREAK
                 elif 'Assertion' in str(exc):
                     printlog(socksuffix + "Bad data order:"+str(exc),output_file=processfile)
@@ -769,7 +769,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
         port = int(host[host.index(":")+1:])
         img_id_mjd=Time(img_id_isot,format='isot').mjd
         printlog(socksuffix +"Done, read "+str(len(recdatabytes))+"/"+str(maxbytes-headersize)+" into array shaped "+str(shape),output_file=processfile)
-        #readlocks_[port].release()
+        readlocks_[port].release()
         return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
     printlog(socksuffix + "accepting connection...",output_file=processfile,end='')
     clientSocket,address = servSockD.accept()
@@ -779,7 +779,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
     if corr_address not in corraddrs:
         clientSocket.close()
         printlog(socksuffix + "BAD ADDRESS:"+str(corr_address),output_file=processfile)
-        #readlocks_[port].release()
+        readlocks_[port].release()
         return ECODE_BREAK
     printlog(socksuffix + "client: " + str(corr_address) + "...",output_file=processfile,end='')
     recstatus = 1
@@ -808,21 +808,11 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
         printlog("DONE LEFTOVER DATA-->"+str(totalbyteshex)+"/"+str(maxbyteshex),output_file=processfile)
     readiters=0
     #wait until corrstagger flag set
-    """while not ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status'][(ii-1)%16] and time.time()-t_startread<timeout_SOCKET:
+    while not ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status'][ii] and time.time()-t_startread<timeout_LOOP:
         printlog(socksuffix+"waiting for data...",output_file=processfile)
         time.sleep(timeout_SLEEP)
-    if time.time()-t_startread<timeout_LOOP: printlog(socksuffix+"READ NOW!",output_file=processfile)
-    else: 
-        printlog(socksuffix+"NO TIME TO READ!",output_file=processfile)
-        clientSocket.close()
-        printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-        #readlocks_[port].release()
-        return ECODE_BREAK # break
-    """
-    readlock.acquire()
-    t_timeout = time.time()
-    t_startread = time.time()
-    while (totalbyteshex < maxbyteshex) and time.time()-t_startread<timeout_LOOP and time.time()-t_<timeout_INLOOP:# and time.time()-t_timeout<args.timeout:
+    printlog(socksuffix+"READ NOW!",output_file=processfile)
+    while (totalbyteshex < maxbyteshex) and time.time()-t_startread<timeout_LOOP:# and time.time()-t_timeout<args.timeout:
         #printlog(socksuffix + "NLOOP>>"+str(readiters),output_file=processfile)
         readiters+=1
         try:
@@ -846,14 +836,13 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
                 t_timeout = time.time()
             #if recstatus == 0 and time.time()-t_timeout>timeout_INLOOP:
             #    raise socket.timeout
-            
             elif recstatus == 0:
                 time.sleep(timeout_SLEEP)
                 if totalbyteshex == 0:
                     printlog(socksuffix + "STILL WAITING...",output_file=processfile)
-                    #t_startread = time.time()
+                    t_startread = time.time()
                 continue
-            
+
             #readlock.release()
             printlog(socksuffix+"Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus),output_file=processfile)
             printlog(socksuffix+"Message flags:" + str(msg_flags),output_file=processfile)
@@ -881,12 +870,11 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
                 printlog(socksuffix+"Timed out after reading " + str(totalbytes) + " bytes; proceeding...",output_file=processfile)
                 break
             else:
-                #readlocks_[port].release()
+                readlocks_[port].release()
                 printlog(socksuffix+"I'm about to scream",output_file=processfile)
                 raise
     printlog(socksuffix+"Done! Total bytes read:" + str(totalbytes),output_file=processfile)
     totalbytessend = 0
-    readlock.release()
 
     #check if data is the size we expect
     try:
@@ -908,7 +896,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
             clientSocket.close()
             printlog(socksuffix+"Error setting flags, abort",output_file=processfile)
             printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-            #readlocks_[port].release()
+            readlocks_[port].release()
             return ECODE_BREAK # break
         printlog(socksuffix+"Done, continue",output_file=processfile)
     if pflag != 0:
@@ -919,7 +907,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
         clientSocket.close()
         printlog(socksuffix+"Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
         printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-        #readlocks_[port].release()
+        readlocks_[port].release()
         return ECODE_CONT#continue
 
     #try to parse to get address
@@ -944,7 +932,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
                 clientSocket.close()
                 printlog(socksuffix+"Error setting flags, abort",processfile=processfile)
                 printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-                #readlocks_[port].release()
+                readlocks_[port].release()
                 return ECODE_BREAK #break
             printlog(socksuffix+"Done, continue",output_file=processfile)
         if type(exc) == ValueError:
@@ -955,12 +943,12 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
                 clientSocket.close()
                 printlog(socksuffix+"Error setting flags, abort",processfile=processfile)
                 printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-                #readlocks_[port].release()
+                readlocks_[port].release()
                 return ECODE_BREAK #break
             printlog(socksuffix+"Done, continue",output_file=processfile)
         else:
             clientSocket.close()
-            #readlocks_[port].release()
+            readlocks_[port].release()
             raise exc
 
     successmsg = bytes(success + str(pflag) + '\n','utf-8')
@@ -971,7 +959,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
     if pflag != 0:
         clientSocket.close()
         printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-        #readlocks_[port].release()
+        readlocks_[port].release()
         return ECODE_CONT #continue
     printlog(socksuffix+"Data: " + str(arrData),output_file=processfile)
 
@@ -982,9 +970,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
 
     #PACK mode --> "pack" read and gather tasks into same task
     clientSocket.close()
-    #readlocks_[port].release()
-    
-    """
+    readlocks_[port].release()
     if args.pack:
         if img_id_isot not in slowlocks_.keys():
             slowlocks_[img_id_isot] = Lock()
@@ -996,10 +982,9 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
                                     args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock,
                                     None if dask_enabled else searchlock,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers)
-    
-    """
-    #printlog(socksuffix+"--RET--"+str((corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape)),output_file=processfile)
-    #imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port,key=config.NSFRB_SRCHDADA_KEY)
+
+
+
     printlog(socksuffix+"TOTAL READ+GATHER TIME:"+str(time.time()-t_)+"s",output_file=processfile)
     return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
 
@@ -1331,20 +1316,6 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
         #return [stask]
     return ECODE_SUCCESS
 
-from realtime import rtwriter
-from realtime import rtreader
-def imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port,key=config.NSFRB_SRCHDADA_KEY):
-    numdata = np.array([corr_node,img_id_mjd,img_uv_diag,img_dec,port]+list(shape),dtype=np.float64)
-    alldata = np.concatenate([numdata,arrData.flatten()])
-    rtwriter.rtwrite(alldata,key=key,addheader=False,dtype=np.float64) #bytes(numdata) + bytes(img_id_isot,encoding='utf-8') + bytes(arrData)
-    return
-def imagefromDADA(key=config.NSFRB_SRCHDADA_KEY,reader=None,datasizebytes=6125064):
-    data = rtreader.rtread_searching(key,reader=None,verbose=True,verbosefile=processfile)
-    corr_node,img_id_mjd,img_uv_diag,img_dec,port = data[:5]
-    shape = tuple(data[5:8].astype(int))
-    img_id_isot = Time(img_id_mjd,format='mjd').isot
-    arrData = data[8:].reshape(shape)
-    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
 def main(args):
     np.save(config.table_dir + "/TCPHELPMONITOR.npy",np.zeros(16))
     #redirect stderr
@@ -1830,16 +1801,11 @@ def main(args):
 
         else:
             #SELECT
-            #while (initflag) and (time.time()-TSTARTUP)<2.5:#config.tsamp*config.nsamps/1000:
-            #    time.sleep(args.timeout_SLEEP)
-            #    continue
             printlog(">>>LOOP HERE>>>"+str(time.time()-TSTARTUP),output_file=processfile)
-            #TSTARTUP = time.time()
-            #while not initflag and 
-            while len(readsockets)<16:# and (not initflag or (time.time()-TSTARTUP)<3.1):
-                printlog("DATAITER>>>"+str(readsockets),output_file=processfile)
-                readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout_SELECT)
             TSTARTUP = time.time()
+            while not initflag and len(readsockets)<16:
+                readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout_SELECT)
+            initflag = True
             printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
             printlog("Data ready on "+str(len(readsockets))+" ports",output_file=processfile)
 
@@ -1856,49 +1822,15 @@ def main(args):
             #while not np.all(np.array(ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status'])==False):
             #    printlog("WAITING TO FINISH PREVIOUS ITER..."+str(ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status']),output_file=processfile)
             #    time.sleep(args.timeout_SLEEP)
-            repret = [] 
-            fulldata = np.nan*np.ones((args.gridsize,args.gridsize,args.nsamps,16))
             for ii in range(len(readsockets)):
                 #read data
-                #if readsockets[ii].getsockname()[1] not in readlocks_.keys():
-                #    readlocks_[readsockets[ii].getsockname()[1]] = Lock()
-                #t_=time.time()
-                #while not ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status'][(ii-1)%16] and time.time()-t_<args.timeout_SOCKET:
-                #    printlog("<"+str(ii)+"> waiting for data...",output_file=processfile)
-                #    time.sleep(args.timeout_SLEEP)
-                #if time.time()-t_<args.timeout_SOCKET: printlog("<"+str(ii)+"> READ NOW!",output_file=processfile)
-                #else:
-                #    printlog("<"+str(ii)+"> NO TIME TO READ!",output_file=processfile)
-                #    continue
+                if readsockets[ii].getsockname()[1] not in readlocks_.keys():
+                    readlocks_[readsockets[ii].getsockname()[1]] = Lock()
                 
-                ret = readcorrdata(readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
-                                    maxbyteshex,args.timeout_SOCKET,args.chunksize,args.headersize,args.datasize,args.testh23,
-                                    args.offline,args.protocol,args.udpchunksize,readlock_,args.timeout_SELECT,args.timeout_LOOP,args.overdraw,
-                                    args,dtype,dask_enabled,search_executor,None if dask_enabled else searchlock_,None if dask_enabled else slowlock_,args.timeout_SLEEP,args.timeout_INLOOP)
-            
-                if type(ret) != int: 
-                    fulldata[:,:,:,ii] = ret[-2]
-                    repret = ret#retdats.append(ret)
-                #if (not initflag) and type(ret)==int:
-                #    break
-                """
                 readtasks.append(read_executor.submit(readcorrdata,readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
                                     maxbyteshex,args.timeout_SOCKET,args.chunksize,args.headersize,args.datasize,args.testh23,
                                     args.offline,args.protocol,args.udpchunksize,readlock_,args.timeout_SELECT,args.timeout_LOOP,args.overdraw,
                                     args,dtype,dask_enabled,search_executor,None if dask_enabled else searchlock_,None if dask_enabled else slowlock_,args.timeout_SLEEP,args.timeout_INLOOP))
-                """
-            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = repret
-            imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)
-            """
-            for ret in retdats:
-                printlog("RET--"+str(ret[:-2]),output_file=processfile)
-                corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = ret
-                imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port,key=args.psrdadakey)
-                printlog("RET--DONE",output_file=processfile)
-            """
-            #if (not initflag) and type(ret)==int: initflag = False
-            #else: 
-            initflag = True
             if args.wait:#args.protocol=='udp': 
                 TSTARTUP2 = time.time()
                 #try:
@@ -1911,30 +1843,9 @@ def main(args):
             
             newreadtasks=[]
             """
-            for ii in range(len(readtasks)):
-                tt = readtasks[ii]
-                corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = tt
-
-                if img_id_isot not in slowlocks_.keys():
-                    slowlocks_[img_id_isot] = Lock()
-
-                multiport_subtask(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
-                                    ii,args.testh23,
-                                    args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,
-                                    None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers)
-                printlog("TASKSUB--"+str(ii),output_file=processfile)
-            """
-
-
-
-            """
             for tt in readtasks:
                 if tt.done() and type(tt.result()) != int:#type(ret) != int:
-                    corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = tt.results() #ret
+                    corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = tt.result() #ret
                     
                     if TXsubimg or TXsubint:
                         if img_id_isot not in substage[corr_node].keys():
@@ -1998,7 +1909,6 @@ def main(args):
 
             printlog("Data done on "+str(readsockets)+" ports",output_file=processfile)
             printlog("Data done on "+str(len(readsockets))+" ports",output_file=processfile)
-            readsockets = []
             #readtasks = []
             if len(readsockets)>0:
                 packet_dict["read_time"] = time.time()-tread

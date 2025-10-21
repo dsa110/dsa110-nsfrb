@@ -7,17 +7,23 @@ starttime=$(date)
 echo "clearing backup cands..."
 rm /dataz/dsa110/nsfrb/dsa110-nsfrb-candidates/backup_raw_cands/*
 echo "stopping procserver..."
-systemctl --user stop procserver
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_savesearch /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server 
+systemctl --user stop procserver_RX
+systemctl --user stop procserver_search
+cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search_savesearch /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server_search 
 echo "starting procserver, savesearch on..."
-systemctl --user start procserver
+systemctl --user start procserver_search
+sleep 60
+systemctl --user start procserver_RX
 echo "observing for ${2} seconds..."
 sleep $2
 echo "done observation, stopping procserver..."
-systemctl --user stop procserver
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server
+systemctl --user stop procserver_RX
+systemctl --user stop procserver_search
+cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server_search
 echo "starting procserver normally..."
-systemctl --user start procserver
+systemctl --user start procserver_search
+sleep 60
+systemctl --user start procserver_RX
 echo "copying data to /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/PSRB0329_FOR_PAPER/${reftime}_PSRB0329+54/"
 sudo mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/PSRB0329_FOR_PAPER/${reftime}_PSRB0329+54/
 sudo cp /dataz/dsa110/nsfrb/dsa110-nsfrb-candidates/backup_raw_cands/*T??:??:??.???_input.npy /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/PSRB0329_FOR_PAPER/${reftime}_PSRB0329+54/

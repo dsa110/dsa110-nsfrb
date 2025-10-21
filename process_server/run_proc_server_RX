@@ -2,14 +2,14 @@
 rt="true" #"true"
 completeness="false"
 multiports=$(seq 8810 8825) 
-cpunums="23-39"
+cpunums="38-39" #"23-39"
 cpunums2="5-19"
 echo $multiports
 > $PWD/process_log.txt #/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/process_server/process_log.txt 
 if [ "$rt" = "true" ]; 
 then
 	echo "realtime process server active"
-	dada_db -k cbba -b 98000064 -n 2 -a 4096
+	#dada_db -k cbba -b 98000064 -n 2 -a 4096
 	#dada_db -k cbba -b 6125064 -n 2 -a 4096
 	#dada_db -k cbbd -b 6125064 -n 2 -a 4096
 	#dada_db -k cbbe -b 6125064 -n 2 -a 4096
@@ -27,7 +27,7 @@ then
 	#dada_db -k cbbb -b 6125064 -n 2 -a 4096
 	#dada_db -k cbbc -b 6125064 -n 2 -a 4096
 	#dada_db -k cbbd -b 6125064 -n 2 -a 4096
-	taskset --cpu-list $cpunums python run_RX.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 8.5 --noiseth 3 --nsamps 25 --gridsize 175 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --maxProcesses 20 --protocol tcp --initframes --rtastrocalrange 92 --rejectnoiseoutliers --timeout_SELECT 0.05 --timeout_SOCKET 0.1 --timeout_INLOOP 0.15 --timeout_LOOP 0.1 --psrdadakey cbba --timeout_SLEEP 0.01 
+	taskset --cpu-list $cpunums python run_RX.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 8.5 --noiseth 3 --nsamps 25 --gridsize 175 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --maxProcesses 20 --protocol tcp --initframes --rtastrocalrange 92 --rejectnoiseoutliers --timeout_SELECT 0.005 --timeout_SOCKET 0.07 --timeout_INLOOP 0.2 --timeout_LOOP 0.14 --psrdadakey cbba --timeout_SLEEP 0.01 
 else
 	echo "offline process server active"
 	if [ "$completeness" = "true" ];

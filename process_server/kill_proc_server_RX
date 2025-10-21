@@ -30,5 +30,5 @@
 #dada_db -k cbbb -d
 #dada_db -k cbbc -d
 #dada_db -k cbbd -d
-kill -9 -"$(pgrep run_proc_server)"
+kill -9 -"$(pgrep run_proc_server_RX)"
 

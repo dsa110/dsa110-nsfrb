@@ -301,3 +301,32 @@ def rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=301,nsamps=nsamps,datasize=8,re
         except Exception as e:
             pass
     return tup
+
+
+def rtread_searching(key=NSFRB_SRCHDADA_KEY,reader=None,verbose=False,verbosefile=sys.stdout):
+    #make reader
+    localreader=False
+    if reader is None:
+        print(f"Initializing reader: " + str(key),file=verbosefile)
+        reader = Reader(key)
+        localreader=True
+
+    #check its connected
+    if not reader.isConnected:
+        print("Reaer not connected",file=verbosefile)
+        tup = None
+    else:
+        #read buffer
+        page = reader.getNextPage()
+        reader.markCleared()
+        #print(page,type(page))
+        data = page.tobytes()
+
+
+    #disconnect reader
+    if localreader:
+        try:
+            reader.disconnect()
+        except Exception as e:
+            pass
+    return data

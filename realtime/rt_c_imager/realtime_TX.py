@@ -165,7 +165,7 @@ def corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, retries,mult
     corrstaggerdict = etcd_get_dict_catch(ETCD,ETCDKEY_CORRSTAGGER,edict=None if corrstagger_future is None else corrstagger_future.result(),output_file=rterr_file) #ETCD.get_dict(ETCDKEY_CORRSTAGGER)
     if corrstaggerdict is None:
         corrstaggerdict = dict()
-        corrstaggerdict = [False]*16
+        corrstaggerdict['status'] = [False]*16
     printlog("INIT CORRSTATUS: " + str(corrstaggerdict['status']),output_file=rtlog_file)
     printlog(">>>>>"+str(corrstaggerdict['status'][sb-1]),output_file=rtlog_file)
     printlog("WAITING FOR QUEUE...",output_file=rtlog_file)
@@ -407,18 +407,26 @@ def main(args):
         if args.debug: tbuffer = tbuffer1=time.time()
         #dat = None
         #try:
-        if args.verbose and args.debug:
-            tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
-            tmpfile2 = open(rtbench_file,"a")
-            dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2)
-            if tmpfile != sys.stdout: tmpfile.close()
-            tmpfile2.close()
-        elif args.verbose:
-            tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
-            dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile)
-            if tmpfile != sys.stdout: tmpfile.close()
-        else:
-            dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
+        try:
+            if args.verbose and args.debug:
+                tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+                tmpfile2 = open(rtbench_file,"a")
+                dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile2)
+                if tmpfile != sys.stdout: tmpfile.close()
+                tmpfile2.close()
+            elif args.verbose:
+                tmpfile = sys.stdout if len(args.rtlog)==0 else open(rtlog_file,"a")
+                dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=True,verbosefile=tmpfile,verbosefile2=tmpfile)
+                if tmpfile != sys.stdout: tmpfile.close()
+            else:
+                dirty_img = rtreader.rtread_imaging(key=DSAX_PSRDADA_KEY,gridsize=args.gridsize,nsamps=args.num_time_samples,reader=reader,verbose=True) #rtreader.rtread(key=NSFRB_PSRDADA_KEY,nchan=args.nchans_per_node,nbls=args.nbase,nsamps=args.num_time_samples,readheader=False,reader=reader,verbose=False)
+        except Exception as exc:
+            printlog("NULL READ",output_file=rtlog_file)
+            printlog(exc,output_file=rtlog_file)
+            continue        
+
+
+        
         dirty_img = copy.deepcopy(dirty_img)
         #if args.verbose: printlog("DATA [PRE-FLAGGING]>"+str(dat)+"; "+str(np.sum(np.isnan(dat))),output_file=rtlog_file)
         if mjd_init == -1:
@@ -492,7 +500,7 @@ def main(args):
                     inject_flat = injection_params['inject_flat']
                     if args.verbose: printlog("Done injecting",output_file=rtlog_file)
             dirty_img += inject_img
-        np.save("TESTIMAGE.npy",dirty_img)
+        #np.save("TESTIMAGE.npy",dirty_img)
 
         if args.debug: tbuffer = time.time()
 

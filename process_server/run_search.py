@@ -387,6 +387,7 @@ class fullimg:
 
         return
 
+    """
     def tobytes(self):
         f=bytes("B",encoding='utf-8')
         if self.slow:
@@ -402,7 +403,7 @@ class fullimg:
                 bytes(np.pad(self.image_tesseract,((0,0),(len(self.DEC_axis)-len(self.RA_axis),0),(0,0),(0,0))))+
                 bytes(np.pad(self.RA_axis.astype(np.float64)),((len(self.DEC_axis)-len(self.RA_axis),0)))+
                 bytes(self.DEC_axis.astype(np.float64)))
-    
+    """
 def find_id(img_id_isot,fullimg_array):
     printlog(fullimg_array,output_file=processfile)
     for i in range(len(fullimg_array)):
@@ -538,7 +539,6 @@ def parse_packet(fullMsg,maxbytes,headersize,datasize,port,corr_address,testh23=
 fullimg_dict = dict()
 slow_fullimg_dict =dict()
 imgdiff_fullimg_dict=dict()
-slowlocks_ =dict()
 readlocks_ =dict()
 def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,dask_enabled,thash,slowlock):
     """
@@ -546,7 +546,6 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     """
     #if QSETUP and not (future.result()[1] is None):
     #    QQUEUE.put(future.result()[1])
-    slowlocks_[timestepisot].acquire()
     if dask_enabled:
         fresult = future
     else:
@@ -620,9 +619,6 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     except Exception as exc:
         printlog("FUTURE FAILED TO DELETE "+str(timestepisot),output_file=processfile)
         printlog(exc,output_file=processfile)
-    slowlocks_[timestepisot].acquire()
-    del slowlocks_[timestepisot]
-    slowlocks_[timestepisot].release()
     slowlock.release()
     f = open(sslogfile,"a")
     f.write("[stop] [" + thash +"] " + str(time.time()))
@@ -704,9 +700,6 @@ def future_callback_attach(future,SNRthresh,timestepisot,RA_axis,timestepisot_sl
     except Exception as exc:
         printlog("FUTURE FAILED TO DELETE "+str(timestepisot),output_file=processfile)
         printlog(exc,output_file=processfile)
-    slowlocks_[timestepisot].acquire()
-    del slowlocks_[timestepisot]
-    slowlocks_[timestepisot].release()
     slowlock.release()
     f = open(sslogfile,"a")
     f.write("[stop] [" + thash +"] " + str(time.time()))
@@ -720,288 +713,6 @@ ECODE_BREAK = -1
 ECODE_CONT = -2
 ECODE_SUCCESS = 0
 nextdata = dict()
-def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize,headersize,datasize,testh23,offline,protocol,udpchunksize,readlock,timeout_SELECT,timeout_LOOP,overdraw,args,dtype,dask_enabled,search_executor,searchlock,slowlock,timeout_SLEEP,timeout_INLOOP):
-
-    t_ = time.time()
-    socksuffix = "SOCKET " + str(ii) + " >>"
-    printlog(socksuffix + "STARTUP, WAITING FOR LOCK ON "+str(port),output_file=processfile)
-    #readlocks_[port].acquire()
-    printlog(socksuffix + "ACQUIRED LOCK ON "+str(port),output_file=processfile)
-    if protocol=='udp':
-        lastbyte=-1
-        recdatabytes=bytes(0)
-        nchunks = int(maxbytes//udpchunksize)
-        nrec = int((maxbytes//nchunks) + headersize) #header includes byte number[8], host[16], isot[23],hdrarray[24]
-        servSockD.settimeout(timeout_SOCKET)
-        while len(recdatabytes)<maxbytes-headersize:
-            if len(recdatabytes)==0:
-                printlog(socksuffix + "start UDP read...",output_file=processfile,end='')
-            try:
-                data,addr = servSockD.recvfrom(nrec)
-                bytenum=int.from_bytes(data[:8],byteorder='big')
-                assert(bytenum>lastbyte)
-                host=data[8:8+16].decode()
-                img_id_isot=data[8+16:8+16+23].decode()
-                img_uv_diag,img_dec,corr_node,shape_0,shape_1,shape_2,shape_3 = tuple(np.frombuffer(data[8+16+23:headersize]))
-                printlog(socksuffix + str((bytenum,host,img_id_isot,img_uv_diag,img_dec,corr_node)),output_file=processfile)
-
-                if bytenum-lastbyte>1:
-                    printlog(socksuffix + "filling " + str(int((bytenum-lastbyte-1)*(nrec-headersize))) + " dropped bytes with 0",output_file=processfile)
-                    recdatabytes += bytes(int((bytenum-lastbyte-1)*(nrec-headersize)))
-                recdatabytes += data[headersize:]
-                lastbyte=bytenum
-            except Exception as exc:
-                if 'time' in str(exc):
-                    printlog(socksuffix + "Timeout?: "+str(exc),output_file=processfile)
-                    if len(recdatabytes)==0:
-                        printlog(socksuffix + "Timed out on first read, data unavailable",output_file=processfile)
-                        #readlocks_[port].release()
-                        return ECODE_BREAK
-                elif 'Assertion' in str(exc):
-                    printlog(socksuffix + "Bad data order:"+str(exc),output_file=processfile)
-
-                if len(recdatabytes)<maxbytes-headersize:
-                    recdatabytes += bytes(int((nrec-headersize)))
-                lastbyte+=1
-        shape = np.array([shape_0,shape_1,shape_2,shape_3],dtype=int)
-        shape = tuple(shape[shape!=0])
-        arrData = np.frombuffer(recdatabytes,dtype=np.float64).reshape(shape)
-        port = int(host[host.index(":")+1:])
-        img_id_mjd=Time(img_id_isot,format='isot').mjd
-        printlog(socksuffix +"Done, read "+str(len(recdatabytes))+"/"+str(maxbytes-headersize)+" into array shaped "+str(shape),output_file=processfile)
-        #readlocks_[port].release()
-        return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
-    printlog(socksuffix + "accepting connection...",output_file=processfile,end='')
-    clientSocket,address = servSockD.accept()
-    clientSocket.setblocking(0)
-    
-    corr_address, tmp = clientSocket.getpeername()
-    if corr_address not in corraddrs:
-        clientSocket.close()
-        printlog(socksuffix + "BAD ADDRESS:"+str(corr_address),output_file=processfile)
-        #readlocks_[port].release()
-        return ECODE_BREAK
-    printlog(socksuffix + "client: " + str(corr_address) + "...",output_file=processfile,end='')
-    recstatus = 1
-    fullMsg = ""
-    printlog(socksuffix + "Done!",output_file=processfile)
-    printlog(socksuffix + "Receiving data...",output_file=processfile)
-
-    #set timeout and expected number of bytes to read
-    clientSocket.settimeout(timeout_SOCKET)
-    totalbytes = 0
-    pflag = 0
-
-    #while (recstatus> 0) and (totalbytes < maxbytes):#+maxbytesaddr):
-    t_timeout = time.time()
-    t_startread = time.time()
-    totalbyteshex =0
-    printlog(nextdata,output_file=processfile)
-    if overdraw and corr_address in nextdata.keys():
-        printlog("FOUND LEFTOVER DATA|"+str(corr_address) + "|"+str(len(nextdata[corr_address][0])),output_file=processfile)
-        (strData, ancdata, msg_flags, address)=nextdata[corr_address]
-        recstatus = len(strData)
-        fullMsg += strData.hex()
-        totalbytes += recstatus
-        totalbyteshex += len(strData.hex())
-        del nextdata[corr_address]
-        printlog("DONE LEFTOVER DATA-->"+str(totalbyteshex)+"/"+str(maxbyteshex),output_file=processfile)
-    readiters=0
-    #wait until corrstagger flag set
-    """while not ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status'][(ii-1)%16] and time.time()-t_startread<timeout_SOCKET:
-        printlog(socksuffix+"waiting for data...",output_file=processfile)
-        time.sleep(timeout_SLEEP)
-    if time.time()-t_startread<timeout_LOOP: printlog(socksuffix+"READ NOW!",output_file=processfile)
-    else: 
-        printlog(socksuffix+"NO TIME TO READ!",output_file=processfile)
-        clientSocket.close()
-        printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-        #readlocks_[port].release()
-        return ECODE_BREAK # break
-    """
-    readlock.acquire()
-    t_timeout = time.time()
-    t_startread = time.time()
-    while (totalbyteshex < maxbyteshex) and time.time()-t_startread<timeout_LOOP and time.time()-t_<timeout_INLOOP:# and time.time()-t_timeout<args.timeout:
-        #printlog(socksuffix + "NLOOP>>"+str(readiters),output_file=processfile)
-        readiters+=1
-        try:
-            #check if data is ready to read first
-            t_ready = time.time()
-
-            
-            #readlock.acquire()
-            """
-            while not select.select([clientSocket],[],[],timeout_SELECT) and time.time()-t_ready<timeout_LOOP:
-                continue
-            if not select.select([clientSocket],[],[],timeout_SELECT):
-                raise socket.timeout
-            """
-            printlog(socksuffix+ "Data ready at time T="+str(time.time()-t_ready),output_file=processfile)
-
-           
-            (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(chunksize)#255)
-            recstatus = len(strData)
-            if recstatus > 0:
-                t_timeout = time.time()
-            #if recstatus == 0 and time.time()-t_timeout>timeout_INLOOP:
-            #    raise socket.timeout
-            
-            elif recstatus == 0:
-                time.sleep(timeout_SLEEP)
-                if totalbyteshex == 0:
-                    printlog(socksuffix + "STILL WAITING...",output_file=processfile)
-                    #t_startread = time.time()
-                continue
-            
-            #readlock.release()
-            printlog(socksuffix+"Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus),output_file=processfile)
-            printlog(socksuffix+"Message flags:" + str(msg_flags),output_file=processfile)
-            printlog(socksuffix+"AncData:" + str(ancdata),output_file=processfile)
-            if overdraw and totalbyteshex + len(strData.hex())>maxbyteshex:
-
-                printlog(socksuffix+"OVERDRAWOVERDRAW-->HAVE "+str(totalbyteshex)+" KEEPING "+str(maxbyteshex - totalbyteshex) +" OUT OF "+str(len(strData.hex())),output_file=processfile)
-                printlog(socksuffix+"OVERDRAWOVERDRAW-->HAVE "+str(totalbytes)+" KEEPING "+str(maxbytes - totalbytes) +" OUT OF "+str(len(strData)),output_file=processfile)
-                nextdata[corr_address] = (strData[int(maxbytes - totalbytes):],ancdata,msg_flags,address)
-                fullMsg += strData[:int(maxbytes - totalbytes)].hex()
-                totalbyteshex += len(strData[:int(maxbytes - totalbytes)])*2
-                totalbytes += len(strData[:int(maxbytes - totalbytes)])
-                printlog(socksuffix+"OVERDRAWOVERDRAW-->SAVETHEREST "+str(totalbyteshex),output_file=processfile)
-            else:
-                fullMsg += strData.hex()
-                totalbytes += recstatus
-                totalbyteshex += len(strData.hex())
-            #don't know how long the header is, so don't start counting until hit NP data
-            if "93" in fullMsg:
-                printlog(socksuffix+"Found start byte at index " + str(fullMsg.index("93")),output_file=processfile)
-                totalbytes = (len(fullMsg) - fullMsg.index("93"))//2
-                #totalbyteshex = totalbytes*2
-        except Exception as ex:
-            if type(ex) == socket.timeout:
-                printlog(socksuffix+"Timed out after reading " + str(totalbytes) + " bytes; proceeding...",output_file=processfile)
-                break
-            else:
-                #readlocks_[port].release()
-                printlog(socksuffix+"I'm about to scream",output_file=processfile)
-                raise
-    printlog(socksuffix+"Done! Total bytes read:" + str(totalbytes),output_file=processfile)
-    totalbytessend = 0
-    readlock.release()
-
-    #check if data is the size we expect
-    try:
-        assert(totalbyteshex>=maxbyteshex)
-    except AssertionError as exc:
-        readlock.acquire()
-        printlog(socksuffix + "READLOCK ACQUIRED",output_file=processfile)
-        tmp_ = np.zeros(16)
-        tmp_[corraddrs[corr_address]] += 1
-        np.save(config.table_dir + "/TCPHELPMONITOR.npy",np.load(config.table_dir + "/TCPHELPMONITOR.npy")+tmp_)
-        readlock.release()
-        printlog(socksuffix + "READLOCK RELEASED",output_file=processfile)
-        printlog(socksuffix+"Invalid data size, " + str(totalbytes) + " received when expected at least " + str(maxbytes) + ": " + str(exc),output_file=processfile)
-
-        printlog(socksuffix+"Invalid data size, " + str(totalbyteshex) + " received when expected at least " + str(maxbyteshex) + ": " + str(exc),output_file=processfile)
-        printlog(socksuffix+"Setting truncated data size flag...",output_file=processfile,end='')
-        pflag = set_pflag_loc("datasize_error")
-        if pflag == None:
-            clientSocket.close()
-            printlog(socksuffix+"Error setting flags, abort",output_file=processfile)
-            printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-            #readlocks_[port].release()
-            return ECODE_BREAK # break
-        printlog(socksuffix+"Done, continue",output_file=processfile)
-    if pflag != 0:
-        successmsg = bytes(success + str(pflag) + '\n','utf-8')
-        printlog(socksuffix+"Sending response...",output_file=processfile,end='')
-        while (totalbytessend < len(successmsg)):
-            totalbytessend += clientSocket.send(successmsg)
-        clientSocket.close()
-        printlog(socksuffix+"Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
-        printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-        #readlocks_[port].release()
-        return ECODE_CONT#continue
-
-    #try to parse to get address
-    try:
-        corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData = parse_packet(fullMsg=fullMsg,maxbytes=maxbytes,headersize=headersize,datasize=datasize,port=port,corr_address=corr_address,testh23=testh23)
-        printlog("PARSE SUCCESS:"+str((corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape)),output_file=processfile)
-    except Exception as exc:
-        readlock.acquire()
-        printlog(socksuffix + "READLOCK ACQUIRED",output_file=processfile)
-        print(corr_address)
-        tmp_ = np.zeros(16)
-        tmp_[corraddrs[corr_address]] += 1
-        np.save(config.table_dir + "/TCPHELPMONITOR.npy",np.load(config.table_dir + "/TCPHELPMONITOR.npy")+tmp_)
-        readlock.release()
-        printlog(socksuffix + "READLOCK RELEASED",output_file=processfile)
-
-        if type(exc) == UnicodeDecodeError:
-            printlog(socksuffix+"Error parsing data: " + str(exc),output_file=processfile)
-            printlog(socksuffix+"Setting parse error flag...",output_file=processfile,end='')
-            pflag = set_pflag_loc("parse_error")
-            if pflag == None:
-                clientSocket.close()
-                printlog(socksuffix+"Error setting flags, abort",processfile=processfile)
-                printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-                #readlocks_[port].release()
-                return ECODE_BREAK #break
-            printlog(socksuffix+"Done, continue",output_file=processfile)
-        if type(exc) == ValueError:
-            printlog(socksuffix+"Invalid data size: " + str(exc),output_file=processfile)
-            printlog(socksuffix+"Setting datasize flag...",output_file=processfile,end='')
-            pflag = set_pflag_loc("datasize_error")
-            if pflag == None:
-                clientSocket.close()
-                printlog(socksuffix+"Error setting flags, abort",processfile=processfile)
-                printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-                #readlocks_[port].release()
-                return ECODE_BREAK #break
-            printlog(socksuffix+"Done, continue",output_file=processfile)
-        else:
-            clientSocket.close()
-            #readlocks_[port].release()
-            raise exc
-
-    successmsg = bytes(success + str(pflag) + '\n','utf-8')
-    printlog(socksuffix+"Sending response...",output_file=processfile,end='')
-    while (totalbytessend < len(successmsg)):
-        totalbytessend += clientSocket.send(successmsg)
-    printlog(socksuffix+"Done! Total bytes sent:" + str(totalbytessend) + "/" + str(len(successmsg)),output_file=processfile)
-    if pflag != 0:
-        clientSocket.close()
-        printlog(socksuffix+"TOTAL READ+ERROR TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-        #readlocks_[port].release()
-        return ECODE_CONT #continue
-    printlog(socksuffix+"Data: " + str(arrData),output_file=processfile)
-
-    #reopen
-    printlog(socksuffix+"TOTAL READ TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-
-
-
-    #PACK mode --> "pack" read and gather tasks into same task
-    clientSocket.close()
-    #readlocks_[port].release()
-    
-    """
-    if args.pack:
-        if img_id_isot not in slowlocks_.keys():
-            slowlocks_[img_id_isot] = Lock()
-        multiport_subtask(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
-                                    ii,args.testh23,
-                                    args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock,
-                                    None if dask_enabled else searchlock,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers)
-    
-    """
-    #printlog(socksuffix+"--RET--"+str((corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape)),output_file=processfile)
-    #imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port,key=config.NSFRB_SRCHDADA_KEY)
-    printlog(socksuffix+"TOTAL READ+GATHER TIME:"+str(time.time()-t_)+"s",output_file=processfile)
-    return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
 
 multiport_accepting = dict()
 appendinit = False
@@ -1020,10 +731,12 @@ def multiport_subtask(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape
         searchlock = Lock_DASK("srchlock",client=executor)
     socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
-    slowlocks_[img_id_isot].acquire()
+    slowlock.acquire()
     if corr_node != -1:
         if img_id_isot not in fullimg_dict.keys():
+            printlog(socksuffix+"&&SRCH&&--ACQUIRING",output_file=processfile)
             fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),dtype=dtype,TXsubimg=TXsubimg,TXsubint=TXsubint,TXnints=TXnints,realtime=realtime,nocutoff=nocutoff)
+            printlog(socksuffix+"&&SRCH&&--RELEASING",output_file=processfile)
 
         printlog(socksuffix+"IMAGE SHAPE: " + str(img_id_isot) + ", " + str(fullimg_dict[img_id_isot].image_tesseract.shape),output_file=processfile)
         #add image and update flags
@@ -1036,13 +749,12 @@ def multiport_subtask(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape
         #if the image is complete, start the search
         printlog(socksuffix+"corrstatus:",output_file=processfile,end='')
         printlog(fullimg_dict[img_id_isot].corrstatus,output_file=processfile)
-
+    slowlock.release()
 
     #check if timed out
     if fullimg_dict[img_id_isot].is_timeout():
         printlog(socksuffix+"searching incomplete data for "+img_id_isot,output_file=processfile)
         fullimg_dict[img_id_isot].zerofill()
-    slowlocks_[img_id_isot].release()
     return ECODE_SUCCESS
 
 def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,ii,testh23,offline,SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
@@ -1061,7 +773,6 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
         searchlock = Lock_DASK("srchlock",client=executor)
     socksuffix = "SOCKET " + str(ii) + " >>"
     #if object is in dict
-    slowlocks_[img_id_isot].acquire()
     if corr_node != -1:
         if img_id_isot not in fullimg_dict.keys():
             fullimg_dict[img_id_isot] = fullimg(img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=tuple(np.concatenate([shape,[nchans]])),dtype=dtype,TXsubimg=TXsubimg,TXsubint=TXsubint,TXnints=TXnints,realtime=realtime,nocutoff=nocutoff)
@@ -1083,7 +794,6 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     if fullimg_dict[img_id_isot].is_timeout():
         printlog(socksuffix+"searching incomplete data for "+img_id_isot,output_file=processfile)
         fullimg_dict[img_id_isot].zerofill()
-    slowlocks_[img_id_isot].release()
 
 
 
@@ -1140,7 +850,6 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
         printlog(">>>>"+str(img_id_mjd)+"<<<<",output_file=processfile)
         #make slow fullimag object
         if slow:
-            slowlocks_[img_id_isot].acquire()
             slowdone = False
             for k in slow_fullimg_dict.keys():
                 img_idx,foundmjd = slow_fullimg_dict[k].slow_mjd_in_img(img_id_mjd)
@@ -1158,12 +867,10 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 k = img_id_isot
             slowsearch_now = (slowdone and slow_fullimg_dict[k].slow_is_full())
 
-            slowlocks_[img_id_isot].release()
         else:
             slowsearch_now = False
         #make imgdiff fullimag object
         if imgdiff:
-            slowlocks_[img_id_isot].acquire()
             imgdiffdone = False
             for kd in imgdiff_fullimg_dict.keys():
                 img_idx,foundmjd = imgdiff_fullimg_dict[kd].imgdiff_mjd_in_img(img_id_mjd)
@@ -1180,7 +887,6 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 imgdiff_fullimg_dict[img_id_isot].thash = fullimg_dict[img_id_isot].thash
                 kd = img_id_isot
             imgdiffsearch_now = (imgdiffdone and imgdiff_fullimg_dict[kd].imgdiff_is_full())
-            slowlocks_[img_id_isot].release()
         else:
             imgdiffsearch_now = False
 
@@ -1192,66 +898,48 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
             slow_fullimg_dict[k].running=True
             imgdiff_fullimg_dict[kd].running=True
             printlog(socksuffix + "SUBMITTING ATTACH-MODE TASK",output_file=processfile)
-            if len(psrdadakey)==0:
-                if dask_enabled:
-                    stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            if dask_enabled:
+                stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers,resources={'GPU': 1,'MEMORY':10e6})
-                else:
-                    stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            else:
+                stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,(slow_fullimg_dict[k] if slowsearch_now else None),(imgdiff_fullimg_dict[kd] if imgdiffsearch_now else None),True,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers)
-                stask.add_done_callback(lambda future: future_callback_attach(future,SNRthresh,img_id_isot,RA_axis_idx,
+            stask.add_done_callback(lambda future: future_callback_attach(future,SNRthresh,img_id_isot,RA_axis_idx,
                                                                                             str(k) if slowsearch_now else None,
                                                                                             RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:] if slowsearch_now else None,
                                                                                             str(kd) if imgdiffsearch_now else None,
                                                                                             RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:] if imgdiffsearch_now else None,
                                                                                             DEC_axis_idx,
                                                                                             etcd_enabled,dask_enabled,thash,slowlock))
-                appendinit = True
-                return [stask]
-            else:
-
-                #write to buffer, then delete
-                slowlock.acquire()
-                del fullimg_dict[img_id_isot]
-                del slow_fullimg_dict[k]
-                del imgdiff_fullimg_dict[kd]
-                slowlock.release()
-                printlog("PSRDADA SUCCESS",output_file=processfile)
+            appendinit = True
+            return [stask]
 
         ret_tasks = []
         if (not forfeit) or (forfeit and (not slowsearch_now) and (not imgdiffsearch_now)):
             printlog("ABOUT TO SUBMIT SEARCH TASK...",output_file=processfile)
             fullimg_dict[img_id_isot].running = True
-            if len(psrdadakey)==0:
-                if dask_enabled:
-                    stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            if dask_enabled:
+                stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers,resources={'GPU': 1,'MEMORY':10e6})
-                else:
-                    stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            else:
+                stask = executor.submit(sl.search_task,searchlock,fullimg_dict[img_id_isot],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,False,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers)
-                stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
-                ret_tasks.append(stask)
-                printlog("DID IT SUBMIT?",output_file=processfile)
-            else:
-                #write to buffer, then delete
-                slowlock.acquire()
-                del fullimg_dict[img_id_isot]
-                slowlock.release()
+            stask.add_done_callback(lambda future: future_callback(future,SNRthresh,img_id_isot,RA_axis_idx,DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
+            ret_tasks.append(stask)
+            printlog("DID IT SUBMIT?",output_file=processfile)
         elif forfeit and (slowsearch_now or imgdiffsearch_now):
             try:
                 slowlock.acquire()
-                slowlocks_[img_id_isot].acquire()
                 if not fullimg_dict[img_id_isot].running:
                     del fullimg_dict[img_id_isot]
-                slowlocks_[img_id_isot].release()
                 slowlock.release()
             except Exception as exc:
                 printlog("NOTE FORFEIT DELETION FAILED FOR BASE "+str(img_id_isot) + "|EXCEPTION|"+str(exc),output_file=processfile)
@@ -1263,34 +951,25 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
             printlog(socksuffix+"SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
             printlog(socksuffix+str(slow_fullimg_dict[k].image_tesseract),output_file=output_file)
             #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
-            if len(psrdadakey)==0:
-                if dask_enabled:
-                    sstask = executor.submit(sl.search_task,searchlock,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            if dask_enabled:
+                sstask = executor.submit(sl.search_task,searchlock,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers,resources={'GPU': 1,'MEMORY':10e6})
-                else:
-                    sstask = executor.submit(sl.search_task,searchlock,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            else:
+                sstask = executor.submit(sl.search_task,searchlock,slow_fullimg_dict[k],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers)
                     
-                sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
-                #task_list.append(sstask)
-                ret_tasks.append(sstask)
-            else:
-                #write to buffer, then delete
-                slowlock.acquire()
-                del slow_fullimg_dict[k]
-                slowlock.release()
-                printlog("PSRDADA SUCCESS",output_file=processfile)
+            sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
+            #task_list.append(sstask)
+            ret_tasks.append(sstask)
         elif forfeit and slowsearch_now:
             try:
                 slowlock.acquire()
-                slowlocks_[img_id_isot].acquire()
                 if not slow_fullimg_dict[k].running:
                     del slow_fullimg_dict[k]
-                slowlocks_[img_id_isot].release()
                 slowlock.release()
             except Exception as exc:
                 printlog("NOTE FORFEIT DELETION FAILED FOR SLOW "+str(k) + "|EXCEPTION|"+str(exc),output_file=processfile)
@@ -1300,28 +979,21 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
             imgdiff_fullimg_dict[kd].running=True
             printlog(socksuffix+"IMGDIFFSEARCH NOW:" + str(imgdiff_fullimg_dict[kd]),output_file=processfile)
             printlog(socksuffix+str(imgdiff_fullimg_dict[kd].image_tesseract),output_file=output_file)
-            if len(psrdadakey)==0:
-                #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
-                if dask_enabled:
-                    ssstask = executor.submit(sl.search_task,searchlock,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            #np.save("tmp_slow_search_input.npy",slow_fullimg_dict[k].image_tesseract)
+            if dask_enabled:
+                ssstask = executor.submit(sl.search_task,searchlock,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers,resources={'GPU': 1,'MEMORY':10e6})
-                else:
-                    ssstask = executor.submit(sl.search_task,searchlock,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
+            else:
+                ssstask = executor.submit(sl.search_task,searchlock,imgdiff_fullimg_dict[kd],SNRthresh,subimgpix,model_weights,verbose,usefft,cluster,
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers)
 
-                ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
-                #task_list.append(sstask)
-                ret_tasks.append(ssstask)
-            else:
-                #write to buffer, then delete
-                slowlock.acquire()
-                del imgdiff_fullimg_dict[kd]
-                slowlock.release()
-                printlog("PSRDADA SUCCESS",output_file=processfile)
+            ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
+            #task_list.append(sstask)
+            ret_tasks.append(ssstask)
         appendinit = True
         return ret_tasks
         printlog(socksuffix+" "+str(ret_tasks) + " tasks",output_file=processfile )
@@ -1332,18 +1004,14 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
     return ECODE_SUCCESS
 
 from realtime import rtwriter
+from psrdada import Reader
 from realtime import rtreader
-def imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port,key=config.NSFRB_SRCHDADA_KEY):
-    numdata = np.array([corr_node,img_id_mjd,img_uv_diag,img_dec,port]+list(shape),dtype=np.float64)
-    alldata = np.concatenate([numdata,arrData.flatten()])
-    rtwriter.rtwrite(alldata,key=key,addheader=False,dtype=np.float64) #bytes(numdata) + bytes(img_id_isot,encoding='utf-8') + bytes(arrData)
-    return
 def imagefromDADA(key=config.NSFRB_SRCHDADA_KEY,reader=None,datasizebytes=6125064):
-    data = rtreader.rtread_searching(key,reader=None,verbose=True,verbosefile=processfile)
+    data = np.frombuffer(rtreader.rtread_searching(key,reader=reader,verbose=True,verbosefile=sys.stdout))
     corr_node,img_id_mjd,img_uv_diag,img_dec,port = data[:5]
     shape = tuple(data[5:8].astype(int))
     img_id_isot = Time(img_id_mjd,format='mjd').isot
-    arrData = data[8:].reshape(shape)
+    arrData = data[8:].reshape(tuple(list(shape)+[16]))
     return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
 def main(args):
     np.save(config.table_dir + "/TCPHELPMONITOR.npy",np.zeros(16))
@@ -1425,19 +1093,6 @@ def main(args):
         sl.default_cutoff = (0 if args.nocutoff else get_RA_cutoff(np.nanmean(sl.DEC_axis),pixsize=np.abs(sl.RA_axis[1]-sl.RA_axis[0])))
         printlog("Initialized pixel cutoff to " + str(sl.default_cutoff) + " pixels",output_file=processfile)
 
-    """
-    #move PSF, width trials, DM trials to GPU
-    sl.default_PSF_gpu_0 = jax.device_put(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True))))[int((sl.default_PSF.shape[0]-sl.gridsize)//2):int((sl.default_PSF.shape[0]-sl.gridsize)//2)+sl.gridsize,
-                      (int((sl.default_PSF.shape[1]-sl.gridsize)//2))+int(sl.default_cutoff//2):(int((sl.default_PSF.shape[1]-sl.gridsize)//2)+sl.gridsize)+(-(sl.default_cutoff - int(sl.default_cutoff//2)))],jax.devices()[0])
-    sl.default_PSF_gpu_1 = jax.device_put(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True)/np.sum(np.array(sl.default_PSF[:,:,0:1,:].sum(3,keepdims=True))))[int((sl.default_PSF.shape[0]-sl.gridsize)//2):int((sl.default_PSF.shape[0]-sl.gridsize)//2)+sl.gridsize,
-                      (int((sl.default_PSF.shape[1]-sl.gridsize)//2))+int(sl.default_cutoff//2):(int((sl.default_PSF.shape[1]-sl.gridsize)//2)+sl.gridsize)+(-(sl.default_cutoff - int(sl.default_cutoff//2)))],jax.devices()[1])
-    sl.corr_shifts_all_gpu_0 = jax.device_put(sl.corr_shifts_all_gpu_0,jax.devices()[0])
-    sl.tdelays_frac_gpu_0 = jax.device_put(sl.tdelays_frac_gpu_0,jax.devices()[0])
-    sl.corr_shifts_all_gpu_1 = jax.device_put(sl.corr_shifts_all_gpu_1,jax.devices()[1])
-    sl.tdelays_frac_gpu_1 = jax.device_put(sl.tdelays_frac_gpu_1,jax.devices()[1])
-    sl.full_boxcar_filter_gpu_0 = jax.device_put(sl.full_boxcar_filter_gpu_0,jax.devices()[0])
-    sl.full_boxcar_filter_gpu_1 = jax.device_put(sl.full_boxcar_filter_gpu_1,jax.devices()[1])
-    """
 
     #write DM and width trials to file for cand cutter
     np.save(cand_dir + "DMtrials.npy",np.array(sl.DM_trials))
@@ -1712,48 +1367,6 @@ def main(args):
     printlog("MAXBYTES: " + str(maxbytes),output_file=processfile)
     printlog("SHAPE: "  + str((args.gridsize,args.gridsize,args.nsamps,args.nchans)),output_file=processfile)
    
-    #array to store image ids temporarily
-    #fullimg_array = np.ndarray(shape=(args.maxProcesses),dtype=fullimg)
-    #fullimg_dict = dict()
-
-    if len(args.multiport)==0:
-        #create socket
-        printlog("creating socket...",output_file=processfile,end='')
-        servSockD = socket.socket(socket.AF_INET, socket.SOCK_STREAM if args.protocol=='tcp' else socket.SOCK_DGRAM,0)
-        printlog("Done!",output_file=processfile)    
-
-        #bind to port number
-        port = args.port
-        printlog("binding to port " + str(port) + "...",output_file=processfile,end='')
-        servSockD.bind(('', port))
-        printlog("Done!",output_file=processfile)
-
-        if args.protocol=='tcp':
-            #listen for conections
-            printlog("listening for connections...",output_file=processfile,end='')
-            servSockD.listen(args.maxconnect)
-            printlog("Made connection",output_file=processfile)
-    else:
-        printlog("Multiport mode")
-        servSockD_list = []
-        for ii in range(len(args.multiport)):
-            #create socket
-            printlog("creating socket...",output_file=processfile,end='')
-            servSockD_list.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM if args.protocol=='tcp' else socket.SOCK_DGRAM,0))
-            printlog("Done!",output_file=processfile)
-
-            #bind to port number
-            port = args.multiport[ii]
-            printlog("binding socket " + str(ii) + " to port " + str(port) + "...",output_file=processfile,end='')
-            servSockD_list[ii].bind(('',port))
-            printlog("Done!",output_file=processfile)
-            if args.protocol=='tcp':
-                #listen for conections
-                printlog("listening for connections...",output_file=processfile,end='')
-                servSockD_list[ii].listen(args.maxconnect)
-                printlog("Made connection",output_file=processfile)
-            printlog("")
-            #multiport_accepting[ii] = True
 
     #initialize a pool of processes for concurent execution
     #maxProcesses = 5
@@ -1783,6 +1396,24 @@ def main(args):
     printlog("DASK ENABLED FLAG = " + str(dask_enabled),output_file=processfile)
 
 
+    #create reader
+    printlog("Initializing reader...",output_file=processfile)
+    reader_connected=False
+    ii=0
+
+    while not reader_connected:
+        try:
+            reader = Reader(config.NSFRB_SRCHDADA_KEY) #DSAX_PSRDADA_KEY)#NSFRB_PSRDADA_KEY)
+            reader_connected=True
+        except Exception as exc:
+            if ii==0:
+                printlog("Trying to connect to ring buffer...",output_file=processfile)
+                printlog(exc,output_file=processfile)
+            continue
+        ii+=1
+    printlog("Ready for data",output_file=processfile)
+
+
     #if subimg or subint, store parse results before adding fullimg
     substage = dict()
     for i in range(16):
@@ -1792,248 +1423,94 @@ def main(args):
     TSTARTUP = time.time()
     initflag = False
     readsockets = []
+    reconnect=False
     while True: # want to keep accepting connections
+        print(">>newloop")
+        t0 = time.time()
+        if reconnect:
+            printlog("Reconnecting reader...",output_file=processfile)
+            reader_connected=False
+            while not reader_connected:
+                try:
+                    reader = Reader(config.NSFRB_SRCHDADA_KEY) #DSAX_PSRDADA_KEY)#NSFRB_PSRDADA_KEY)
+                    reader_connected=True
+                except Exception as exc:
+                    if ii==0:
+                        printlog("Trying to connect to ring buffer...",output_file=processfile)
+                        printlog(exc,output_file=processfile)
+                    continue
+                ii+=1
+            reconnect=False
+            printlog("Ready for data",output_file=processfile)
         printlog("FULLIMG_DICTS---------------------------",output_file=processfile)
         printlog(fullimg_dict,output_file=processfile)
         printlog(slow_fullimg_dict,output_file=processfile)
         printlog(imgdiff_fullimg_dict,output_file=processfile)
         printlog("----------------------------------------",output_file=processfile)
-        printlog("SUBSTAGE==>"+str(substage[0].keys()),output_file=processfile)
-        packet_dict = ETCD.get_dict(ETCDKEY_PACKET) #dict()
-        packet_dict["dropped"] = 0
-        if len(args.multiport)==0: 
-            ret = multiport_task(servSockD,-1,port,maxbytes,maxbyteshex,args.timeout_SOCKET,args.chunksize,args.headersize,args.datasize,args.testh23,
-                                    args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,None if dask_enabled else searchlock_)
-            if type(ret) == int:
-                if ret == ECODE_CONT:
-                    packet_dict["dropped"] += 1
-                    printlog("multiport task exited with error code " + str(ret),output_file=processfile)
-                    printlog("--continuing",output_file=processfile)
-                    continue
-                elif ret == ECODE_BREAK:
-                    printlog("multiport task exited with error code " + str(ret),output_file=processfile)
-                    printlog("--aborting",output_file=processfile)
-                    break
-                elif ret == ECODE_SUCCESS:
-                    printlog("--normal, no search, continue",output_file=processfile)
-                else:
-                    printlog("multiport task exited with error code " + str(ret),output_file=processfile)
-                    printlog("--unknown error code, aborting",output_file=processfile)
-                    break
-            else:
-               task_list += list(ret) 
-            ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
 
-        else:
-            #SELECT
-            #while (initflag) and (time.time()-TSTARTUP)<2.5:#config.tsamp*config.nsamps/1000:
-            #    time.sleep(args.timeout_SLEEP)
-            #    continue
-            printlog(">>>LOOP HERE>>>"+str(time.time()-TSTARTUP),output_file=processfile)
-            #TSTARTUP = time.time()
-            #while not initflag and 
-            while len(readsockets)<16:# and (not initflag or (time.time()-TSTARTUP)<3.1):
-                printlog("DATAITER>>>"+str(readsockets),output_file=processfile)
-                readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout_SELECT)
-            TSTARTUP = time.time()
-            printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
-            printlog("Data ready on "+str(len(readsockets))+" ports",output_file=processfile)
+        print("waiting...")
+        try:
+            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = imagefromDADA(datasizebytes=98000064,reader=reader)
+        except Exception as exc:
+            printlog("NULL READ",output_file=processfile)
+            printlog(exc,output_file=processfile)
+            #reconnect=True
+            continue
+        print((corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData.shape))
+        printlog("&&SRCH&& READ TIME--->"+str(time.time()-t0),output_file=processfile)
+        t1 = time.time()
 
-            if len(readsockets)>0:
-                tread = time.time()
-
-            #if args.protocol=='udp':
-            #    for ii in range(len(servSockD_list)):
-                    #read data
-            #        readtasks.append(executor.submit(readcorrdata,servSockD_list[ii],ii,servSockD_list[ii].getsockname()[1],maxbytes,
-            #                        maxbyteshex,args.timeout,args.chunksize,args.headersize,args.datasize,args.testh23,
-            #                        args.offline,args.protocol,args.udpchunksize))
-            #else:
-            #while not np.all(np.array(ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status'])==False):
-            #    printlog("WAITING TO FINISH PREVIOUS ITER..."+str(ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status']),output_file=processfile)
-            #    time.sleep(args.timeout_SLEEP)
-            repret = [] 
-            fulldata = np.nan*np.ones((args.gridsize,args.gridsize,args.nsamps,16))
-            for ii in range(len(readsockets)):
-                #read data
-                #if readsockets[ii].getsockname()[1] not in readlocks_.keys():
-                #    readlocks_[readsockets[ii].getsockname()[1]] = Lock()
-                #t_=time.time()
-                #while not ETCD.get_dict(ETCDKEY_CORRSTAGGER)['status'][(ii-1)%16] and time.time()-t_<args.timeout_SOCKET:
-                #    printlog("<"+str(ii)+"> waiting for data...",output_file=processfile)
-                #    time.sleep(args.timeout_SLEEP)
-                #if time.time()-t_<args.timeout_SOCKET: printlog("<"+str(ii)+"> READ NOW!",output_file=processfile)
-                #else:
-                #    printlog("<"+str(ii)+"> NO TIME TO READ!",output_file=processfile)
-                #    continue
-                
-                ret = readcorrdata(readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
-                                    maxbyteshex,args.timeout_SOCKET,args.chunksize,args.headersize,args.datasize,args.testh23,
-                                    args.offline,args.protocol,args.udpchunksize,readlock_,args.timeout_SELECT,args.timeout_LOOP,args.overdraw,
-                                    args,dtype,dask_enabled,search_executor,None if dask_enabled else searchlock_,None if dask_enabled else slowlock_,args.timeout_SLEEP,args.timeout_INLOOP)
-            
-                if type(ret) != int: 
-                    fulldata[:,:,:,ii] = ret[-2]
-                    repret = ret#retdats.append(ret)
-                #if (not initflag) and type(ret)==int:
-                #    break
-                """
-                readtasks.append(read_executor.submit(readcorrdata,readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
-                                    maxbyteshex,args.timeout_SOCKET,args.chunksize,args.headersize,args.datasize,args.testh23,
-                                    args.offline,args.protocol,args.udpchunksize,readlock_,args.timeout_SELECT,args.timeout_LOOP,args.overdraw,
-                                    args,dtype,dask_enabled,search_executor,None if dask_enabled else searchlock_,None if dask_enabled else slowlock_,args.timeout_SLEEP,args.timeout_INLOOP))
-                """
-            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = repret
-            imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)
-            """
-            for ret in retdats:
-                printlog("RET--"+str(ret[:-2]),output_file=processfile)
-                corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = ret
-                imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port,key=args.psrdadakey)
-                printlog("RET--DONE",output_file=processfile)
-            """
-            #if (not initflag) and type(ret)==int: initflag = False
-            #else: 
-            initflag = True
-            if args.wait:#args.protocol=='udp': 
-                TSTARTUP2 = time.time()
-                #try:
-                wait(readtasks,timeout=args.timeout_TASK)
-                for r in readtasks:
-                    printlog(">>>DONE WAIT?>>>"+str(r.done()),output_file=processfile)
-                #except Exception as exc:
-                #    printlog("<<READTASKS>>"+str(exc),output_file=processfile)
-                printlog(">>>DONE WAIT>>>"+str(time.time()-TSTARTUP2),output_file=processfile)
-            
-            newreadtasks=[]
-            """
-            for ii in range(len(readtasks)):
-                tt = readtasks[ii]
-                corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = tt
-
-                if img_id_isot not in slowlocks_.keys():
-                    slowlocks_[img_id_isot] = Lock()
-
-                multiport_subtask(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
+        gtasks=[]
+        for ii in range(arrData.shape[-1]):
+            if ~np.all(np.isnan(arrData[:,:,:,ii])):
+                print(ii,"START")
+                gtasks.append(executor.submit(multiport_subtask,ii,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData[:,:,:,ii],
                                     ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
                                     args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,
-                                    None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers)
-                printlog("TASKSUB--"+str(ii),output_file=processfile)
-            """
+                                    None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers))
+                print(ii,"DONE")
+            else: print(ii,"NAN")
+        #wait(gtasks)
 
 
-
-            """
-            for tt in readtasks:
-                if tt.done() and type(tt.result()) != int:#type(ret) != int:
-                    corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = tt.results() #ret
-                    
-                    if TXsubimg or TXsubint:
-                        if img_id_isot not in substage[corr_node].keys():
-                            if TXsubimg:
-                                substage[corr_node][img_id_isot] = dict()
-                                substage[corr_node][img_id_isot]["data"]=np.zeros_like(arrData).repeat(NROWSUBIMG,axis=0).repeat(NCOLSUBIMG,axis=1)
-                                substage[corr_node][img_id_isot]["count"]=0
-                            elif TXsubint:
-                                substage[corr_node][img_id_isot] = dict()
-                                substage[corr_node][img_id_isot]["data"]=np.zeros_like(arrData).repeat(args.TXnints,axis=2)
-                                substage[corr_node][img_id_isot]["count"]=0
-                        printlog("Adding to subdict:"+str((img_id_isot,corr_node,substage[corr_node][img_id_isot]["count"])),output_file=processfile)
-
-                        if TXsubimg:
-                            sidx=substage[corr_node][img_id_isot]["count"]
-                            substage[corr_node][img_id_isot]["data"][SUBIMGPIX*SUBIMGORDER[sidx][0]:SUBIMGPIX*(SUBIMGORDER[sidx][0]+1),
-                                                                    SUBIMGPIX*SUBIMGORDER[sidx][1]:SUBIMGPIX*(SUBIMGORDER[sidx][1]+1),:] = arrData
-                        elif TXsubint:
-                            #sidx = substage[corr_node][img_id_isot]["count"]
-                            sidx = portmapping[port]
-                            print("RETRIEVED SIDX:",sidx)
-                            substage[corr_node][img_id_isot]["data"][:,:,int(sidx*(substage[corr_node][img_id_isot]["data"].shape[2]//args.TXnints)):int((sidx+1)*(substage[corr_node][img_id_isot]["data"].shape[2]//args.TXnints))] = arrData
-                        substage[corr_node][img_id_isot]["count"] += 1
-                        
-                        if (TXsubimg and substage[corr_node][img_id_isot]["count"]>=NSUBIMG) or (TXsubint and substage[corr_node][img_id_isot]["count"]>=args.TXnints):
-                            arrData=substage[corr_node][img_id_isot]["data"]
-                            shape=arrData.shape
-                            del substage[corr_node][img_id_isot]
-                        else:
-                            continue
-
-                    printlog("Gathered all subdata for corr"+str(corr_node),output_file=processfile)
-
-                    
-                    slowlocks_[img_id_isot] = Lock()
-                    if dask_enabled:
-                        #multiport_task_list.append(
-                        executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
-                                    ii,args.testh23,
-                                    args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlocks_[img_id_isot],None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers)#TXsubimg,TXsubint,args.TXnints)
-                    else:
-                        #multiport_task_list.append(
-                        executor.submit(multiport_task,corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,
-                                    ii,args.testh23,
-                                    args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
-                                    args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
-                                    args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
-                                    args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlocks_[img_id_isot],None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers)#TXsubimg,TXsubint,args.TXnints)
-                    #multiport_num_list.append(ii)
-                else:
-                    #packet_dict["dropped"] += 1
-                    newreadtasks.append(tt)
-            """
-            readtasks = newreadtasks
-            
-
-            printlog("Data done on "+str(readsockets)+" ports",output_file=processfile)
-            printlog("Data done on "+str(len(readsockets))+" ports",output_file=processfile)
-            readsockets = []
-            #readtasks = []
-            if len(readsockets)>0:
-                packet_dict["read_time"] = time.time()-tread
-                printlog("TOTAL READ TIME:"+str( time.time()-tread),output_file=processfile)
-            ETCD.put_dict(ETCDKEY_PACKET,packet_dict)
-        """
+        #gtasks = []
+        printlog("&&SRCH&& GATHER TIME--->"+str(time.time()-t1),output_file=processfile)
+        t1 = time.time()
         #check if any timed out
         slowlock_.acquire()
         for k in fullimg_dict.keys():
             if (not fullimg_dict[k].running) and fullimg_dict[k].is_timeout():
-                slowlocks_[str(k)].acquire()
                 printlog("Image "+str(k)+" timed out, searching now",output_file=processfile)
                 fullimg_dict[k].running = True
                 if dask_enabled:
-                    executor.submit(multiport_task,-1,str(k),fullimg_dict[k].img_id_mjd,fullimg_dict[k].img_uv_diag,fullimg_dict[k].img_dec,fullimg_dict[k].shape[:-1],None,
+                    gtasks.append(executor.submit(multiport_task,-1,str(k),fullimg_dict[k].img_id_mjd,fullimg_dict[k].img_uv_diag,fullimg_dict[k].img_dec,fullimg_dict[k].shape[:-1],None,
                                     ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers,args.psrdadakey)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers,args.psrdadakey))
                 else:
-                    executor.submit(multiport_task,-1,str(k),fullimg_dict[k].img_id_mjd,fullimg_dict[k].img_uv_diag,fullimg_dict[k].img_dec,fullimg_dict[k].shape[:-1],None,
+                    gtasks.append(executor.submit(multiport_task,-1,str(k),fullimg_dict[k].img_id_mjd,fullimg_dict[k].img_uv_diag,fullimg_dict[k].img_dec,fullimg_dict[k].shape[:-1],None,
                                     ii,args.testh23,
                                     args.offline,args.SNRthresh,args.subimgpix,args.model_weights,args.verbose,args.usefft,args.cluster,
                                     args.multithreading,args.nrows,args.ncols,args.threadDM,args.samenoise,args.cuda,args.toslack,args.PyTorchDedispersion,
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
-                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers,args.psrdadakey)#TXsubimg,TXsubint,args.TXnints)
+                                    args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers,args.psrdadakey))
 
                     #multiport_num_list.append(ii)    
-                slowlocks_[str(k)].release()
         slowlock_.release()
+        wait(gtasks)
         #break
-        """
+        printlog("&&SRCH&& CHECK TIMEOUT TIME--->"+str(time.time()-t1),output_file=processfile)
+        t1 = time.time()
+
+        printlog("&&SRCH&& TOTAL TIME--->"+str(time.time()-t0),output_file=processfile)
     executor.shutdown()
     search_executor.shutdown()
     read_executor.shutdown()

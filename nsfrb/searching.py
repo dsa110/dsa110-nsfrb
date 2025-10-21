@@ -1852,6 +1852,7 @@ def run_search_GPU(image_tesseract,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=t
 
 
     
+"""
 import struct
 from realtime import rtreader
 class dummy_fullimg:
@@ -1909,7 +1910,7 @@ class dummy_fullimg:
         printlog("??SRCH??: RA_axis-"+str(self.RA_axis),output_file=processfile)
         printlog("??SRCH??: DEC_axis-"+str(self.DEC_axis),output_file=processfile)
         return
-        
+"""     
         
 
 #CONTEXTSETUP = False
