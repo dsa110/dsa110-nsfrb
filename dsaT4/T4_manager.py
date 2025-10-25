@@ -79,6 +79,14 @@ FILPATH = os.environ["DSA110DIR"] + "operations/T1/"
 OUTPUT_PATH = os.environ["DSA110DIR"] + "operations/T4/"
 #IP_GUANO = '3.13.26.235'
 
+from multiprocessing import Process, Queue
+import dsautils.dsa_store as ds
+ETCD = ds.DsaStore()
+ETCDKEY = f'/mon/nsfrb/candidates'
+QQUEUE = Queue()
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,pixperFWHM,nchans,remote_cand_dir
+ETCD_T4VIS_KEY = f'/mon/nsfrb/T4vis'
+
 def nsfrb_to_json(cand_isot,mjds,snr,width,dm,ra,dec,trigname,P=-1,final_cand_dir=final_cand_dir,slow=False,imgdiff=False):
     """
     Takes the following arguments and saves to a json file in the specified cand dir
@@ -902,6 +910,7 @@ def writecands_manage(d_future,image,last_frame,searched_image,args,DM_trials_us
                 printlog("COMPUTING SHIFTS FOR DM="+str(DM)+"pc/cc "+ str(sourceimg.shape),output_file=cutterfile)
 
                 tshift =np.array(np.abs((4.15)*DM*((1/np.nanmax(freq_axis)/1e-3)**2 - (1/freq_axis/1e-3)**2))//tsamp_use,dtype=int)
+                printlog("TSHIFTSHIFT--->"+str(tshift),output_file=cutterfile)
                 sourceimg_dm = np.zeros((sourceimg.shape[0],sourceimg.shape[1],truensamps,sourceimg.shape[3]))
                 printlog("COM"+str(sourceimg_dm.shape),output_file=cutterfile)
                 for j in range(len(freq_axis)):
@@ -1005,8 +1014,11 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
         finalpcands = dict()
     else:
     """
+    triggerdata = None
     if len(res) == 9:
         finalcands,finalidxs,finalpcands,predictions,probabilities,canddict,allcandnames,timeseries,jsonfname = res
+        with open(jsonfname,"r") as f:
+            triggerdata = json.load(f)
         classify_flag = True
         #injection_flag = True
     elif len(res) == 8:
@@ -1015,6 +1027,8 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
         #injection_flag = False
     elif len(res) == 7:
         finalcands,finalidxs,finalpcands,canddict,allcandnames,timeseries,jsonfname = res
+        with open(jsonfname,"r") as f:
+            triggerdata = json.load(f)
         classify_flag = False
         #injection_flag = True
     elif len(res) == 6:
@@ -1067,11 +1081,26 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
             os.system("echo " + candplot + " > "+ os.environ["NSFRBDIR"] + "/scripts/x11alertmessage.txt")
             printlog("done!",output_file=cutterfile)
     plotlock.release()
-    if args.trigger:
-        T4trigger = event.create_event(fl)
-        return list(res) + [candplot, T4trigger]
-    else:
-        return list(res) + [candplot]
+    if args.trigger and (triggerdata is not None):
+        #T4trigger = event.create_event(fl)
+        
+        #set etcd key
+        printlog("PUSHING ETCD TRIGGER:"+str(triggerdata),output_file=cutterfile)
+        ETCD.put_dict(ETCD_T4VIS_KEY,triggerdata)
+        time.sleep(3.35)
+        printlog("COPYING FAST VIS FILES",output_file=cutterfile)
+        corrs=["h03", "hh04", "h05", "h06", "hh07", "h08", "hhh10", "h11", "hh12", "h14", "h15", "h16", "h18", "h19", "h21", "h22"]
+        sbs = ["sb00","sb01","sb02","sb03","sb04","sb05","sb06","sb07","sb08","sb09","sb10","sb11","sb12","sb13","sb14","sb15"]
+        for i in range(len(corrs)):
+            printlog("rsync -avv --remove-source-files "+corrs[i]+".pro.pvt:/tmp/*"+sbs[i]+"*.out "+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + triggerdata['trigname'] + "/fast_visibilities/",output_file=cutterfile)
+            os.system("rsync -avv --remove-source-files "+corrs[i]+".pro.pvt:/tmp/*"+sbs[i]+"*.out "+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + triggerdata['trigname'] + "/fast_visibilities/")
+            printlog("rsync -avv --remove-source-files "+corrs[i]+".pro.pvt:/tmp/*"+sbs[i]+"*.json "+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + triggerdata['trigname'] + "/fast_visibilities/")
+            os.system("rsync -avv --remove-source-files "+corrs[i]+".pro.pvt:/tmp/*"+sbs[i]+"*.json "+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + triggerdata['trigname'] + "/fast_visibilities/")
+        
+        
+        #return list(res) + [candplot, T4trigger]
+    #else:
+    return list(res) + [candplot]
 
 def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjection_flag):
     if args.completeness or (not args.archive) or 'NSFRBT4' not in os.environ.keys():
@@ -1121,6 +1150,8 @@ def archive_manage(d_future,cand_isot,suff,cutterfile,injection_flag,postinjecti
     os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + suff + "/" + lastname for lastname in allcandnames]) + "\"")
     printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + suff + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"",output_file=cutterfile)
     os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + suff + "/" + lastname + "/voltages/" for lastname in allcandnames]) + "\"")
+    printlog("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + suff + "/" + lastname + "/fast_visibilities/" for lastname in allcandnames]) + "\"",output_file=cutterfile)
+    os.system("ssh user@dsa-storage.ovro.pvt \"mkdir "+ " ".join([T4dir + "/" + cand_isot + suff + "/" + lastname + "/fast_visibilities/" for lastname in allcandnames]) + "\"")
     for lastname in allcandnames:
         #copy numpy files
         if args.remote:
@@ -1276,9 +1307,11 @@ def submit_cand_nsfrb(image,last_frame,searched_image,TOAs,fname,uv_diag,dec_obs
             if args.remote:
                 os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname+"\"")
                 os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/voltages\"")
+                os.system("ssh h24.pro.pvt \"mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/fast_visibilities\"")
             else:
                 os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname)
                 os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/voltages")
+                os.system("mkdir "+ final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + trigname + "/fast_visibilities")
 
 
 
@@ -1392,13 +1425,15 @@ def submit_cand_nsfrb(image,last_frame,searched_image,TOAs,fname,uv_diag,dec_obs
     
     #(6) archiving
     d_archive = client.submit(archive_manage,d_trigger,cand_isot,suff,cutterfile,injection_flag,postinjection_flag)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
-
+    """
     if args.trigger:
+        
         d_cs = client.submit(run_createstructure_nsfrb, d_trigger, args.daskaddress, key=f"run_createstructure_nsfrb-{d.trigname}")#, lock=lock, priority=1)  # create directory structure
         d_vc = client.submit(run_voltagecopy_nsfrb, d_cs, args.daskaddress, key=f"run_voltagecopy_nsfrb-{d.trigname}")#, lock=lock)  # copy voltages
         d_h5 = client.submit(run_hdf5copy_nsfrb, d_cs, args.daskaddress, key=f"run_hdf5copy_nsfrb-{d.trigname}")#, lock=lock)  # copy hdf5
         fut = client.submit(run_final_nsfrb, (d_h5, d_cs, d_vc), args.daskaddress, key=f"run_final_nsfrb-{d.trigname}")#, lock=lock)
         return fut
+    """
     return d_archive
 
 def run_createstructure_nsfrb(d_future, daskaddress, lock=None):
@@ -1664,13 +1699,6 @@ def wait_for_local_file(fl, timeout, allbeams=False):
 """
 ETCD AND QUEUE
 """
-
-from multiprocessing import Process, Queue
-import dsautils.dsa_store as ds
-ETCD = ds.DsaStore()
-ETCDKEY = f'/mon/nsfrb/candidates'
-QQUEUE = Queue()
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,pixperFWHM,nchans,remote_cand_dir
 
 def etcd_to_queue(etcd_dict,queue=QQUEUE):
     """

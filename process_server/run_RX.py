@@ -688,35 +688,103 @@ def main(args):
     TSTARTUP = time.time()
     initflag = False
     readsockets = []
+    badcounter = 0
+    failsafe_timer = time.time()
+    failsafe_counter =0
     while True: # want to keep accepting connections
+        if failsafe_counter>=3 and ((time.time()-failsafe_timer)<args.timeout_FAILSAFE): 
+            printlog("<"+str((time.time()-failsafe_timer))+">FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
+            
+            for s in servSockD_list: s.close()
+            raise RuntimeError("Failsafe condition reached, restarting...")
+        elif failsafe_counter>=3 and ((time.time()-failsafe_timer)>=args.timeout_FAILSAFE):
+            printlog("FAILSAFE CHECKUP",output_file=processfile)
+            failsafe_counter=0
+            failsafe_timer=time.time()
+
         fulldata = np.nan*np.ones((args.gridsize,args.gridsize,args.nsamps,16))
         packet_dict = ETCD.get_dict(ETCDKEY_PACKET) #dict()
         packet_dict["dropped"] = 0
         #SELECT
         printlog(">>>LOOP HERE>>>"+str(time.time()-TSTARTUP),output_file=processfile)
         t0=time.time()
-        while len(readsockets)<16 and (time.time()-t0 < (config.tsamp*config.nsamps/1000)):# and (not initflag or (time.time()-TSTARTUP)<3.1):
+        if badcounter >= 16*args.BADITERS:
+            printlog("BAD COUNTER FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
+            for s in servSockD_list: s.close()
+            raise RuntimeError("Failsafe condition reached, restarting...")
+            """
+            #printlog("TAKE A BREATHER TO REGROUP...",output_file=processfile)
+
+
+            for s in servSockD_list:
+                s.close()
+            time.sleep(args.timeout_BADCOUNTER)
+
+            servSockD_list = []
+            for ii in range(len(args.multiport)):
+                #create socket
+                printlog("creating socket...",output_file=processfile,end='')
+                servSockD_list.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM if args.protocol=='tcp' else socket.SOCK_DGRAM,0))
+                printlog("Done!",output_file=processfile)
+
+                #bind to port number
+                port = args.multiport[ii]
+                printlog("binding socket " + str(ii) + " to port " + str(port) + "...",output_file=processfile,end='')
+                servSockD_list[ii].bind(('',port))
+                printlog("Done!",output_file=processfile)
+                if args.protocol=='tcp':
+                    #listen for conections
+                    printlog("listening for connections...",output_file=processfile,end='')
+                    servSockD_list[ii].listen(args.maxconnect)
+                    printlog("Made connection",output_file=processfile)
+                    printlog("")
+            time.sleep(args.timeout_BADCOUNTER)
+            badcounter =0
+            printlog("DONE",output_file=processfile)
+            """
+        while len(readsockets)<1:#16 and (time.time()-t0 < (config.tsamp*config.nsamps/1000)):# and (not initflag or (time.time()-TSTARTUP)<3.1):
             printlog("DATAITER>>>"+str(len(readsockets)),output_file=processfile)
-            readsockets,writesockets,errsockets = select.select(servSockD_list,[],[],args.timeout_SELECT)
+            readsockets,writesockets,errsockets = select.select(servSockD_list[0:1],[],[],args.timeout_SELECT)
         printlog("DATAITER>>>DONE",output_file=processfile)
         TSTARTUP = time.time()
         #printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
         printlog("Data ready on "+str(len(readsockets))+" ports",output_file=processfile)
 
         repret = None
-        for ii in range(len(readsockets)):
-                
-            ret = readcorrdata(readsockets[ii],ii,readsockets[ii].getsockname()[1],maxbytes,
+        for ii in range(len(servSockD_list)):#readsockets)):
+            printlog("ALLSKIPS:"+str(args.skipcorrs),output_file=processfile)
+            if ii not in args.skipcorrs:
+                readsockets,writesockets,errsockets = select.select(servSockD_list[ii:ii+1],[],[],args.timeout_SELECT)
+                printlog("ITERDATA>>>"+str(readsockets),output_file=processfile)
+                if len(readsockets)==1: 
+                    ret = readcorrdata(readsockets[0],ii,readsockets[0].getsockname()[1],maxbytes,
                                     maxbyteshex,args.timeout_SOCKET,args.chunksize,args.headersize,args.datasize,args.testh23,
                                     args.offline,args.protocol,args.udpchunksize,None,args.timeout_SELECT,args.timeout_LOOP,args.overdraw,
                                     args,dtype,dask_enabled,None,None,None,args.timeout_SLEEP,args.timeout_INLOOP)
-            #if ii==0 and type(ret)==int:
-            #    printlog("<<<<SKIP FULL SET>>>>",output_file=processfile)
-            #    break
+                    #if ii==0 and type(ret)==int:
+                    #   printlog("<<<<SKIP FULL SET>>>>",output_file=processfile)
+                    #    break
             
-            if type(ret) != int: 
-                fulldata[:,:,:,int(ret[0])] = ret[-2]
-                repret = ret#retdats.append(ret)
+                    if type(ret) != int: 
+                        fulldata[:,:,:,int(ret[0])] = ret[-2]
+                        repret = ret#retdats.append(ret)
+                        printlog("|ITERDATA MJD>>>"+ret[1]+" "+str(ret[2]),output_file=processfile)
+
+                    else:
+                        badcounter += 1
+                        """
+                        if args.timeout_INLOOP >= (config.tsamp/1000):
+                            for s in servSockD_list:
+                                s.close()
+                            printlog("RELAX TIME FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
+                            raise RuntimeError("Failsafe condition reached, restarting...")
+                        else:
+                            args.timeout_INLOOP *= 1.1 
+                            printlog("relaxing select timeout:"+str(args.timeout_SELECT),output_file=processfile)
+                        """
+            else:
+                printlog("SKIPCORR--"+str(ii),output_file=processfile)
+
         if repret is not None:
             corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = repret
             imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)
@@ -727,10 +795,11 @@ def main(args):
 
         printlog("Data done on "+str(readsockets)+" ports",output_file=processfile)
         printlog("Data done on "+str(len(readsockets))+" ports",output_file=processfile)
+        failsafe_counter+=1
     #executor.shutdown()
     #search_executor.shutdown()
     #read_executor.shutdown()
-    clientSocket.close()
+    #clientSocket.close()
 
 
 
@@ -747,7 +816,9 @@ if __name__=="__main__":
     parser.add_argument('--subimgpix',type=int,help='Length of image cutouts in pixels, default=11',default=11)
     parser.add_argument('-T','--testh23',action='store_true')
     parser.add_argument('--maxconnect',type=int,help='Maximum number of connections accepted by the server, default=16',default=16)
+    parser.add_argument('--timeout_FAILSAFE',type=float,help='Minimum timespan within which 5 reads should be completed before restarting',default=config.tsamp*config.nsamps*5/1000/2)
     parser.add_argument('--timeout_SELECT',type=float,help='Timeout for \'select.select()\' call to block until a socket has data ready; default =0 for polling',default=0)
+    parser.add_argument('--timeout_BADCOUNTER',type=float,help='Time to wait after 10 bad reads',default=30)
     parser.add_argument('--timeout_SOCKET',type=float,help='Timeout for \'socket.settimeout()\' call to block until a socket receives data; default=0 for non-blocking',default=0)
     parser.add_argument('--timeout_LOOP',type=float,help='Timeout for TCP read data loop for full data chunk (175x175x25 image); default=3.35',default=3.35)
     parser.add_argument('--timeout_INLOOP',type=float,help='Timeout for TCP read data loop for full data chunk (175x175x25 image); default=3.35',default=0.15)
@@ -812,6 +883,8 @@ if __name__=="__main__":
     parser.add_argument('--pack',action='store_true',help='pack together read and gather tasks')
     parser.add_argument('--maxloops',type=int,help='max number of read attempts before giving up',default=100)
     parser.add_argument('--psrdadakey',type=str,help='output to psrdada buffer with the specified key; default='+str(config.NSFRB_SRCHDADA_KEY),default="")#config.NSFRB_SRCHDADA_KEY)
+    parser.add_argument('--BADITERS',type=float,help='Max number of poor iterations before regroup',default=5)
+    parser.add_argument('--skipcorrs',nargs='+',default=[],help='corr nodes we know are lagging, so we skip',type=int)
     args = parser.parse_args()
 
     """

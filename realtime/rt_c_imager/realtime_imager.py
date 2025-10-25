@@ -59,6 +59,7 @@ ETCDKEY_INJECT = f'/mon/nsfrb/inject'
 ETCDKEY_TIMING = f'/mon/nsfrb/timing'
 ETCDKEY_TIMING_LIST = [f'/mon/nsfrbtiming/'+str(i+1) for i in range(len(corrs))]
 ETCDKEY_CORRSTAGGER = f'/mon/nsfrbstagger'
+ETCD_T4VIS_KEY = f'/mon/nsfrb/T4vis'
 
 #flagged antennas/
 TXtask_list = []
@@ -222,9 +223,75 @@ def corrstagger_send_task(time_start_isot, uv_diag, Dec, dirty_img, retries,mult
     return corrstaggerdict
 
 
-
+from threading import Lock
+from multiprocessing import Process, Queue
+class visbufferobj:
+    def __init__(self,sb,visbuffersize,nsamps,nchans_per_node,UVW,fcts,rtlog_file,pt_dec,tsamp,dtype,bname,antenna_order,keep,flagcorrs,flagchans,flagbase,flagants,briggs,robust,fobs):
+        self.rtlog_file=rtlog_file
+        self.lock = Lock()
+        printlog("Creating fast visibility buffer ("+str((visbuffersize,nsamps,UVW.shape[1],nchans_per_node,2))+")",output_file=rtlog_file)
+        self.buffer = [np.nan*np.ones((nsamps,UVW.shape[1],nchans_per_node,2),dtype=dtype)]*visbuffersize
+        self.metadata = dict()
+        self.metadata['bname']=list(np.array(list(bname)).astype(str))
+        #self.metadata['antenna_order'] = list(np.array(antenna_order,dtype=np.int16).astype(int))
+        self.metadata['tsamp'] = tsamp
+        self.metadata['briggs'] = briggs
+        self.metadata['fobs'] = list(fobs)
+        if briggs:
+            self.metadata['robust'] = int(robust)
+        #self.metadata['keep']=list(np.array(keep,dtype=np.int8).astype(int))
+        self.metadata['flagcorrs']=list(np.array(flagcorrs).astype(int))
+        self.metadata['flagchans']=list(np.array(flagchans).astype(int))
+        self.metadata['flagbase']=list(np.array(flagbase).astype(int))
+        self.metadata['flagants']=list(np.array(flagants).astype(int))
+        self.metadata['U']=list(UVW[0,:,1])
+        self.metadata['V']=list(UVW[0,:,0])
+        self.metadata['W']=list(UVW[0,:,2])
+        self.metadata['fcts']=list(fcts)
+        self.metadata['pt_dec']=pt_dec
+        self.metadata['dtype']=str(dtype)
+        self.metadata['nsamps']=int(nsamps)
+        self.metadata['nchans_per_node']=int(nchans_per_node)
+        self.metadata['sb']=int(sb)
+        self.metadata['mjds'] = [-1]*visbuffersize
+        self.metadata['isots'] = [""]*visbuffersize
+        self.trigger = None
+        """
+        for k in self.metadata.keys():
+            if hasattr(self.metadata[k],'__iter__') and len(self.metadata[k])>0:
+                print(k,type(self.metadata[k][0]))
+            else:
+                print(k,type(self.metadata[k]))
+        """
+    def add_to_buffer(self,dat,mjd,isot):
+        printlog("Adding "+ str(mjd) + " to buffer",output_file=self.rtlog_file)
+        self.lock.acquire()
+        self.buffer = self.buffer[1:] + [dat]
+        self.metadata['mjds'] = self.metadata['mjds'][1:] + [mjd]
+        self.metadata['isots'] = self.metadata['isots'][1:] + [isot]
+        self.lock.release()
+        printlog("Done",output_file=self.rtlog_file)
+    def dump_buffer(self):
+        printlog("Dumping buffer "+str(self.metadata['isots'][0]),output_file=self.rtlog_file)
+        self.lock.acquire()
+        printlog(str(np.concatenate(self.buffer,axis=0).shape)+str(len(self.buffer)),output_file=self.rtlog_file)
+        pipeline.write_raw_vis("/tmp/"+ self.metadata['isots'][0]+"_sb{:02d}.out".format(self.metadata['sb']),
+                np.concatenate(self.buffer,axis=0),self.metadata['mjds'][0],self.metadata['sb'],self.metadata['pt_dec']*180/np.pi,datasize=4)
+        #with open("/tmp/"+ self.metadata['isots'][0]+"_sb{:02d}.out".format(self.metadata['sb']),"wb") as f:
+        #    f.write(np.concatenate(self.buffer,axis=0).tobytes())
+        with open("/tmp/"+ self.metadata['isots'][0]+"_sb{:02d}.json".format(self.metadata['sb']),"w") as f:
+            json.dump(self.metadata,f)
+        self.lock.release()
+        printlog("Done",output_file=self.rtlog_file)
+    def check_buffer(self):
+        printlog("Found trigger:"+str(self.trigger),output_file=self.rtlog_file)
+        if self.trigger is not None and (self.trigger['mjds'] >= self.metadata['mjds'][0] and self.trigger['mjds'] <= self.metadata['mjds'][-1]):
+            printlog("Found trigger:"+str(self.trigger),output_file=self.rtlog_file)
+            self.dump_buffer()
+            self.trigger=None
 
 #flagged_antennas = np.arange(101,115,dtype=int) #[21, 22, 23, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 117]
+import json
 def main(args):
     #corrstaggerdict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
     #if corrstaggerdict is None:
@@ -260,7 +327,7 @@ def main(args):
 
     #initialize UVWs...note we MUST restart when declination is changed
     dirty_img = np.nan*np.ones((args.gridsize,args.gridsize,args.num_time_samples))
-    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+    test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order_, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
     try:
         assert(np.abs(args.dec - (pt_dec*180/np.pi))<0.1)
     except:
@@ -273,11 +340,11 @@ def main(args):
 
     #pt_dec = Dec*np.pi/180.
     #if verbose: printlog("Pointing dec (deg):" + str(pt_dec*180/np.pi),output_file=logfile)
-    bname, blen, UVW = pu.baseline_uvw(antenna_order, pt_dec, refmjd, casa_order=False)
+    bname_, blen_, UVW_ = pu.baseline_uvw(antenna_order_, pt_dec, refmjd, casa_order=False)
 
 
     #flagging andd baseline cut
-    tmp, bname, blen, UVW, antenna_order,keep = flag_vis(np.zeros((nsamps,UVW.shape[1],args.nchans_per_node,2)), bname, blen, UVW, antenna_order, list(flagged_antennas) + list(args.flagants), bmin, [], flag_channel_templates = [], flagged_chans=[], flagged_baseline_idxs=args.flagbase, bmax=args.bmax, returnidxs=True)
+    tmp, bname, blen, UVW, antenna_order,keep = flag_vis(np.zeros((nsamps,UVW_.shape[1],args.nchans_per_node,2)), bname_, blen_, UVW_, antenna_order_, list(flagged_antennas) + list(args.flagants), bmin, [], flag_channel_templates = [], flagged_chans=[], flagged_baseline_idxs=args.flagbase, bmax=args.bmax, returnidxs=True)
     #keep = np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2)>args.bmin
     U = UVW[0,:,1]
     V = UVW[0,:,0]
@@ -370,18 +437,49 @@ def main(args):
 
     #flagging
     fcts = []
+    fcts_s = []
     if args.flagSWAVE:
         fcts.append(fct_SWAVE)
+        fcts_s.append("fct_SWAVE")
     if args.flagBPASS:
         fcts.append(fct_BPASS)
+        fcts_s.append("fct_BPASS")
     if args.flagFRCBAND:
         fcts.append(fct_FRCBAND)
+        fcts_s.append("fct_FRCBAND")
     if args.flagBPASSBURST:
         fcts.append(fct_BPASSBURST)
+        fcts_s.append("fct_BPASSBURST")
     fct_dat_run_mean = [None]*len(fcts)
     if len(fcts)>0 and args.verbose: printlog("Bandpass flagging enabled",output_file=rtlog_file)
-    while True:
 
+
+    #visibility buffer --> pre-allocated array
+    visbuffer = visbufferobj(sb,args.visbuffersize,nsamps,args.nchans_per_node,UVW_,
+                            fcts_s,rtlog_file,pt_dec,tsamp,np.complex64,bname,antenna_order_,keep,
+                            args.flagcorrs,args.flagchans,args.flagbase,args.flagants,args.briggs,
+                            args.robust,fobs)
+    def watch_callback_visbuffer(etcd_dict):
+        visbuffer.trigger=etcd_dict
+        #visbuffer.triggers.put(etcd_dict) #visbuffer.dump_buffer()
+        return
+    ETCD.add_watch(ETCD_T4VIS_KEY, watch_callback_visbuffer)
+
+
+
+    #iteration=0
+    while True:
+        """if iteration>=5:
+            tmpdict = ETCD.get_dict(ETCD_T4VIS_KEY)
+            tmpdict['mjds'] = 60872.60390387249
+            ETCD.put_dict(ETCD_T4VIS_KEY,tmpdict)#ETCD.get_dict(ETCD_T4VIS_KEY))
+            #visbuffer.dump_buffer()
+        """
+        visbuffer.check_buffer()
+        """if iteration>=5:
+            break
+        iteration+=1
+        """
 
         if args.debug: tbuffer = tbuffer1=time.time()
         #dat = None
@@ -421,8 +519,12 @@ def main(args):
         mjd = mjd_init + (gulp_counter*T/1000/86400)
         gulp_counter += 1
         if args.verbose: printlog(">>"+str(mjd)+"<<",output_file=rtlog_file)
+        #use MJD to get pointing
+        time_start_isot = Time(mjd,format='mjd').isot
+        visbuffer.add_to_buffer(dat,mjd,time_start_isot)
         #if args.testh23:
         #    mjd = Time.now().mjd
+        #visbuffer.add_to_buffer(dat,mjd,)
 
         if args.save:
             pipeline.write_raw_vis("/tmp/NSFRB_VIS_TMP.out",dat,mjd,args.sb,Dec,datasize=args.datasize)
@@ -458,9 +560,6 @@ def main(args):
         #np.save(img_dir + "2025-02-16T20:36:48.010_rtvis.npy",dat)
 
         #if verbose: printlog("Collected 25 samples, imaging...",output_file=logfile)
-        
-        #use MJD to get pointing
-        time_start_isot = Time(mjd,format='mjd').isot
         
 
         #creating injection
@@ -901,6 +1000,7 @@ if __name__=="__main__":
     parser.add_argument('--protocol',choices=['tcp','udp'],default='tcp',help='protocol to use to send data to process server,default=tcp')
     parser.add_argument('--udpchunksize',type=int,help='Data chunksize in bytes,default=25886',default=25886)
     parser.add_argument('--udproundup',action='store_true',help='Round sub-integration size up')
+    parser.add_argument('--visbuffersize',type=int,help='Size of visibility buffer in 3.35s chunks; default=5',default=5)
     args = parser.parse_args()
     main(args)
 

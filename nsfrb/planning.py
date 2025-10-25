@@ -1358,7 +1358,7 @@ def atnf_cat(mjd,dd,sep=2.0*u.deg):
     f = fluxs[idxs]
     return c[np.argsort(d2d[idxs].value)],n[np.argsort(d2d[idxs].value)],p,dm,w,f
 
-def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
+def read_LPTs(fl=table_dir + "LPT_CATALOG.csv",getdms=False):
     names = []
     coords = []
     Ps = []
@@ -1368,6 +1368,9 @@ def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
     S1400s = []
     DISTs = []
     WDs=[]
+    if getdms:
+        DMs=[]
+        DMerrs = []
     with open(fl,"r") as csvfile:
         i = 0
         rdr = csv.reader(csvfile,delimiter=',')
@@ -1384,6 +1387,10 @@ def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
                 S1400s.append(np.nan if len(row[6])==0 else float(row[6]))
                 DISTs.append(np.nan if len(row[7])==0 else float(row[7]))
                 WDs.append(False if row[8]=='N' else True)
+                if getdms:
+                    DMs.append(np.nan if len(row[9])==0 else float(row[9]))
+                    DMerrs.append(np.nan if len(row[10])==0 else float(row[10]))
+
 
     names = np.array(names)
     Ps = np.array(Ps)
@@ -1393,6 +1400,11 @@ def read_LPTs(fl=table_dir + "LPT_CATALOG.csv"):
     S1400s = np.array(S1400s)
     DISTs = np.array(DISTs)
     WDs = np.array(WDs)
+    if getdms:
+        DMs = np.array(DMs)
+        DMerrs = np.array(DMerrs)
+        return names,SkyCoord(coords),Ps,Pdots,Pdotuplims,Ws,S1400s,DISTs,WDs,DMs,DMerrs
+
     return names,SkyCoord(coords),Ps,Pdots,Pdotuplims,Ws,S1400s,DISTs,WDs
 
 def LPT_cat(mjd,dd,sep=2.0*u.deg):

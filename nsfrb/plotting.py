@@ -344,6 +344,10 @@ def search_plots_new(canddict,img,isot,RA_axis,DEC_axis,DM_trials,widthtrials,ou
     
     #median subtracted timeseries
     ax = fig.add_subplot(gs[1,:])#ax=plt.subplot(3,2,3)
+    showx,showy,showname = ras[np.argmax(snrs)],decs[np.argmax(snrs)],names[np.argmax(snrs)]
+    tseries_dm0 = (np.nanmean(img[int(showy),int(showx),:,:],1)-np.nanmedian(np.nanmean(img[int(showy),int(showx),:,:],1)))
+    tseries_dm0 *= np.nanmax(timeseries[0]-np.nanmedian(timeseries[0]))/np.nanmax(tseries_dm0)
+    plt.step(tsamp_use*np.arange(img.shape[2])/1000,tseries_dm0,color='red',alpha=0.5,where='post',linewidth=4,label='DM=0')
     for i in range(len(timeseries)):
         printlog("iter " + str(i),output_file=output_file)
         plt.step(tsamp_use*np.arange(len(timeseries[i]))/1000,timeseries[i] - np.nanmedian(timeseries[i]),alpha=1/(len(timeseries)),where='post',linewidth=4,label=names[i])

@@ -1449,13 +1449,17 @@ def main(args):
         printlog("----------------------------------------",output_file=processfile)
 
         print("waiting...")
-        try:
-            corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = imagefromDADA(datasizebytes=98000064,reader=reader)
-        except Exception as exc:
-            printlog("NULL READ",output_file=processfile)
-            printlog(exc,output_file=processfile)
-            #reconnect=True
-            continue
+        readerr=False
+        while not readerr:
+            try:
+                corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = imagefromDADA(datasizebytes=98000064,reader=reader)
+                readerr=True
+            except Exception as exc:
+                printlog("NULL READ",output_file=processfile)
+                time.sleep(args.timeout_SLEEP)
+        #    printlog(exc,output_file=processfile)
+        #    #reconnect=True
+        #    continue
         print((corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData.shape))
         printlog("&&SRCH&& READ TIME--->"+str(time.time()-t0),output_file=processfile)
         t1 = time.time()
