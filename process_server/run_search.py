@@ -1,4 +1,7 @@
 import numpy as np
+from nsfrb.flagging import flag_vis
+from dsamfs import utils as pu
+from inject import injecting
 from realtime import rtwriter
 from threading import Lock, Timer
 import glob
@@ -79,7 +82,7 @@ from nsfrb import cerberus as jax_funcs #jax_funcs
 """s
 Directory for output data
 """
-from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff,sslogfile,table_dir
+from nsfrb.config import cwd,cand_dir,frame_dir,psf_dir,img_dir,vis_dir,raw_cand_dir,backup_cand_dir,final_cand_dir,inject_dir,training_dir,noise_dir,imgpath,coordfile,output_file,processfile,timelogfile,cutterfile,pipestatusfile,searchflagsfile,run_file,processfile,cutterfile,cuttertaskfile,flagfile,error_file,inject_file,recover_file,binary_file,Lon,Lat,tsamp_slow,bin_slow,pixperFWHM,output_file,bin_imgdiff,sslogfile,table_dir,IMAGE_SIZE
 
 """
 NSFRB modules
@@ -1424,43 +1427,128 @@ def main(args):
     initflag = False
     readsockets = []
     reconnect=False
+
+    if args.fnrtest:
+        test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order_, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
+        Dec = pt_dec*180/np.pi
+        fobs = (1e-3)*(np.reshape(config.freq_axis_fullres,(16*args.nchans_per_node,int(config.NUM_CHANNELS/2/args.nchans_per_node))).mean(axis=1))
+
+
+        #pt_dec = Dec*np.pi/180.
+        #if verbose: printlog("Pointing dec (deg):" + str(pt_dec*180/np.pi),output_file=logfile)
+        bname_, blen_, UVW_ = pu.baseline_uvw(antenna_order_, pt_dec, refmjd, casa_order=False)
+
+
+        #flagging andd baseline cut
+        tmp, bname, blen, UVW, antenna_order,keep = flag_vis(np.zeros((args.nsamps,UVW_.shape[1],args.nchans_per_node,2)), bname_, blen_, UVW_, antenna_order_, list(config.flagged_antennas) + list(args.flagants), args.bmin, [], flag_channel_templates = [], flagged_chans=[], flagged_baseline_idxs=args.flagbase, bmax=args.bmax, returnidxs=True)
+        #keep = np.sqrt(UVW[0,:,1]**2 + UVW[0,:,0]**2)>args.bmin
+        U = UVW[0,:,1]
+        V = UVW[0,:,0]
+        W = UVW[0,:,2]
+        uv_diag=np.max(np.sqrt(U**2 + V**2))
+
+        injectcount = 0
     while True: # want to keep accepting connections
         print(">>newloop")
         t0 = time.time()
-        if reconnect:
-            printlog("Reconnecting reader...",output_file=processfile)
-            reader_connected=False
-            while not reader_connected:
-                try:
-                    reader = Reader(config.NSFRB_SRCHDADA_KEY) #DSAX_PSRDADA_KEY)#NSFRB_PSRDADA_KEY)
-                    reader_connected=True
-                except Exception as exc:
-                    if ii==0:
-                        printlog("Trying to connect to ring buffer...",output_file=processfile)
-                        printlog(exc,output_file=processfile)
-                    continue
-                ii+=1
-            reconnect=False
-            printlog("Ready for data",output_file=processfile)
-        printlog("FULLIMG_DICTS---------------------------",output_file=processfile)
-        printlog(fullimg_dict,output_file=processfile)
-        printlog(slow_fullimg_dict,output_file=processfile)
-        printlog(imgdiff_fullimg_dict,output_file=processfile)
-        printlog("----------------------------------------",output_file=processfile)
 
-        print("waiting...")
-        readerr=False
-        while not readerr:
-            try:
-                corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = imagefromDADA(datasizebytes=98000064,reader=reader)
-                readerr=True
-            except Exception as exc:
-                printlog("NULL READ",output_file=processfile)
-                time.sleep(args.timeout_SLEEP)
-        #    printlog(exc,output_file=processfile)
-        #    #reconnect=True
-        #    continue
-        print((corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData.shape))
+
+        if args.fnrtest:
+            if injectcount > args.num_inject:
+                printlog("DONE",output_file=processfile)
+                break
+            printlog("Running in false negative test mode, generating injection...",output_file=processfile)
+            
+            DM = np.random.choice(sl.DM_trials)
+            width = np.random.choice(sl.widthtrials[:-1])
+
+            print("DM=",DM)
+            print("W=",width)
+
+            #RA, dec axes
+            t_now = Time.now()
+            img_id_mjd = t_now.mjd
+            time_start_isot = t_now.isot
+            RA_axis,Dec_axis,elev = uv_to_pix(img_id_mjd,args.gridsize,manual=False,DEC=Dec,uv_diag=uv_diag,two_dim=False,flagged_antennas=list(config.flagged_antennas) + list(args.flagants))
+            HA_axis = RA_axis - RA_axis[int(args.gridsize//2)]
+            cleardataflag = args.solo_inject or args.flat_field or args.gauss_field
+            injectflatflag = args.point_field or args.gauss_field or args.flat_field
+            HA = 0
+            RA = RA_axis[int(args.gridsize//2)]
+            Dec = Dec_axis[int(args.gridsize//2)]
+            SNR = args.snr_inject
+            maxshift = sl.maxshift
+            #creating injection
+            #offsetRA,offsetDEC,SNR,width,DM,maxshift = injecting.draw_burst_params(Time.now().isot,RA_axis=RA_axis,DEC_axis=Dec_axis,gridsize=args.gridsize,nsamps=args.num_time_samples,nchans=args.num_chans,tsamp=tsamp,SNRmin=args.snr_min_inject,SNRmax=args.snr_max_inject)
+            #offsetRA = offsetDEC = 0
+
+            offsetRA = 0#args.offsetRA_inject
+            offsetDEC = 0#args.offsetDEC_inject
+            #print("PARAMSFROM OFFLINE IMAGER:",offsetRA,offsetDEC,SNR,width,DM,maxshift,tsamp)
+            #print("OFFSET HOUR ANGLE:",HA_axis[int(len(HA_axis)//2 + offsetRA)])
+            noiseless=False
+            if args.inject_noiseless:
+                noiseless=True
+            inject_img = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR*1e-9,width=width,loc=0.5,gridsize=args.gridsize,nchans=16,nsamps=args.nsamps,DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
+            if args.flat_field:
+                inject_img = np.ones_like(inject_img)
+            elif args.gauss_field:
+                xx,yy = np.meshgrid(np.linspace(-2,2,args.gridsize),np.linspace(-2,2,args.gridsize))
+                inject_img = multivariate_normal(mean=[0,0],cov=0.5).pdf(np.dstack((xx,yy)))
+                inject_img = inject_img[:,:,np.newaxis,np.newaxis].repeat(args.nsamps,2).repeat(16,3)
+            elif args.point_field:
+                inject_img = np.zeros_like(inject_img)
+                inject_img[int(args.gridsize//2)+offsetDEC,int(args.gridsize//2)+offsetRA] = 1
+            #ISOT,DM,WIDTH,SNR 
+            os.system("echo " + str(time_start_isot) + "," + str(DM) + "," + str(width) + "," + str(SNR) + " >> " + config.inject_dir + "final_false_neg_input.csv")
+            """
+            for j in range(args.num_chans):
+                os.system("mkdir "+inject_dir + "realtime_staging/gridsize_"+str(args.gridsize))
+                np.save(inject_dir + "realtime_staging/gridsize_"+str(args.gridsize)+"/injection_DM"+str(DM)+"_W"+str(width)+"_DEC"+str(args.dec)+"_SB"+str(j)+".npy",inject_img[:,:,:,j])
+            print("")
+            """
+            img_id_isot = time_start_isot
+            arrData = inject_img
+            shape = arrData.shape[:-1]
+            img_dec = Dec
+            img_uv_diag = uv_diag
+            print(("<FNR>",img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData.shape))
+            injectcount += 1
+        else:
+            if reconnect:
+                printlog("Reconnecting reader...",output_file=processfile)
+                reader_connected=False
+                while not reader_connected:
+                    try:
+                        reader = Reader(config.NSFRB_SRCHDADA_KEY) #DSAX_PSRDADA_KEY)#NSFRB_PSRDADA_KEY)
+                        reader_connected=True
+                    except Exception as exc:
+                        if ii==0:
+                            printlog("Trying to connect to ring buffer...",output_file=processfile)
+                            printlog(exc,output_file=processfile)
+                        continue
+                    ii+=1
+                reconnect=False
+                printlog("Ready for data",output_file=processfile)
+            printlog("FULLIMG_DICTS---------------------------",output_file=processfile)
+            printlog(fullimg_dict,output_file=processfile)
+            printlog(slow_fullimg_dict,output_file=processfile)
+            printlog(imgdiff_fullimg_dict,output_file=processfile)
+            printlog("----------------------------------------",output_file=processfile)
+
+            print("waiting...")
+            readerr=False
+            while not readerr:
+                try:
+                    corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = imagefromDADA(datasizebytes=98000064,reader=reader)
+                    readerr=True
+                except Exception as exc:
+                    printlog("NULL READ",output_file=processfile)
+                    time.sleep(args.timeout_SLEEP)
+            #    printlog(exc,output_file=processfile)
+            #        #reconnect=True
+            #    continue
+            print((corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData.shape))
         printlog("&&SRCH&& READ TIME--->"+str(time.time()-t0),output_file=processfile)
         t1 = time.time()
 
@@ -1600,6 +1688,27 @@ if __name__=="__main__":
     parser.add_argument('--pack',action='store_true',help='pack together read and gather tasks')
     parser.add_argument('--maxloops',type=int,help='max number of read attempts before giving up',default=100)
     parser.add_argument('--psrdadakey',type=str,help='output to psrdada buffer with the specified key; default='+str(config.NSFRB_SRCHDADA_KEY),default="")#config.NSFRB_SRCHDADA_KEY)
+    #for FNR test
+    parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=1e7)
+    parser.add_argument('--offsetRA_inject',type=int,help='Offset RA of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
+    parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
+    parser.add_argument('--inject_noiseonly',action='store_true',default=False,help='Only inject noise; for use with false positive testing')
+
+    parser.add_argument('--inject_noiseless',action='store_true',default=False,help='Only inject signal')
+    parser.add_argument('--num_inject',type=int,help='Number of injections, must be less than number of gulps',default=1)
+    parser.add_argument('--flat_field',action='store_true',help='Illuminate all pixels uniformly')
+    parser.add_argument('--gauss_field',action='store_true',help='Illuminate a gaussian source')
+    parser.add_argument('--point_field',action='store_true',help='Illuminate a point source')
+    parser.add_argument('--briggs',action='store_true',help='If set use robust weighted gridding with \'briggs\' weighting')
+    parser.add_argument('--robust',type=float,help='Briggs factor for robust imaging',default=0)
+    parser.add_argument('--bmin',type=float,help='Minimum baseline length to include, default=20 meters',default=config.bmin)
+    parser.add_argument('--bmax',type=float,help='Maximum baseline length to include, default=20 meters',default=np.inf)
+    parser.add_argument('--flagcorrs',type=int,nargs='+',default=[],help='List of sb nodes [0,15] to flag, in addition to whichever ones are in nsfrb.config')
+    parser.add_argument('--flagants',type=int,nargs='+',default=[],help='List of antennas to flag, in addition to whichever ones are in nsfrb.config')
+    parser.add_argument('--flagchans',type=int,nargs='+',default=[],help='List of channels [0,(16*nchans_per_node - 1)] to flag')
+    parser.add_argument('--flagbase',type=int,nargs='+',default=[],help='List of baselines [0,4655] to flag')
+    parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
+    parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=8)
     args = parser.parse_args()
 
     """

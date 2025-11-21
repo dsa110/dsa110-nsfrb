@@ -7,6 +7,6 @@
 
 #python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/realtime_imager.py 1 --num_time_samples 25 --nchans_per_node 8 --gridsize 301 --briggs --robust -2 --verbose --maxProcesses 8 --testh23 --search  "$@"
 #python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/realtime_injector.py --num_time_samples 25 --verbose --offsetRA_inject 0 --offsetDEC_inject 0 --inject_noiseless --num_inject 1 --num_chans 16 --gridsize 301 --briggs --robust -2 --waittime 1 --intermittent #2.5
-taskset --cpu-list 22 /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/scripts/move_all_injections.sh 175
+#taskset --cpu-list 22 /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/scripts/move_all_injections.sh 175
 taskset --cpu-list 22 python /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/realtime/realtime_injector.py --num_time_samples 25 --verbose --inject_noiseless --num_inject 1 --num_chans 16 --gridsize 175 --briggs --robust -2 --waittime 60
 

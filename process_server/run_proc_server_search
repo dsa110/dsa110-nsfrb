@@ -26,8 +26,10 @@ then
 	#dada_db -k cbde -b 6125064 -n 2 -a 4096
 	#dada_db -k cbbb -b 6125064 -n 2 -a 4096
 	#dada_db -k cbbc -b 6125064 -n 2 -a 4096
-	#dada_db -k cbbd -b 6125064 -n 2 -a 4096
-	taskset --cpu-list $cpunums2 python run_search.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 8.5 --noiseth 3 --nsamps 25 --gridsize 175 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --maxProcesses 20 --protocol tcp --initframes --rtastrocalrange 92 --rejectnoiseoutliers --timeout_SELECT 0.05 --timeout_SOCKET 0.1 --timeout_INLOOP 0.15 --timeout_LOOP 0.1 --psrdadakey cbba --timeout_SLEEP 0.01 
+	for i in $(seq 20 5 100)#1 1.5 2 2.5 3 3.5 4 4.5 5 5.5 6 6.5 7 7.5 8 8.5 9 9.5 10 10.5 11 11.5 12 12.5 13 13.5 14 14.5 15
+	do
+		taskset --cpu-list $cpunums2 python run_search.py --imgdiffgulps 30 --spacefilter --usefft --samenoise --cuda --appendframe --usejax --etcd --SNRthresh 6 --noiseth 3 --nsamps 25 --gridsize 175 --port 8080 --multiport $multiports --realtime --slow --imgdiff --forfeit --rtastrocal --maxProcesses 20 --protocol tcp --initframes --rtastrocalrange 92 --rejectnoiseoutliers --timeout_SELECT 0.05 --timeout_SOCKET 0.1 --timeout_INLOOP 0.15 --timeout_LOOP 0.1 --psrdadakey cbba --timeout_SLEEP 0.01 --fnrtest --snr_inject $i --num_inject 50 #--initnoise --initnoisezero
+	done
 else
 	echo "offline process server active"
 	if [ "$completeness" = "true" ];

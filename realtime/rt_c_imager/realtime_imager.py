@@ -455,6 +455,7 @@ def main(args):
 
 
     #visibility buffer --> pre-allocated array
+    """
     visbuffer = visbufferobj(sb,args.visbuffersize,nsamps,args.nchans_per_node,UVW_,
                             fcts_s,rtlog_file,pt_dec,tsamp,np.complex64,bname,antenna_order_,keep,
                             args.flagcorrs,args.flagchans,args.flagbase,args.flagants,args.briggs,
@@ -464,7 +465,7 @@ def main(args):
         #visbuffer.triggers.put(etcd_dict) #visbuffer.dump_buffer()
         return
     ETCD.add_watch(ETCD_T4VIS_KEY, watch_callback_visbuffer)
-
+    """
 
 
     #iteration=0
@@ -475,7 +476,7 @@ def main(args):
             ETCD.put_dict(ETCD_T4VIS_KEY,tmpdict)#ETCD.get_dict(ETCD_T4VIS_KEY))
             #visbuffer.dump_buffer()
         """
-        visbuffer.check_buffer()
+        #executor.submit(visbuffer.check_buffer)
         """if iteration>=5:
             break
         iteration+=1
@@ -521,14 +522,22 @@ def main(args):
         if args.verbose: printlog(">>"+str(mjd)+"<<",output_file=rtlog_file)
         #use MJD to get pointing
         time_start_isot = Time(mjd,format='mjd').isot
-        visbuffer.add_to_buffer(dat,mjd,time_start_isot)
+        #visbuffer.add_to_buffer(dat,mjd,time_start_isot)
         #if args.testh23:
         #    mjd = Time.now().mjd
         #visbuffer.add_to_buffer(dat,mjd,)
 
         if args.save:
-            pipeline.write_raw_vis("/tmp/NSFRB_VIS_TMP.out",dat,mjd,args.sb,Dec,datasize=args.datasize)
-        
+            pipeline.write_raw_vis("/tmp/"+ time_start_isot +"_sb{:02d}.out".format(args.sb),dat,mjd,args.sb,Dec,datasize=args.datasize)
+            #pipeline.write_raw_vis("/tmp/NSFRB_VIS_TMP.out",dat,mjd,args.sb,Dec,datasize=args.datasize)
+            #check if we need to delete files
+            ifiles = np.array(glob.glob("/tmp/*_sb{:02d}.out".format(args.sb)))
+            itimes = np.array(Time([os.path.basename(ifile)[:-9] for ifile in ifiles],format='isot').mjd)
+            if np.any(itimes < (mjd - (args.visbuffersize*T/1000/86400) )):
+                printlog("REMOVING "+" ".join(ifiles[itimes<(mjd - (args.visbuffersize*T/1000/86400) )]),output_file=rtlog_file)
+                os.system("rm " + " ".join(ifiles[itimes<(mjd - (args.visbuffersize*T/1000/86400) )]))
+
+
         #manual flagging
         dat = dat[:,keep,:,:]
         if args.sb in list(flagged_corrs) + list(args.flagcorrs):
@@ -762,7 +771,8 @@ def main(args):
             #timing_dict[args.sb]["tx_time"] = -1
         #ETCD.put_dict(ETCDKEY_TIMING,timing_dict)
 
-        rtwriter.rtwrite(dirty_img,key=DSAX_PSRDADA_KEY,addheader=False,header=dict(),dtype=np.float64)
+        if args.search:
+            rtwriter.rtwrite(dirty_img,key=DSAX_PSRDADA_KEY,addheader=False,header=dict(),dtype=np.float64)
         if args.save:
             np.save("/tmp/NSFRB_IMAGE_TMP.npy",dirty_img)
 

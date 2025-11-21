@@ -379,6 +379,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
            
             (strData, ancdata, msg_flags, address) = clientSocket.recvmsg(chunksize)#255)
             recstatus = len(strData)
+            printlog(socksuffix+"Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus) + "|"+str(time.time()-t_ready),output_file=processfile)
             if recstatus > 0:
                 t_timeout = time.time()
             #if recstatus == 0 and time.time()-t_timeout>timeout_INLOOP:
@@ -392,7 +393,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
                 continue
             
             #readlock.release()
-            printlog(socksuffix+"Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus),output_file=processfile)
+            #printlog(socksuffix+"Read "+ str(recstatus) + " bytes, total "+ str(totalbytes+recstatus) + "|"+str(time.time()-t_ready),output_file=processfile)
             printlog(socksuffix+"Message flags:" + str(msg_flags),output_file=processfile)
             printlog(socksuffix+"AncData:" + str(ancdata),output_file=processfile)
             if overdraw and totalbyteshex + len(strData.hex())>maxbyteshex:
@@ -550,7 +551,27 @@ def imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrDa
     alldata = np.concatenate([numdata,arrData.flatten()])
     rtwriter.rtwrite(alldata,key=key,addheader=False,dtype=np.float64) #bytes(numdata) + bytes(img_id_isot,encoding='utf-8') + bytes(arrData)
     return
+
+
+from multiprocessing import Queue
+QQUEUE = Queue()
+ETCDKEY_CORRSTAGGER = f'/mon/nsfrbstagger'
+def etcd_to_stagger(queue=QQUEUE):
+    """
+    This is a callback function that waits for previous corr node to send data
+    """
+    etcd_dict = ETCD.get_dict(ETCDKEY_CORRSTAGGER)
+    if etcd_dict is None:
+        return
+    #if ((sb>0 and (etcd_dict['status'][sb-1] and not etcd_dict['status'][sb])) or
+    #    (sb==0 and np.all(np.array(etcd_dict['status'])))):
+    QQUEUE.put(etcd_dict['status'])
+    return
+
+
 def main(args):
+
+    #ETCD.add_watch(ETCDKEY_CORRSTAGGER, etcd_to_stagger)
     np.save(config.table_dir + "/TCPHELPMONITOR.npy",np.zeros(16))
     #redirect stderr
     sys.stderr = open(error_file,"w")
@@ -691,7 +712,12 @@ def main(args):
     badcounter = 0
     failsafe_timer = time.time()
     failsafe_counter =0
+    skipcorrs_bad = []
+    skipcorrs_prev = []
     while True: # want to keep accepting connections
+        skipcorrs_prev = skipcorrs_bad
+        skipcorrs_bad = []
+        print((skipcorrs_prev,skipcorrs_bad))
         if failsafe_counter>=3 and ((time.time()-failsafe_timer)<args.timeout_FAILSAFE): 
             printlog("<"+str((time.time()-failsafe_timer))+">FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
             
@@ -708,54 +734,61 @@ def main(args):
         #SELECT
         printlog(">>>LOOP HERE>>>"+str(time.time()-TSTARTUP),output_file=processfile)
         t0=time.time()
-        if badcounter >= 16*args.BADITERS:
+        if False:#badcounter >= 16*args.BADITERS:
             printlog("BAD COUNTER FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
             for s in servSockD_list: s.close()
             raise RuntimeError("Failsafe condition reached, restarting...")
-            """
-            #printlog("TAKE A BREATHER TO REGROUP...",output_file=processfile)
-
-
-            for s in servSockD_list:
-                s.close()
-            time.sleep(args.timeout_BADCOUNTER)
-
-            servSockD_list = []
-            for ii in range(len(args.multiport)):
-                #create socket
-                printlog("creating socket...",output_file=processfile,end='')
-                servSockD_list.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM if args.protocol=='tcp' else socket.SOCK_DGRAM,0))
-                printlog("Done!",output_file=processfile)
-
-                #bind to port number
-                port = args.multiport[ii]
-                printlog("binding socket " + str(ii) + " to port " + str(port) + "...",output_file=processfile,end='')
-                servSockD_list[ii].bind(('',port))
-                printlog("Done!",output_file=processfile)
-                if args.protocol=='tcp':
-                    #listen for conections
-                    printlog("listening for connections...",output_file=processfile,end='')
-                    servSockD_list[ii].listen(args.maxconnect)
-                    printlog("Made connection",output_file=processfile)
-                    printlog("")
-            time.sleep(args.timeout_BADCOUNTER)
-            badcounter =0
-            printlog("DONE",output_file=processfile)
-            """
-        while len(readsockets)<1:#16 and (time.time()-t0 < (config.tsamp*config.nsamps/1000)):# and (not initflag or (time.time()-TSTARTUP)<3.1):
+        printlog("DATAITER>>>"+str(len(readsockets)),output_file=processfile)
+        while len(readsockets)<1 and ((not initflag) or (time.time() - t0 < args.timeout_RESTART)):#16 and (time.time()-t0 < (config.tsamp*config.nsamps/1000)):# and (not initflag or (time.time()-TSTARTUP)<3.1):
             printlog("DATAITER>>>"+str(len(readsockets)),output_file=processfile)
             readsockets,writesockets,errsockets = select.select(servSockD_list[0:1],[],[],args.timeout_SELECT)
+        if not initflag: t0 = time.time()
+        if (time.time() - t0 >= args.timeout_RESTART):
+            printlog(">>>RESTART HAPPENING, WAIT",output_file=processfile)
+            time.sleep(600)
+            for s in servSockD_list: s.close()
+            raise RuntimeError("Failsafe condition reached, restarting...")
+        """
+        while np.any(QQUEUE.get()):
+            continue
+        printlog("DATAITER>>>"+str(len(readsockets)),output_file=processfile)
+        
+        tmpstatus = [False]*16
+        while not tmpstatus[0] and np.any(tmpstatus[1:]):
+            tmpstatus = QQUEUE.get()
+            continue
+        printlog("DATAITER>>>"+str(tmpstatus),output_file=processfile)
+        """
+
+        
+        
         printlog("DATAITER>>>DONE",output_file=processfile)
         TSTARTUP = time.time()
         #printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
-        printlog("Data ready on "+str(len(readsockets))+" ports",output_file=processfile)
+        #printlog("Data ready on "+str(len(readsockets))+" ports",output_file=processfile)
 
         repret = None
         for ii in range(len(servSockD_list)):#readsockets)):
             printlog("ALLSKIPS:"+str(args.skipcorrs),output_file=processfile)
-            if ii not in args.skipcorrs:
-                readsockets,writesockets,errsockets = select.select(servSockD_list[ii:ii+1],[],[],args.timeout_SELECT)
-                printlog("ITERDATA>>>"+str(readsockets),output_file=processfile)
+            if (ii not in args.skipcorrs) and (ii not in skipcorrs_prev):
+                tsel =time.time()
+                """
+                printlog("WAITDATA>>>"+str(ii)+"--",output_file=processfile)
+                tmpstatus = [False]*16
+                while not tmpstatus[ii] and (ii==15 or np.any(tmpstatus[ii+1:])):
+                    tmpstatus = QQUEUE.get()
+                    continue
+                """
+                #printlog("GOTDATA1>>>"+str(ii)+"--"+str(ETCD.get_dict(ETCDKEY_CORRSTAGGER)),output_file=processfile)
+                readsockets = []
+                printlog("WAITDATA>>>",output_file=processfile)
+                while len(readsockets)<1 and (time.time()-TSTARTUP < args.timeout_RESTART):
+                    readsockets,writesockets,errsockets = select.select(servSockD_list[ii:ii+1],[],[],args.timeout_SELECT)
+                if (time.time() - TSTARTUP >= args.timeout_RESTART):
+                    printlog(">>>RESTART HAPPENING, WAIT",output_file=processfile)
+                    repret = None
+                    break
+                printlog("ITERDATA>>>"+str(readsockets)+"| "+str(time.time()-tsel)+" s",output_file=processfile)
                 if len(readsockets)==1: 
                     ret = readcorrdata(readsockets[0],ii,readsockets[0].getsockname()[1],maxbytes,
                                     maxbyteshex,args.timeout_SOCKET,args.chunksize,args.headersize,args.datasize,args.testh23,
@@ -772,6 +805,7 @@ def main(args):
 
                     else:
                         badcounter += 1
+                        #skipcorrs_bad.append(ii)
                         """
                         if args.timeout_INLOOP >= (config.tsamp/1000):
                             for s in servSockD_list:
@@ -782,12 +816,21 @@ def main(args):
                             args.timeout_INLOOP *= 1.1 
                             printlog("relaxing select timeout:"+str(args.timeout_SELECT),output_file=processfile)
                         """
+                #printlog("GOTDATA2>>>"+str(ii)+"--"+str(ETCD.get_dict(ETCDKEY_CORRSTAGGER)),output_file=processfile)
             else:
+                time.sleep(args.timeout_INLOOP)
                 printlog("SKIPCORR--"+str(ii),output_file=processfile)
 
         if repret is not None:
             corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = repret
-            imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)
+            #imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)
+        elif (time.time() - TSTARTUP < args.timeout_RESTART):
+            printlog(">NO DATA FOUND, FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
+
+            for s in servSockD_list: s.close()
+            raise RuntimeError("Failsafe condition reached, restarting...")
+        else:
+            continue
         initflag = True
         
         readtasks = [] #newreadtasks
@@ -825,6 +868,7 @@ if __name__=="__main__":
     parser.add_argument('--timeout',type=float,help='Max time in seconds to wait for more data to be ready to receive, default = 1',default=1)
     parser.add_argument('--timeout_TASK',type=float,help='Timeout for \'executor.submit()\' call to wait for read tasks to complete',default=None)
     parser.add_argument('--timeout_SLEEP',type=float,help='Timeout to wait if no data is available so that other tasks are given priority',default=0)
+    parser.add_argument('--timeout_RESTART',type=float,help='Timeout to wait that indicates a system restart is happening',default=10)
     #arguments for classifier from classifier.py
     #parser.add_argument('--npy_file', type=str, required=True, help='Path to the NumPy file containing the images')
     parser.add_argument('--model_weights', type=str, help='Path to the model weights file',default=cwd + "/simulations_and_classifications/model_weights.pth")
