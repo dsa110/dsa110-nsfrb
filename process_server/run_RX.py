@@ -823,7 +823,7 @@ def main(args):
 
         if repret is not None:
             corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = repret
-            #imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)
+            imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)
         elif (time.time() - TSTARTUP < args.timeout_RESTART):
             printlog(">NO DATA FOUND, FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
 

@@ -122,7 +122,8 @@ def main(args):
             noiseless=False
             if args.inject_noiseless:
                 noiseless=True
-            inject_img = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR,width=width,loc=0.5,gridsize=args.gridsize,nchans=args.num_chans,nsamps=args.num_time_samples,DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
+            injloc=(((-width) + 25 - (DM*4.15*((1000/fmin)**2 - (1000/fmax)**2)/tsamp))/25)
+            inject_img = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR*1e-9,width=width,loc=injloc,gridsize=args.gridsize,nchans=args.num_chans,nsamps=args.num_time_samples,DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
             if args.flat_field:
                 inject_img = np.ones_like(inject_img)
             elif args.gauss_field:
@@ -146,7 +147,7 @@ if __name__=="__main__":
     parser.add_argument('--num_time_samples', type=int, default=25, help='Number of time samples to extract from the .out file.')
     parser.add_argument('--verbose', action='store_true', default=False, help='Enable verbose output')
     parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
-    parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=1e7)
+    parser.add_argument('--snr_inject',type=float,help='SNR of injection; default -1 which chooses a random SNR',default=1e16)
     parser.add_argument('--offsetRA_inject',type=int,help='Offset RA of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
     parser.add_argument('--offsetDEC_inject',type=int,help='Offset DEC of injection in samples; default random', default=int(np.random.choice(np.arange(-IMAGE_SIZE//2,IMAGE_SIZE//2))))
     parser.add_argument('--offline',action='store_true',default=False,help='Initializes previous frame with noise')

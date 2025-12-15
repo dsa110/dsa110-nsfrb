@@ -23,7 +23,7 @@ val_accuracies = []
 
 
 
-suff = "3Drev11"
+suff = "3Drev12"
 cutsize = 50
 maxset = 80
 if len(sys.argv)>1:

@@ -16,7 +16,7 @@ from nsfrb import classifying_two_stage
 
 import glob
 #fset1_fs=glob.glob("/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-images/2025-08-31_PSRB0329+54/2025-08-31T12:4?:??.???_input.npy")
-suff = "3Drev11"
+suff = "3Drev12"
 cutsize = 50
 maxset = 113
 setidx = int(sys.argv[1])

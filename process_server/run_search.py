@@ -941,8 +941,8 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
         elif forfeit and (slowsearch_now or imgdiffsearch_now):
             try:
                 slowlock.acquire()
-                if not fullimg_dict[img_id_isot].running:
-                    del fullimg_dict[img_id_isot]
+                #if not fullimg_dict[img_id_isot].running:
+                del fullimg_dict[img_id_isot]
                 slowlock.release()
             except Exception as exc:
                 printlog("NOTE FORFEIT DELETION FAILED FOR BASE "+str(img_id_isot) + "|EXCEPTION|"+str(exc),output_file=processfile)
@@ -964,15 +964,20 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     multithreading,nrows,ncols,threadDM,samenoise,cuda,toslack,
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,appendframe,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,True,False,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers)
-                    
-            sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
-            #task_list.append(sstask)
-            ret_tasks.append(sstask)
+            try:        
+                sstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(k),RA_axis_idx[slow_fullimg_dict[k].slow_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
+                #task_list.append(sstask)
+                ret_tasks.append(sstask)
+            except:
+                printlog("failed to run task slow for "+str(k)+", cancelling",output_file=processfile)
+                sstask.cancel()
+                printlog("success? "+str(sstask.done()),output_file=processfile)
+
         elif forfeit and slowsearch_now:
             try:
                 slowlock.acquire()
-                if not slow_fullimg_dict[k].running:
-                    del slow_fullimg_dict[k]
+                #if not slow_fullimg_dict[k].running:
+                del slow_fullimg_dict[k]
                 slowlock.release()
             except Exception as exc:
                 printlog("NOTE FORFEIT DELETION FAILED FOR SLOW "+str(k) + "|EXCEPTION|"+str(exc),output_file=processfile)
@@ -994,9 +999,14 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                                     spacefilter,kernelsize,exportmaps,savesearch,fprtest,fnrtest,False,DMbatches,
                                     SNRbatches,usejax,noiseth,nocutoff,realtime,False,True,None,None,False,completeness,forfeit,lockdev,appendinit,rejectnoiseoutliers)
 
-            ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
-            #task_list.append(sstask)
-            ret_tasks.append(ssstask)
+            try:
+                ssstask.add_done_callback(lambda future: future_callback(future,SNRthresh,str(kd),RA_axis_idx[imgdiff_fullimg_dict[kd].imgdiff_RA_cutoff:],DEC_axis_idx,etcd_enabled,dask_enabled,thash,slowlock))
+                #task_list.append(sstask)
+                ret_tasks.append(ssstask)
+            except:
+                printlog("failed to run task imgdiff for "+str(kd),output_file=processfile)
+                ssstask.cancel()
+                printlog("success? "+str(ssstask.done()),output_file=processfile)
         appendinit = True
         return ret_tasks
         printlog(socksuffix+" "+str(ret_tasks) + " tasks",output_file=processfile )
@@ -1448,6 +1458,7 @@ def main(args):
         uv_diag=np.max(np.sqrt(U**2 + V**2))
 
         injectcount = 0
+    di=0
     while True: # want to keep accepting connections
         print(">>newloop")
         t0 = time.time()
@@ -1458,12 +1469,14 @@ def main(args):
                 printlog("DONE",output_file=processfile)
                 break
             printlog("Running in false negative test mode, generating injection...",output_file=processfile)
-            
-            DM = np.random.choice(sl.DM_trials)
-            width = np.random.choice(sl.widthtrials[:-1])
+            di=np.random.choice(np.arange(len(sl.DM_trials),dtype=int))
+            DM = sl.DM_trials[di] #np.random.choice(sl.DM_trials)
+            width = np.random.choice(sl.widthtrials)#[:-1])
+            injloc = uniform.rvs(loc=0,scale=0.5) #0.25*uniform.rvs(loc=0,scale=(25-(width))/25)#((-width) + 25 - (DM*4.15*((1000/config.fmin)**2 - (1000/config.fmax)**2)/config.tsamp))/25 #0#((width//2))/25#np.clip(uniform.rvs(loc=0,scale=np.clip((((-width) + 25 - (DM*4.15*((1000/config.fmin)**2 - (1000/config.fmax)**2)/config.tsamp))/25),(width//2)/25,1)),(width//2)/25,1)
 
             print("DM=",DM)
             print("W=",width)
+            print("LOC=",injloc)
 
             #RA, dec axes
             t_now = Time.now()
@@ -1489,7 +1502,35 @@ def main(args):
             noiseless=False
             if args.inject_noiseless:
                 noiseless=True
-            inject_img = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,snr=SNR*1e-9,width=width,loc=0.5,gridsize=args.gridsize,nchans=16,nsamps=args.nsamps,DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2)
+            inject_img = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,
+                                                snr=SNR*1e-9,width=width,
+                                                loc=injloc,#0.9,#(len(sl.DM_trials)-di - 1)*0.25/len(sl.DM_trials),
+                                                gridsize=args.gridsize,nchans=16,nsamps=2*args.nsamps,DM=DM,maxshift=maxshift,offline=True,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=args.inject_noiseonly,bmin=args.bmin,robust=args.robust if args.briggs else -2,DMLAST=True)
+            printlog("HALO"+str(inject_img.shape),output_file=processfile)
+            #np.save(config.inject_dir + "/fnr_rev_injection2_"+str(time_start_isot)+".npy",inject_img)
+            #generate noise image
+            np.save(config.frame_dir + "last_frame.npy",
+                    np.pad(inject_img[:,:,-(args.nsamps + maxshift):-args.nsamps,:],((0,0),(0,get_RA_cutoff(Dec,usefit=True,offset_s=config.tsamp*args.nsamps/1000)),(0,0),(0,0)),mode='edge')[:,-inject_img.shape[1]:,:,:])
+            #np.save(config.inject_dir + "/fnr_rev_injection3_"+str(time_start_isot)+".npy",
+            #       np.pad(inject_img[:,:,-(args.nsamps + maxshift):-args.nsamps,:],((0,0),(0,get_RA_cutoff(Dec,usefit=True,offset_s=config.tsamp*args.nsamps/1000)),(0,0),(0,0)),mode='edge')[:,-inject_img.shape[1]:,:,:])
+            inject_img = inject_img[:,:,-args.nsamps:,:]
+            #inject_img = inject_img[:,:,-args.nsamps:,:]
+            printlog("NOISELESS:"+str(noiseless),output_file=processfile)
+
+            """
+            if not noiseless:
+                printlog("HERE FOR INJECT",output_file=processfile)
+                inject_lastframe = injecting.generate_inject_image(Time.now().isot,HA=HA,DEC=Dec,offsetRA=offsetRA,offsetDEC=offsetDEC,
+                                                snr=SNR*1e-9,width=width,
+                                                loc=injloc,#0.9,#(len(sl.DM_trials)-di - 1)*0.25/len(sl.DM_trials),
+                                                gridsize=args.gridsize,nchans=16,nsamps=maxshift,DM=DM,maxshift=maxshift,offline=args.offline,noiseless=noiseless,HA_axis=HA_axis,DEC_axis=Dec_axis,noiseonly=True,bmin=args.bmin,robust=args.robust if args.briggs else -2)
+                np.save(config.frame_dir + "last_frame.npy",inject_lastframe)
+                printlog("HERE FOR INJECT DONE",output_file=processfile)
+            """
+            #np.save(config.inject_dir + "/fnr_rev_injection_"+str(time_start_isot)+".npy",inject_img)
+            
+            print(time_start_isot)
+            #break
             if args.flat_field:
                 inject_img = np.ones_like(inject_img)
             elif args.gauss_field:
@@ -1575,6 +1616,7 @@ def main(args):
         #check if any timed out
         slowlock_.acquire()
         for k in fullimg_dict.keys():
+            printlog("%%% "+str(k)+str((fullimg_dict[k].running, fullimg_dict[k].is_timeout(),fullimg_dict[k].corrstatus)),output_file=processfile)
             if (not fullimg_dict[k].running) and fullimg_dict[k].is_timeout():
                 printlog("Image "+str(k)+" timed out, searching now",output_file=processfile)
                 fullimg_dict[k].running = True
@@ -1594,6 +1636,7 @@ def main(args):
                                     args.spacefilter,args.kernelsize,args.exportmaps,args.savesearch,args.fprtest,args.fnrtest,args.appendframe,args.DMbatches,
                                     args.SNRbatches,args.usejax,args.noiseth,args.nocutoff,args.realtime,args.nchans,None if dask_enabled else search_executor,
                                     args.slow,args.imgdiff,args.etcd,dask_enabled,args.attachmode,args.completeness,None if dask_enabled else slowlock_,None if dask_enabled else searchlock_,args.forfeit,args.rtastrocal,args.testsinglenode,False,False,1,dtype,args.lockdev,args.rejectnoiseoutliers,args.psrdadakey))
+                printlog("SUBmitted "+str(k),output_file=processfile)
 
                     #multiport_num_list.append(ii)    
         slowlock_.release()

@@ -62,7 +62,7 @@ PSFSUM = (3900/16) #(((20/300)**2)*3900/16)*np.sqrt(40/150)#*(300**2)
 
 
 
-def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True,bmin=bmin,robust=2,dtype=np.float64,outputdir=inject_dir,RFI=False,rfi_type='far'):
+def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=5,loc=0.5,gridsize=gridsize,nchans=nchans,nsamps=nsamps,DM=0,output_file=inject_log_file,maxshift=0,offline=False,noiseless=False,spacefilter=True,HA_axis=None,DEC_axis=None,noiseonly=True,bmin=bmin,robust=2,dtype=np.float64,outputdir=inject_dir,RFI=False,rfi_type='far',DMLAST=False):
     """
     Uses functions from simulations_and_classifications to make injections
     """
@@ -82,7 +82,7 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     visnoise = np.nanmean(np.load(noise_dir + "raw_vis_noise_real.npy"))
     scalenoise = vis_to_img_slope #imgnoise/visnoise
         
-    injectnoise = PSFSUM/((snr/width)*scalenoise)
+    injectnoise = PSFSUM/((snr/np.sqrt(width))*scalenoise)
     if not noiseless:
         print("INJECTING NOISE:" + str(injectnoise),file=fout)
         print("RESCALEFACTOR:" + str(scalenoise),file=fout)
@@ -161,6 +161,54 @@ def generate_inject_image(isot,HA=0,DEC=0,offsetRA=0,offsetDEC=0,snr=1000,width=
     
 
     #if DM is given, disperse before adding noise
+    if DM != 0 and DMLAST: 
+        print("<DMLAST MODE> COMPUTING SHIFTS FOR DM=",DM,"pc/cc",file=fout)
+        print("MAXSHIFT -- "+str(maxshift),file=fout)
+        print("NSAMPS -- "+str(nsamps),file=fout)
+
+
+        sourceimg_dm = np.zeros_like(sourceimg)
+        for j in range(sourceimg.shape[3]):
+            dmshift = 4.15*DM*((1000/fmin)**2 - (1000/freq_axis[j])**2)/tsamp
+            fhi = 1-(np.ceil(dmshift)-dmshift)
+            flo = 1-(dmshift-np.floor(dmshift))
+            print("DM SHIFT:" + str(dmshift),file=fout)
+            sourceimg_dm[:,:,:,j] = (np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(0,int(np.ceil(dmshift)))),mode='wrap')[:,:,-(maxshift+nsamps):]*fhi) + (np.pad(sourceimg[:,:,:,j],((0,0),(0,0),(0,int(np.floor(dmshift)))),mode='wrap')[:,:,-(maxshift+nsamps):]*flo)
+
+
+
+
+        """
+        DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))#[0:1]
+        #freq_axis = np.linspace(fmin,fmax,nchans)
+        corr_shifts_all_append,tdelays_frac_append,corr_shifts_all_no_append,tdelays_frac_no_append,wraps_append,wraps_no_append = gen_dm_shifts(np.array([DM]),freq_axis,tsamp,nsamps+maxshift,outputwraps=True,maxshift=maxshift)
+        corr_shifts_all_append = np.clip(corr_shifts_all_append,0,nsamps+maxshift-1)
+        corr_shifts_all_no_append = np.clip(corr_shifts_all_no_append,0,nsamps+maxshift-1)
+
+        #nsamps = sourceimg.shape[-2]
+        DM_idx = 0#list(DM_trials).index(DM)
+        print("PRE-DM SHAPE:",sourceimg.shape,file=fout)
+        sourceimg_dm = (((((np.take_along_axis(sourceimg[:,:,::-1,np.newaxis,:].repeat(1,axis=3).repeat(2,axis=4),indices=corr_shifts_all_append[:,:,:,DM_idx:DM_idx+1,:],axis=2))*tdelays_frac_append[:,:,:,DM_idx:DM_idx+1,:]))[:,:,:,0,:]))
+        print("POST-DM SHAPE:",sourceimg_dm.shape,file=fout)
+
+        #zero out anywhere that was wrapped
+        #sourceimg_dm[wraps_no_append[:,:,:,DM_idx,:].repeat(sourceimg.shape[0],axis=0).repeat(sourceimg.shape[1],axis=1)] = 0
+
+        #now average the low and high shifts 
+        sourceimg_dm = (sourceimg_dm.reshape(tuple(list(sourceimg.shape)[:2] + [nsamps+maxshift,nchans] + [2])).sum(4))[:,:,::-1,:]
+        np.save(frame_dir + "tmp_frame.npy",sourceimg_dm)
+        """
+
+        #split up
+
+        last_frame = sourceimg_dm[:,:,:-nsamps,:]#np.pad(sourceimg_dm[:,:,:-nsamps,:],((0,0),(0,get_RA_cutoff(DEC,usefit=True,offset_s=tsamp*nsamps/1000)),(0,0),(0,0)),mode='edge')[:,-sourceimg_dm.shape[1]:,:,:]
+
+        sourceimg_dm = sourceimg_dm[:,:,-nsamps:,:]
+
+        f = open(frame_dir + "last_frame.npy","wb")
+        np.save(f,last_frame[:,:,:maxshift,:])
+        f.close()
+        
     if DM != 0:
         print("COMPUTING SHIFTS FOR DM=",DM,"pc/cc",file=fout)
         DM_trials = np.array(gen_dm(minDM,maxDM,1.5,fc*1e-3,nchans,tsamp,chanbw,nsamps))#[0:1]

@@ -529,9 +529,12 @@ def main(args):
 
         if args.save:
             pipeline.write_raw_vis("/tmp/"+ time_start_isot +"_sb{:02d}.out".format(args.sb),dat,mjd,args.sb,Dec,datasize=args.datasize)
+            if args.gpmode:
+                os.system("cp /tmp/"+ time_start_isot +"_sb{:02d}.out".format(args.sb) + "/tmp/nsfrb_sb{:02d}_{:06d}.out".format(args.sb,int((mjd-60600.0)*1440.0)))
+            #int((mjd-60600.)*1440.
             #pipeline.write_raw_vis("/tmp/NSFRB_VIS_TMP.out",dat,mjd,args.sb,Dec,datasize=args.datasize)
             #check if we need to delete files
-            ifiles = np.array(glob.glob("/tmp/*_sb{:02d}.out".format(args.sb)))
+            ifiles = np.array(glob.glob("/tmp/*T*_sb{:02d}.out".format(args.sb)))
             itimes = np.array(Time([os.path.basename(ifile)[:-9] for ifile in ifiles],format='isot').mjd)
             if np.any(itimes < (mjd - (args.visbuffersize*T/1000/86400) )):
                 printlog("REMOVING "+" ".join(ifiles[itimes<(mjd - (args.visbuffersize*T/1000/86400) )]),output_file=rtlog_file)
@@ -1011,6 +1014,7 @@ if __name__=="__main__":
     parser.add_argument('--udpchunksize',type=int,help='Data chunksize in bytes,default=25886',default=25886)
     parser.add_argument('--udproundup',action='store_true',help='Round sub-integration size up')
     parser.add_argument('--visbuffersize',type=int,help='Size of visibility buffer in 3.35s chunks; default=5',default=5)
+    parser.add_argument('--gpmode',action='store_true',help='Saves fast vis files for offline processing')
     args = parser.parse_args()
     main(args)
 

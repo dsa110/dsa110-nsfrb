@@ -1958,7 +1958,10 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
     global last_frame_slow
     global last_frame_slow_init_idx
     printlog("LAST FRAME: " + str(last_frame_init_idx) + str(last_frame.shape) + str(last_frame) + "...",output_file=processfile,end='')
-    if (not slow) and (not imgdiff) and (not appendinit):
+    if fnrtest:
+        printlog("load last frame from file for FNR mode",output_file=processfile)
+        last_frame = get_last_frame()
+    elif (not slow) and (not imgdiff) and (not appendinit):
         printlog("APPENDINIT IN SEARCH",output_file=processfile)
         last_frame = copy.deepcopy(fullimg.image_tesseract)#np.nanmedian(fullimg.image_tesseract,2,keepdims=True).repeat(fullimg.image_tesseract.shape[2],2)
         nocutoff = True

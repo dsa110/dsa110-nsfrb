@@ -115,10 +115,20 @@ def psf_reduction(cands,candnames,PSF,output_file=cuttertaskfile,useTOA=False,pe
                 #sum together the SNRs 
                 cand_PSFbin = PSFbin[int(PSF.shape[0]//2)+np.array(decidxs[cand_idxs]-decidxs[peak_idx],int),int(PSF.shape[1]//2)+np.array(raidxs[cand_idxs]-raidxs[peak_idx],int)]
                 cand_PSFval = PSF[int(PSF.shape[0]//2)+np.array(decidxs[cand_idxs]-decidxs[peak_idx],int),int(PSF.shape[1]//2)+np.array(raidxs[cand_idxs]-raidxs[peak_idx],int)]
+                """
                 if peak_idx == cand_idxs[0]:
+                    totsnrs.append(np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nanmax(cand_PSFbin*cand_PSFval))
+                    peakcand_idxs.append(peak_idx)
+                elif (np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nanmax(cand_PSFbin*cand_PSFval)) > totsnrs[-1]:
+                    totsnrs[-1] = np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nanmax(cand_PSFbin*cand_PSFval)
+                    peakcand_idxs[-1] = peak_idx
+                """
+                if peak_idx == cand_idxs[0]:
+                    #totsnrs.append(np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/((cand_PSFbin*cand_PSFval)[np.argmax(snridxs[cand_idxs])]))
                     totsnrs.append(np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nansum(cand_PSFbin*cand_PSFval))
                     peakcand_idxs.append(peak_idx)
-                elif (np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nansum(cand_PSFbin*cand_PSFval)) > totsnrs[-1]:
+                elif (np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nansum(cand_PSFbin*cand_PSFval)) > totsnrs[-1]: #(np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/((cand_PSFbin*cand_PSFval)[np.argmax(snridxs[cand_idxs])])) > totsnrs[-1]:
+                    #totsnrs[-1] = np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/((cand_PSFbin*cand_PSFval)[np.argmax(snridxs[cand_idxs])])
                     totsnrs[-1] = np.nansum(cand_PSFbin*cand_PSFval*snridxs[cand_idxs])/np.nansum(cand_PSFbin*cand_PSFval)
                     peakcand_idxs[-1] = peak_idx
     print(peakcand_idxs)

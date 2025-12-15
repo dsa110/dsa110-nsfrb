@@ -485,7 +485,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     else:
         return allcandnames,finalcands,finalidxs,finalpcands
 
-def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,tsamp_use,namelock):
+def classify_manage(d_future,image,last_frame,searched_image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,tsamp_use,namelock):
     if len(args.daskaddress) > 0:
         allcandnames,finalcands,finalidxs = d_future
     else:
@@ -584,7 +584,107 @@ def classify_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_tria
                     printlog(finalcands[j],output_file=cutterfile)
 
                     #don't need to dedisperse(?)
-                    data_array[j,:,:,:,:] = cc.get_subimage(image-np.nanmedian(image,2,keepdims=True),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=subimgpix)
+
+                    #use last frame to re-center
+                    """
+                    if useTOA:
+                        tmpsnrs = np.array([fcand[-1] for fcand in finalcands])
+                        tmptoa = np.array([fcand[4] for fcand in finalcands])[np.argmax(tmpsnrs)] 
+                        tmpra = int(np.array([fcand[1] for fcand in finalcands])[np.argmax(tmpsnrs)])
+                        tmpdec = int(np.array([fcand[0] for fcand in finalcands])[np.argmax(tmpsnrs)])
+                        printlog(np.array([fcand[2] for fcand in finalcands]),output_file=cutterfile)
+                        tmpwid = widthtrials[int(np.array([fcand[2] for fcand in finalcands])[np.argmax(tmpsnrs)])]
+                        printlog(tmpwid,output_file=cutterfile)
+                        tmpdm = DM_trials_use[int(np.array([fcand[3] for fcand in finalcands])[np.argmax(tmpsnrs)])]
+                        printlog(tmpdm,output_file=cutterfile)
+                        printlog(int(4.15*tmpdm*(((1000/fmin)**2) - ((1000/fmax)**2))),output_file=cutterfile)
+                        printlog(tsamp_use,output_file=cutterfile)
+
+                        tmptoa -= int(4.15*tmpdm*(((1000/fmin)**2) - ((1000/fmax)**2))/tsamp_use)
+                        tmpdmshift = max([image.shape[2]//2,int(4.15*tmpdm*(((1000/fmin)**2) - ((1000/fmax)**2))/tsamp_use)])
+                        printlog("USING WIDTH == " + str(tmpwid) + "DM SHIFT VAL " + str(tmpdmshift),output_file=cutterfile)
+                        printlog("USING TOA == "+str(tmptoa) +" FOR CLASSIFIER",output_file=cutterfile)
+                        tmptoalow = int(tmptoa - tmpdmshift - (tmpwid//2))
+                        tmptoahi = int(tmptoalow + image.shape[2]) #int(tmptoa + image.shape[2] - last_frame.shape[2])
+                        printlog("TOALOW == " + str(tmptoalow) + "TOAHI == " +str(tmptoahi),output_file=cutterfile)
+                        if False:#tmptoahi > image.shape[2] or tmptoalow>=0:
+                            printlog("NO CHANGE B/C TOALOW == " + str(tmptoalow) + "TOAHI == " +str(tmptoahi),output_file=cutterfile)
+                            image_cut = image
+                        else:
+                            tmptoalow += last_frame.shape[2]
+                            tmptoahi += last_frame.shape[2]
+                            if tmptoalow < 0:
+                                tmptoalow = 0
+                                tmptoahi = image.shape[2]
+
+                            printlog("NEW TOALOW == " + str(tmptoalow) + "TOAHI == " +str(tmptoahi),output_file=cutterfile)
+                            printlog(str(searched_image.shape) + str(image.shape) + str(last_frame.shape),output_file=cutterfile)
+
+                            RA_cutoff = np.abs(searched_image.shape[1]-image.shape[1])
+                            printlog(RA_cutoff,output_file=cutterfile)
+                            if RA_cutoff>0:
+                                image_cut = np.concatenate([(last_frame-np.nanmedian(last_frame,2,keepdims=True))[:,:-RA_cutoff,:,:],(image-np.nanmedian(image,2,keepdims=True))[:,RA_cutoff:,:,:]],axis=2)
+                                #image_cut = np.concatenate([(last_frame)[:,:-RA_cutoff,:,:],(image)[:,RA_cutoff:,:,:]],axis=2)
+                                #image_cut -= np.nanmedian(image_cut,2,keepdims=True)
+                                tts = []
+                                for tt in range(image_cut.shape[2]-25):
+                                    tts.append(np.nansum(image_cut[tmpdec,tmpra,tt:tt+25,:]))
+                                tmptoalow = np.argmax(tts)
+                                tmptoahi = tmptoalow+25
+                                image_cut = image_cut[:,:,tmptoalow:tmptoahi,:]
+                                printlog("AAAAAA -->"+str((tmptoalow,tmptoahi)),output_file=cutterfile)
+                                printlog(tts,output_file=cutterfile)
+                                #image_cut = np.concatenate([(last_frame-np.nanmedian(last_frame,2,keepdims=True))[:,:-RA_cutoff,:,:],(image-np.nanmedian(image,2,keepdims=True))[:,RA_cutoff:,:,:]],axis=2)[:,:,tmptoalow:tmptoahi,:]
+                                image_cut = np.pad(image_cut,((0,0),(RA_cutoff,0),(0,0),(0,0)),mode='edge')
+                            else:
+                                image_cut = np.concatenate([(last_frame-np.nanmedian(last_frame,2,keepdims=True)),(image-np.nanmedian(image,2,keepdims=True))],axis=2)
+                                #image_cut = np.concatenate([(last_frame),(image)],axis=2)
+                                #image_cut -= np.nanmedian(image_cut,2,keepdims=True)
+                                printlog("step 1" + str(image_cut.shape),output_file=cutterfile)
+                                tts = []
+                                for tt in range(image_cut.shape[2]-25):
+                                    tts.append(np.nansum(image_cut[tmpdec,tmpra,tt:tt+25,:]))
+                                tmptoalow = np.argmax(tts)
+                                tmptoahi = tmptoalow+25
+                                image_cut = image_cut[:,:,tmptoalow:tmptoahi,:]
+                                printlog("AAAAAA -->"+str((tmptoalow,tmptoahi)),output_file=cutterfile)
+                                printlog(tts,output_file=cutterfile)
+
+
+
+                                image_cut = image_cut[:,:,tmptoalow:tmptoahi,:]
+                                printlog("step 2",output_file=cutterfile)
+                    else:
+                    """
+                    if useTOA:
+                        tmpsnrs = np.array([fcand[-1] for fcand in finalcands])
+                        tmptoa = np.array([fcand[4] for fcand in finalcands])[np.argmax(tmpsnrs)]
+                        tmpra = int(np.array([fcand[1] for fcand in finalcands])[np.argmax(tmpsnrs)])
+                        tmpdec = int(np.array([fcand[0] for fcand in finalcands])[np.argmax(tmpsnrs)])
+                        printlog(np.array([fcand[2] for fcand in finalcands]),output_file=cutterfile)
+                        printlog(image.shape,output_file=cutterfile)
+                        padby = tmptoa #- (image.shape[2]//2)  #int((image.shape[2]-tmptoa)+(image.shape[2]//2)) #+ 8
+                        RA_cutoff = np.abs(searched_image.shape[1]-image.shape[1])
+                        printlog(RA_cutoff,output_file=cutterfile)
+                        if RA_cutoff>0:
+                            image_cut = np.concatenate([(last_frame-np.nanmedian(last_frame,2,keepdims=True))[:,:-RA_cutoff,:,:],(image-np.nanmedian(image,2,keepdims=True))[:,RA_cutoff:,:,:]],axis=2)
+                            image_cut = np.pad(image_cut,((0,0),(RA_cutoff,0),(0,0),(0,0)),mode='edge')
+                        else:
+                            image_cut = np.concatenate([(last_frame-np.nanmedian(last_frame,2,keepdims=True)),(image-np.nanmedian(image,2,keepdims=True))],axis=2)
+                        printlog("PADDING BY "+str(padby) + "B/C TOA IS "+str(tmptoa),output_file=cutterfile)
+                        if padby>=0:
+                            image_cut = np.pad(image_cut,((0,0),(0,0),(0,int(padby)),(0,0)),mode='wrap')[:,:,-image.shape[2]:,:]
+                        else:
+                            image_cut = np.pad(image_cut,((0,0),(0,0),(int(np.abs(padby)),0),(0,0)),mode='wrap')[:,:,padby-image.shape[2]:padby,:]
+                        printlog(image_cut.shape,output_file=cutterfile)
+                        printlog(image.shape,output_file=cutterfile)
+
+                    else:
+                        image_cut = image
+                    printlog("ABOUT TO SMUSH INTO DATA ARRAY: "+str(image_cut.shape),output_file=cutterfile)
+                    #np.save(inject_dir + cand_isot+"_classifier.npy",image_cut)
+                    
+                    data_array[j,:,:,:,:] = cc.get_subimage(image_cut-np.nanmedian(image_cut,2,keepdims=True),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=subimgpix)
                     printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
 
         #run classifier
@@ -928,10 +1028,11 @@ def writecands_manage(d_future,image,last_frame,searched_image,args,DM_trials_us
             truensamps = image.shape[2]
             RA_cutoff = np.abs(searched_image.shape[1]-image.shape[1])
             printlog("COM "+str(image.shape) + str(searched_image.shape),output_file=cutterfile)
+            #last_frame = np.zeros_like(last_frame)
             if RA_cutoff>0:
-                image_cut = np.concatenate([last_frame[:,:-RA_cutoff,:,:],image[:,RA_cutoff:,:,:]],axis=2)
+                image_cut = np.concatenate([(last_frame-np.nanmedian(last_frame,2,keepdims=True))[:,:-RA_cutoff,:,:],(image-np.nanmedian(image,2,keepdims=True))[:,RA_cutoff:,:,:]],axis=2)
             else:
-                image_cut = np.concatenate([last_frame,image],axis=2)
+                image_cut = np.concatenate([(last_frame-np.nanmedian(last_frame,2,keepdims=True)),(image-np.nanmedian(image,2,keepdims=True))],axis=2)
 
             sourceimg = image_cut[int(canddict['dec_idxs'][i]):int(canddict['dec_idxs'][i])+1,
                                     int(canddict['ra_idxs'][i]):int(canddict['ra_idxs'][i])+1,:,:]#np.concatenate([np.zeros((1,1,maxshift,image.shape[3])),image[canddict['dec_idxs'][i],canddict['ra_idxs'][i],:,:],axis=2)
@@ -1472,7 +1573,7 @@ def submit_cand_nsfrb(image,last_frame,searched_image,TOAs,fname,uv_diag,dec_obs
     d_cluster = client.submit(cluster_manage,d_sort,image,nsamps,dec_obs,args,cutterfile,DM_trials_use,widthtrials,injection_flag,postinjection_flag,PSF,cand_isot,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,slow,imgdiff,tsamp_use,namelock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3) classifying
-    d_classify = client.submit(classify_manage,d_cluster,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,tsamp_use,namelock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
+    d_classify = client.submit(classify_manage,d_cluster,image,last_frame,searched_image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,cand_mjd,suff,RA_axis_2D,DEC_axis_2D,tsamp_use,namelock)#,lock=lock,priority=1,resources={'MEMORY': 10e9})
 
     #(3.5) fast folding
     d_ffa = client.submit(ffa_manage,d_classify,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_use,widthtrials,cand_isot,injection_flag,postinjection_flag,slow,imgdiff,RA_axis_2D,DEC_axis_2D,tsamp_ms,ffalock,suff)
@@ -1832,8 +1933,8 @@ def main(args):
             fname = (remote_cand_dir if args.remote else raw_cand_dir) + "candidates_" + cand_isot + ".csv"
             uv_diag = 500
             dec_obs = 50.13
-            img_shape = (175,175)#301,301)
-            img_search_shape = (175,175)#(301,301)
+            img_shape = (args.gridsize,args.gridsize)#301,301)
+            img_search_shape = (args.gridsize,args.gridsize)#(301,301)
             if np.abs((dec_obs*np.pi/180) - pt_dec)>1e-2 or (img_shape[0]*2 + 1) != PSF.shape[0]:
                 pt_dec = (dec_obs*np.pi/180)
                 if args.psfcluster:
@@ -1916,11 +2017,11 @@ def main(args):
 
         else:
             from scipy.stats import uniform
-            searched_image = uniform.rvs(loc=0,scale=args.SNRthresh+1,size=((301,301,5,16)))
-            image = uniform.rvs(size=((301,301,25,16)))
-            TOAs = np.zeros((301,301,25,16),dtype=int)
+            searched_image = uniform.rvs(loc=0,scale=args.SNRthresh+1,size=((args.gridsize,args.gridsize,5,16)))
+            image = uniform.rvs(size=((args.gridsize,args.gridsize,25,16)))
+            TOAs = np.zeros((args.gridsize,args.gridsize,25,16),dtype=int)
             if not imgdiff:
-                last_frame = uniform.rvs(size=((301,301,25,16)))
+                last_frame = uniform.rvs(size=((args.gridsize,args.gridsize,25,16)))
             else:
                 last_frame = None
         cand_mjd = Time(cand_isot,format='isot').mjd
