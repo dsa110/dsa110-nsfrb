@@ -117,7 +117,7 @@ def set_pflag_loc(flag=None,on=True,reset=False):
     if (not (flag in pflagdict.keys())): return None
     return pflagdict[flag]	
 ETCDKEY_CORRSTAGGER = f'/mon/nsfrbstagger'
-
+ETCDKEY_REALTIMEGP= f'/mon/realtimegp'
 
 
 """
@@ -1027,6 +1027,14 @@ def imagefromDADA(key=config.NSFRB_SRCHDADA_KEY,reader=None,datasizebytes=612506
     arrData = data[8:].reshape(tuple(list(shape)+[16]))
     return corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port
 def main(args):
+    if args.realtimegp:
+        edict=dict()
+        edict['realtimegp']=True
+        ETCD.put_dict(ETCDKEY_REALTIMEGP,edict)
+    else:
+        edict=dict()
+        edict['realtimegp']=False
+        ETCD.put_dict(ETCDKEY_REALTIMEGP,edict)
     np.save(config.table_dir + "/TCPHELPMONITOR.npy",np.zeros(16))
     #redirect stderr
     sys.stderr = open(error_file,"w")
@@ -1752,6 +1760,7 @@ if __name__=="__main__":
     parser.add_argument('--flagbase',type=int,nargs='+',default=[],help='List of baselines [0,4655] to flag')
     parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=8)
+    parser.add_argument('--realtimegp',action='store_true',help='sets gp flag')
     args = parser.parse_args()
 
     """
