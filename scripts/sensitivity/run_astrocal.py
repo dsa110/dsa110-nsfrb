@@ -1170,7 +1170,7 @@ def astrocal(args):
         reftime = Time(args.reftimeISOT,format='isot')
     print("Reference time:",reftime.isot)
     
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     nchan_per_node=nchans_per_node = args.nchans_per_node
     test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
     fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
@@ -1569,7 +1569,7 @@ def astrocal(args):
     
                 dat = None
                 sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 copydir = vis_dir + bright_names[bright_idx].replace(" ","") + "/"
                 os.system("mkdir " + copydir)
                 for i in range(16):
@@ -2057,7 +2057,7 @@ def ofbimage_speccal(args):
                 #save
                 args_copy = copy.deepcopy(args)
                 print("*** STARTING ASTROCAL ***")
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 nchan_per_node=nchans_per_node = args.nchans_per_node
                 test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
                 fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
@@ -3394,7 +3394,7 @@ def speccal(args):
             min_gridsize = image_size
             copydir = vis_dir + bright_nvssnames[bright_idx].replace(" ","") + "/"
             sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-            corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+            corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
 
             if args.uselastimage and ((len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0) or (len(glob.glob(vis_dir + "/lxd110" + corrs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out"))>0)):
                 if len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0:
@@ -3451,7 +3451,7 @@ def speccal(args):
 
                     dat = None
                     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-                    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+                    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                     os.system("mkdir " + copydir)
                     for i in range(16):
                         try:
@@ -3866,7 +3866,7 @@ def noiseest(args):
 
 
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
 
     if args.randgulps:
         gulps = np.sort(np.random.choice(np.arange(90,dtype=int),ngulps,replace=False))
@@ -3975,7 +3975,7 @@ def main(args):
             if not args.update_only:
                 ofbimage_astrocal(args)
             else:
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 nchan_per_node=nchans_per_node = args.nchans_per_node
                 test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
                 fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
@@ -4006,7 +4006,7 @@ def main(args):
     else:
         if (not args.astrocal_only and not args.speccal_only) or (args.astrocal_only and not args.speccal_only):
             if args.update_only:
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 nchan_per_node=nchans_per_node = args.nchans_per_node
                 test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
                 fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))

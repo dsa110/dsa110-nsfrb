@@ -13,47 +13,6 @@ echo "delay to next GP start time at pass in ${deltime} seconds"
 sleep $deltime
 reftime=$(date +%Y-%m-%d)
 starttime=$(date)
-echo "clearing backup cands..."
-rm /dataz/dsa110/nsfrb/dsa110-nsfrb-candidates/backup_raw_cands/*
-echo "stopping procserver..."
-systemctl --user stop clearvis
-systemctl --user stop rt_injector_test
-systemctl --user stop procserver_RX
-systemctl --user stop procserver_search
-systemctl --user stop T4manager
-echo "activating savesearch mode..."
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server_search  /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server_search  /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search_savesearch
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/dsaT4/run_T4_manager /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_T4_manager
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/dsaT4/run_T4_manager /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_T4_manager_savesearch
-sed -i '30s/$/ --savesearch/' /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search_savesearch
-sed -i -e 's/--trigger//g' /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_T4_manager_savesearch
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search_savesearch /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server_search 
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_T4_manager_savesearch /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/dsaT4/run_T4_manager
-echo "starting procserver, savesearch on..."
-systemctl --user start T4manager
-systemctl --user start procserver_search
-sleep 30
-systemctl --user start procserver_RX
-systemctl --user start realtime_gp
-echo "observing for $obstime hours..."
-sleep ${obstime}h
-echo "done observation, stopping procserver..."
-systemctl --user stop procserver_RX
-systemctl --user stop procserver_search
-systemctl --user stop T4manager
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server_search
-cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_T4_manager /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/dsaT4/run_T4_manager
-
-echo "wait for fast vis to finish copying..."
-sleep 1800
-systemctl --user stop realtime_gp
-
-echo "starting procserver normally..."
-systemctl --user start T4manager
-systemctl --user start procserver_search
-sleep 30
-systemctl --user start procserver_RX
 
 echo "copying data to /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/"
 sudo mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/

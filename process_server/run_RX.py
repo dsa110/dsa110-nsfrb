@@ -441,6 +441,7 @@ def readcorrdata(servSockD,ii,port,maxbytes,maxbyteshex,timeout_SOCKET,chunksize
 
         printlog(socksuffix+"Invalid data size, " + str(totalbyteshex) + " received when expected at least " + str(maxbyteshex) + ": " + str(exc),output_file=processfile)
         printlog(socksuffix+"Setting truncated data size flag...",output_file=processfile,end='')
+
         pflag = set_pflag_loc("datasize_error")
         if pflag == None:
             clientSocket.close()
@@ -714,6 +715,7 @@ def main(args):
     failsafe_counter =0
     skipcorrs_bad = []
     skipcorrs_prev = []
+    TNEXT=time.time()
     while True: # want to keep accepting connections
         skipcorrs_prev = skipcorrs_bad
         skipcorrs_bad = []
@@ -763,6 +765,7 @@ def main(args):
         
         
         printlog("DATAITER>>>DONE",output_file=processfile)
+        printlog("TOTALTIMEINITIAL:"+str(time.time()-TNEXT),output_file=processfile)
         TSTARTUP = time.time()
         #printlog("Data ready on "+str(readsockets)+" ports",output_file=processfile)
         #printlog("Data ready on "+str(len(readsockets))+" ports",output_file=processfile)
@@ -770,6 +773,10 @@ def main(args):
         repret = None
         for ii in range(len(servSockD_list)):#readsockets)):
             printlog("ALLSKIPS:"+str(args.skipcorrs),output_file=processfile)
+            #if time.time()-TSTARTUP < 1.0*(ii/16): #1.28*((ii+0.8)/16):
+            #    printlog("SKIPPING THE REST...",output_file=processfile)
+            #    time.sleep(1.0*(16 - ii)/16)
+            #    break
             if (ii not in args.skipcorrs) and (ii not in skipcorrs_prev):
                 tsel =time.time()
                 """
@@ -784,10 +791,14 @@ def main(args):
                 printlog("WAITDATA>>>",output_file=processfile)
                 while len(readsockets)<1 and (time.time()-TSTARTUP < args.timeout_RESTART):
                     readsockets,writesockets,errsockets = select.select(servSockD_list[ii:ii+1],[],[],args.timeout_SELECT)
-                if (time.time() - TSTARTUP >= args.timeout_RESTART):
+                if ii!=0 and (time.time() - TSTARTUP >= args.timeout_RESTART):
                     printlog(">>>RESTART HAPPENING, WAIT",output_file=processfile)
                     repret = None
-                    break
+                    for s in servSockD_list: s.close()
+                    raise RuntimeError("Failsafe condition reached, restarting...")
+                    #break
+                if ii==0:
+                    TSTARTUP = time.time()
                 printlog("ITERDATA>>>"+str(readsockets)+"| "+str(time.time()-tsel)+" s",output_file=processfile)
                 if len(readsockets)==1: 
                     ret = readcorrdata(readsockets[0],ii,readsockets[0].getsockname()[1],maxbytes,
@@ -806,6 +817,7 @@ def main(args):
                     else:
                         badcounter += 1
                         #skipcorrs_bad.append(ii)
+                        #time.sleep(args.timeout_SELECT)
                         """
                         if args.timeout_INLOOP >= (config.tsamp/1000):
                             for s in servSockD_list:
@@ -821,6 +833,8 @@ def main(args):
                 time.sleep(args.timeout_INLOOP)
                 printlog("SKIPCORR--"+str(ii),output_file=processfile)
 
+        printlog("TOTALTIMEFINAL:"+str(time.time()-TSTARTUP),output_file=processfile)
+        TNEXT=time.time()
         if repret is not None:
             corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData,port = repret
             imagetoDADA(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,fulldata,port)

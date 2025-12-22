@@ -50,7 +50,7 @@ applies calibration, and images. If specified, the resulting image is transmitte
 """
 
 #corr node names and frequencies
-corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
 sbs = ["sb00","sb01","sb02","sb03","sb04","sb05","sb06","sb07","sb08","sb09","sb10","sb11","sb12","sb13","sb14","sb15"]
 freqs = np.linspace(fmin,fmax,len(corrs))
 wavs = c/(freqs*1e6) #m

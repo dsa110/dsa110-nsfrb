@@ -119,7 +119,7 @@ def main(args):
         
         
             #find the files within the timestamp
-            timeax = Time(mjd_now + np.linspace(0,12/24,1000),format='mjd')
+            timeax = Time(mjd_now + np.linspace(0,16/24,1000),format='mjd')
             DSA = EarthLocation(lat=config.Lat*u.deg,lon=config.Lon*u.deg,height=config.Height*u.m)
             hourvis = SkyCoord(startstr,frame='icrs',location=DSA,obstime=timeax)
         
@@ -199,8 +199,8 @@ def main(args):
         metadata['start_elev'] = elev_steps[0]
         metadata['start_dec'] = elev_steps[0]-90 + config.Lat
         metadata['start_ra'] = ra_steps[0]
-        metadata['full_obs_time[hr]'] = (pset[-1][2]/60) + (besttime.mjd - mjd_steps[0])*24
-        metadata['full_obs_range[deg]'] = np.nanmax(ra_steps)-np.nanmin(ra_steps)
+        metadata['full_obs_time_hr'] = (pset[-1][2]/60) + (besttime.mjd - mjd_steps[0])*24
+        metadata['full_obs_range_deg'] = np.nanmax(ra_steps)-np.nanmin(ra_steps)
         metadata['stop_mjd'] = mjd_steps[-1]
         metadata['stop_isot'] = Time(mjd_steps[-1],format='mjd').isot
         metadata['plan_format'] = "MJD," + str("ELEV")

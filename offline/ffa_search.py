@@ -94,7 +94,7 @@ def fullimage_main(args):
     image_size = gridsize = args.image_size
     fnum = args.fnum
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     #fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
     #print(fobs)
     fcts = []
@@ -211,7 +211,7 @@ def fastimage_main(args):
     image_size = gridsize = args.image_size
     fnum = args.fnum
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
     print(fobs)
     fcts = []
@@ -401,7 +401,7 @@ def image_main(args):
     image_size = gridsize = args.image_size
     fnum = args.fnum
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     fobs = np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1)/1000
     print(fobs)
     fcts = []
@@ -540,7 +540,7 @@ def bf_search_main(args):
     image_size=gridsize=args.image_size
     fnum = args.fnum
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     fcts = []
     if args.flagSWAVE:
         fcts.append(fct_SWAVE)
@@ -784,7 +784,7 @@ def search_main(args):
     gulpsize=args.gulpsize
     fnum = args.fnum
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     fcts = []
     if args.flagSWAVE:
         fcts.append(fct_SWAVE)

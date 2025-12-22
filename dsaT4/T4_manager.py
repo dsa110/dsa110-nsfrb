@@ -377,7 +377,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
 
 
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","h16","h18","h19","h21","h22"]
+    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     nbin = args.FFAbin
     if slow:
         nbin *= int(tsamp_slow//tsamp_ms)
@@ -1249,7 +1249,7 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
         ETCD.put_dict(ETCD_T4VIS_KEY,triggerdata)
         time.sleep(3.35)
         printlog("COPYING FAST VIS FILES",output_file=cutterfile)
-        corrs=["h03", "hh04", "h05", "h06", "hh07", "h08", "hhh10", "h11", "hh12", "h14", "h15", "h16", "h18", "h19", "h21", "h22"]
+        corrs=["h03", "hh04", "h05", "h06", "hh07", "h08", "hhh10", "h11", "hh12", "h14", "h15", "hh16", "h18", "h19", "h21", "h22"]
         sbs = ["sb00","sb01","sb02","sb03","sb04","sb05","sb06","sb07","sb08","sb09","sb10","sb11","sb12","sb13","sb14","sb15"]
         for i in range(len(corrs)):
             printlog("rsync -avv --remove-source-files "+corrs[i]+".pro.pvt:/tmp/*"+sbs[i]+"*.out "+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + triggerdata['trigname'] + "/fast_visibilities/",output_file=cutterfile)
