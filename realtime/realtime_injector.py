@@ -279,8 +279,10 @@ def main(args):
                             s_table = json.load(f)
                             f.close()
                             for k in s_table.keys():
-                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
-                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                                print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
                     a_table_list = glob.glob(table_dir + "/rt_astrocal_timestamps_" + injection_dict['ISOT'][:10] +"*.json")
                     if len(a_table_list)>0:
                         for a_table_name in a_table_list:
@@ -289,8 +291,10 @@ def main(args):
                             a_table = json.load(f)
                             f.close()
                             for k in a_table.keys():
-                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
-                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+str(k)+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                                print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                                os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
                     printlog("Done",output_file=inject_log_file)
     return
 

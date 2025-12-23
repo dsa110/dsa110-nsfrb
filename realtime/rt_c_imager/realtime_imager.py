@@ -470,6 +470,9 @@ def main(args):
 
 
     #iteration=0
+    if args.inject_direct:
+        inject_file_ordered = np.sort(glob.glob(local_inject_dir + "injection_DM*_W*_DEC71.6_SB*.npy"))
+        inject_file_IDX = 0
     while True:
         """if iteration>=5:
             tmpdict = ETCD.get_dict(ETCD_T4VIS_KEY)
@@ -584,7 +587,19 @@ def main(args):
             if args.verbose: printlog("Injecting pulse",output_file=rtlog_file)
 
             #look for an injection in etcd
-            injection_params = etcd_get_dict_catch(ETCD, ETCDKEY_INJECT, output_file=rterr_file) #ETCD.get_dict(ETCDKEY_INJECT)
+            if args.inject_direct:
+                fname = os.path.basename(inject_file_ordered[inject_file_IDX])
+                injection_params = dict()
+                injection_params["ID"] = fname[10:fname.index("SB")-1]
+                injection_params["dec"] = Dec
+                injection_params["fname"] = fname[:fname.index("SB")+2]
+                injection_params["ack"] = [True]*16
+                injection_params["injected"] = [True]*16
+                injection_params["inject_only"] = False
+                injection_params["inject_flat"] = False
+                inject_file_IDX += 1
+            else:
+                injection_params = etcd_get_dict_catch(ETCD, ETCDKEY_INJECT, output_file=rterr_file) #ETCD.get_dict(ETCDKEY_INJECT)
             if injection_params is None:
                 if args.verbose: printlog("Injection not ready, postponing",output_file=rtlog_file)
                 inject_count = args.inject_interval
@@ -623,6 +638,7 @@ def main(args):
                     except Exception as exc:
                         inject_flat = False
                         inject_img = np.zeros((args.gridsize,args.gridsize,dat.shape[0]))
+                        if args.verbose: printlog(exc,output_file=rtlog_file)
                         if args.verbose: printlog(str(args.sb)+" inject failed",output_file=rtlog_file)
                     #clear data if we only want the injection
                     if injection_params['inject_only']: dat[:,:,:,:] = 0
@@ -1015,6 +1031,7 @@ if __name__=="__main__":
     parser.add_argument('--udpchunksize',type=int,help='Data chunksize in bytes,default=25886',default=25886)
     parser.add_argument('--udproundup',action='store_true',help='Round sub-integration size up')
     parser.add_argument('--visbuffersize',type=int,help='Size of visibility buffer in 3.35s chunks; default=5',default=5)
+    parser.add_argument('--inject_direct',action='store_true',help='inject  automatically without checking etcd to coordinate')
     #parser.add_argument('--gpmode',action='store_true',help='Saves fast vis files for offline processing')
     args = parser.parse_args()
     main(args)
