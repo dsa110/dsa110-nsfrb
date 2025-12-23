@@ -598,6 +598,7 @@ def main(args):
                 injection_params["inject_only"] = False
                 injection_params["inject_flat"] = False
                 inject_file_IDX += 1
+                inject_file_IDX %= len(inject_file_ordered)
             else:
                 injection_params = etcd_get_dict_catch(ETCD, ETCDKEY_INJECT, output_file=rterr_file) #ETCD.get_dict(ETCDKEY_INJECT)
             if injection_params is None:
