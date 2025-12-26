@@ -516,6 +516,8 @@ def main(args):
             mjd_init = float(f.read())
             f.close()
             if args.verbose: printlog("STARTUP PARAMS:" + str((sb,Dec,mjd_init)),output_file=rtlog_file)
+            if args.inject_direct:
+                inject_file_IDX = int((10*mjd_init)%len(inject_file_ordered))
             
         if args.debug:
             printlog("--->READ TIME: "+str(time.time()-tbuffer)+" sec",output_file=rtbench_file)
