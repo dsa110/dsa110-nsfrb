@@ -42,7 +42,7 @@ def main(args):
     with open(config.plan_dir+"/REALTIME_GP_SURVEY_DECTRACKS.json","r") as jfile:
         psets = json.load(jfile)
 
-    mjd_now = Time.now().mjd
+    mjd_now = Time.now().mjd + (args.buffersec/86400)
     elev_now = get_elevation(Time(mjd_now,format='mjd')).value #+ (psets[i][0][0] - (69.04-90 + config.Lat))
     print("current MJD:",mjd_now)
     print("current elevation:",elev_now)
@@ -101,6 +101,8 @@ def main(args):
         elev_steps = []
         ra_steps = []
         dec_steps = []
+        mjd_now_init = mjd_now
+        invalid=False
         for j in range(len(pset)):
         
             startra=pset[j][-2]
@@ -161,6 +163,11 @@ def main(args):
             antpos = AltAz(obstime=Time(finaltime,format='mjd'),location=loc,az=az*u.deg,alt=alt*u.deg)
             icrspos = antpos.transform_to(ICRS())
             plt.plot(icrspos.ra.value,icrspos.dec.value,'o',color='green')
+
+            if finaltime.mjd <= mjd_now_init:
+                print("invalid",mjd_now_init,finaltime.mjd)
+                invalid = True
+                break
         
         
             mjd_steps.append(finaltime.mjd)
@@ -169,7 +176,9 @@ def main(args):
             ra_steps.append(icrspos.ra.value)
             elev_now = pset[j][0] + 90 - config.Lat
             mjd_now = besttime.mjd# + (pset[j][2]/24/60)
-    
+        if invalid:
+            continue
+
         fulltrack_ra = np.array([[pset[k][-2],pset[k][-1]] for k in range(len(pset))]).flatten() #+ [pset[k][-1] for k in range(len(pset))]
         fulltrack_dec = np.array([[pset[k][0],pset[k][0]] for k in range(len(pset))]).flatten() #+ [pset[k][0] for k in range(len(pset))]
         #print(fulltrack_ra,fulltrack_dec)
@@ -221,5 +230,6 @@ if __name__=="__main__":
     parser.add_argument("--both",action='store_true',help='If possible, include plans for both sides of the Galactic Plane')
     parser.add_argument("--minslews",type=int,help="Ensure that plan has minimum number of slews, default=1",default=1)
     parser.add_argument("--maxslews",type=int,help="Ensure that plan has maximum number of slews, default=10",default=10)
+    parser.add_argument("--buffersec",type=float,help='buffer time in seconds',default=30*60)
     args = parser.parse_args()
     main(args)
