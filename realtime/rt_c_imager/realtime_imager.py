@@ -536,7 +536,7 @@ def main(args):
         if args.save:
             pipeline.write_raw_vis("/tmp/"+ time_start_isot +"_sb{:02d}.out".format(args.sb),dat,mjd,args.sb,Dec,datasize=args.datasize)
             if ETCD.get_dict(ETCDKEY_REALTIMEGP)['realtimegp']:
-                os.system("cp /tmp/"+ time_start_isot +"_sb{:02d}.out".format(args.sb) + "/tmp/nsfrb_sb{:02d}_{:06d}.out".format(args.sb,int((mjd-60600.0)*1440.0)))
+                os.system("cp /tmp/"+ time_start_isot +"_sb{:02d}.out".format(args.sb) + " /tmp/nsfrb_sb{:02d}_{:06d}.out".format(args.sb,int((mjd-60600.0)*1440.0)))
             #int((mjd-60600.)*1440.
             #pipeline.write_raw_vis("/tmp/NSFRB_VIS_TMP.out",dat,mjd,args.sb,Dec,datasize=args.datasize)
             #check if we need to delete files
