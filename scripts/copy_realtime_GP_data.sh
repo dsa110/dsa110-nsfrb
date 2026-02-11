@@ -59,7 +59,7 @@ echo "copying data to /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEAR
 sudo mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
 #sudo cp /dataz/dsa110/nsfrb/dsa110-nsfrb-candidates/backup_raw_cands/*T??:??:??.???_input.npy /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
 #sudo cp /dataz/dsa110/nsfrb/dsa110-nsfrb-candidates/backup_raw_cands/*T??:??:??.???_searched.npy /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
-ss=$(bc <<< "$obstime * 60")
+ss=$(bc <<< "$obstime * 3600")
 for i in $(seq 1 $ss);
 do
 	nowtime=$(date -d "$starttime +$i second" +%Y-%m-%dT%H:%M:%S) 
@@ -72,7 +72,12 @@ do
 	sudo ls /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/*${nowtime}*.csv | xargs -n 1 tail -n +2 | cut -d ',' -f 1 | xargs -I {} sudo cp /dataz/dsa110/nsfrb/dsa110-nsfrb-candidates/init_cands/T4B/NSFRB{}.json /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
 done
 
+echo "copying fast visibilities"
+sudo mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/fast_visibilities/
+sudo mv /dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/GP_observations_/* /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
+
 sudo chown -R ubuntu:ubuntu /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
 sudo chmod -R +rwx /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
+systemctl --user start clearvis
 
 echo "ALL DONE"
