@@ -70,7 +70,7 @@ robust=-2 #default to uniform weighting
 #flagged_antennas = [48,103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 outrigger_antennas = [103,104,105,106,107,108,109,110,111,112,113,114,115,116]
 flagged_corrs = []
-bad_antennas = [48,77,51,49]#,85,76,77,78,48,36,37,30]
+bad_antennas = [49, 101, 71, 107, 116, 102, 105, 84]#,85,76,77,78,48,36,37,30]
 flagged_antennas = bad_antennas+outrigger_antennas
 
 import numpy as np
