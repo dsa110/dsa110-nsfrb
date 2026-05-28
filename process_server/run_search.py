@@ -135,6 +135,7 @@ for i in range(NROWSUBIMG):
 """
 class fullimg:
     def __init__(self,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape=(32,32,25,16),dtype=np.float16,slow=False,bin_slow=bin_slow,imgdiff=False,bin_imgdiff=bin_imgdiff,TXsubimg=False,TXsubint=False,TXnints=1,realtime=False,nocutoff=False):
+        self.started = False
         printlog("INIT FULLIMG WITH SHAPE:"+str(shape),output_file=processfile)
         """
         if not (slow or imgdiff):
@@ -226,6 +227,7 @@ class fullimg:
         printlog("Created RA and DEC axes of size" + str(self.RA_axis.shape) + "," + str(self.DEC_axis.shape),output_file=processfile)
         printlog(self.RA_axis,output_file=processfile)
         printlog(self.DEC_axis,output_file=processfile)
+        self.started = True
     """
     def timeout_handler(self):
         self.timerlock.acquire()
@@ -608,14 +610,23 @@ def future_callback(future,SNRthresh,timestepisot,RA_axis,DEC_axis,etcd_enabled,
     slowlock.acquire()
     try:
         if slow:
+            f = open("/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/completeness_log.csv","a")
+            f.write("slow,"+str(timestepisot)+","+str(slow_fullimg_dict[timestepisot].slowstatus)[1:-1]+"\n")
+            f.close()
             printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
             del slow_fullimg_dict[timestepisot]
             printlog(("***>[SLOW]",len(slow_fullimg_dict.keys()),timestepisot,timestepisot in slow_fullimg_dict.keys()))
         elif imgdiff:
+            f = open("/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/completeness_log.csv","a")
+            f.write("imgdiff,"+str(timestepisot)+","+str(imgdiff_fullimg_dict[timestepisot].imgdiffstatus)[1:-1]+"\n")
+            f.close()
             printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
             del imgdiff_fullimg_dict[timestepisot]
             printlog(("***>[IMGDIFF]",len(imgdiff_fullimg_dict.keys()),timestepisot,timestepisot in imgdiff_fullimg_dict.keys()))
         else:
+            f = open("/home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb-logfiles/completeness_log.csv","a")
+            f.write("base,"+str(timestepisot)+","+str(fullimg_dict[timestepisot].corrstatus)[1:-1]+"\n")
+            f.close()
             printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
             del fullimg_dict[timestepisot]
             printlog(("***>[BASE]",len(fullimg_dict.keys()),timestepisot,timestepisot in fullimg_dict.keys()))
@@ -949,7 +960,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
             printlog(socksuffix+"BASE SEARCH FORFEIT "+img_id_isot,output_file=processfile)
 
         #task_list.append(stask)
-        if slowsearch_now and ((not forfeit) or (forfeit and (not imgdiffsearch_now))):
+        if slowsearch_now and ((not forfeit) or (forfeit and (not imgdiffsearch_now))) and (0 not in slow_fullimg_dict[k].image_tesseract.shape):
             slow_fullimg_dict[k].running=True
             printlog(socksuffix+"SLOWSEARCH NOW:" + str(slow_fullimg_dict[k]),output_file=processfile)
             printlog(socksuffix+str(slow_fullimg_dict[k].image_tesseract),output_file=output_file)
@@ -973,7 +984,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 sstask.cancel()
                 printlog("success? "+str(sstask.done()),output_file=processfile)
 
-        elif forfeit and slowsearch_now:
+        elif (forfeit and imgdiffsearch_now) or (0 in slow_fullimg_dict[k].image_tesseract.shape):#slowsearch_now:
             try:
                 slowlock.acquire()
                 #if not slow_fullimg_dict[k].running:
@@ -983,7 +994,7 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 printlog("NOTE FORFEIT DELETION FAILED FOR SLOW "+str(k) + "|EXCEPTION|"+str(exc),output_file=processfile)
             printlog(socksuffix + "SLOW SEARCH FORFEIT "+str(k),output_file=processfile)
 
-        if imgdiffsearch_now:
+        if imgdiffsearch_now and (0 not in imgdiff_fullimg_dict[kd].image_tesseract.shape):
             imgdiff_fullimg_dict[kd].running=True
             printlog(socksuffix+"IMGDIFFSEARCH NOW:" + str(imgdiff_fullimg_dict[kd]),output_file=processfile)
             printlog(socksuffix+str(imgdiff_fullimg_dict[kd].image_tesseract),output_file=output_file)
@@ -1007,6 +1018,12 @@ def multiport_task(corr_node,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,ar
                 printlog("failed to run task imgdiff for "+str(kd),output_file=processfile)
                 ssstask.cancel()
                 printlog("success? "+str(ssstask.done()),output_file=processfile)
+        elif 0 in imgdiff_fullimg_dict[kd].image_tesseract.shape:
+            printlog("<INVALID SHAPE ALERT!!!!!>",output_file=processfile)
+            slowlock.acquire()
+            #if not slow_fullimg_dict[k].running:
+            del imgdiff_fullimg_dict[kd]
+            slowlock.release()
         appendinit = True
         return ret_tasks
         printlog(socksuffix+" "+str(ret_tasks) + " tasks",output_file=processfile )
@@ -1057,8 +1074,8 @@ def main(args):
         sl.time_axis = np.linspace(0,config.T,config.nsamps)
         sl.widthtrials = sl.widthtrials[sl.widthtrials<args.nsamps]
         sl.nwidths = len(sl.widthtrials)
-        sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,args.nsamps)
-        sl.full_boxcar_filter_imgdiff = sl.gen_boxcar_filter(sl.widthtrials,args.imgdiffgulps)
+        sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,args.nsamps,normfilter=args.normfilter)
+        sl.full_boxcar_filter_imgdiff = sl.gen_boxcar_filter(sl.widthtrials,args.imgdiffgulps,normfilter=args.normfilter)
 
         config.nchans = args.nchans
         sl.nchans = args.nchans
@@ -1084,7 +1101,7 @@ def main(args):
         printlog(sl.DM_trials,output_file=processfile)
         sl.nDMtrials = len(sl.DM_trials)
 
-        sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,config.nsamps)
+        sl.full_boxcar_filter = sl.gen_boxcar_filter(sl.widthtrials,config.nsamps,normfilter=args.normfilter)
 
         sl.corr_shifts_all_append,sl.tdelays_frac_append,sl.corr_shifts_all_no_append,sl.tdelays_frac_no_append = sl.gen_dm_shifts(sl.DM_trials,sl.freq_axis,config.tsamp,config.nsamps) 
 
@@ -1603,7 +1620,7 @@ def main(args):
 
         gtasks=[]
         for ii in range(arrData.shape[-1]):
-            if ~np.all(np.isnan(arrData[:,:,:,ii])):
+            if ~np.all(np.isnan(arrData[:,:,:,ii])) and (ii not in args.flagcorrs):
                 print(ii,"START")
                 gtasks.append(executor.submit(multiport_subtask,ii,img_id_isot,img_id_mjd,img_uv_diag,img_dec,shape,arrData[:,:,:,ii],
                                     ii,args.testh23,
@@ -1622,10 +1639,17 @@ def main(args):
         printlog("&&SRCH&& GATHER TIME--->"+str(time.time()-t1),output_file=processfile)
         t1 = time.time()
         #check if any timed out
+        del_all = []
         slowlock_.acquire()
         for k in fullimg_dict.keys():
             printlog("%%% "+str(k)+str((fullimg_dict[k].running, fullimg_dict[k].is_timeout(),fullimg_dict[k].corrstatus)),output_file=processfile)
-            if (not fullimg_dict[k].running) and fullimg_dict[k].is_timeout():
+            #if np.abs(Time(k,format='isot').mjd - Time.now().mjd)*86400 > (360):
+            #    del_all.append(k)
+            if fullimg_dict[k].started and (not fullimg_dict[k].running) and fullimg_dict[k].is_timeout():
+                if len(fullimg_dict[k].RA_axis)==0:
+                    printlog("invalid shape",output_file=processfile)
+                    del_all.append(k)#del fullimg_dict[k]
+                    continue
                 printlog("Image "+str(k)+" timed out, searching now",output_file=processfile)
                 fullimg_dict[k].running = True
                 if dask_enabled:
@@ -1647,6 +1671,9 @@ def main(args):
                 printlog("SUBmitted "+str(k),output_file=processfile)
 
                     #multiport_num_list.append(ii)    
+        for del_all_i in del_all:
+            printlog("DELETING NOW --> "+str(del_all_i),output_file=processfile)
+            del fullimg_dict[del_all_i]
         slowlock_.release()
         wait(gtasks)
         #break
@@ -1761,6 +1788,7 @@ if __name__=="__main__":
     parser.add_argument('--solo_inject',action='store_true',default=False,help='If set, visibility data will be zeroed and an injection with simulated noise will overwrite the data')
     parser.add_argument('--nchans_per_node',type=int,help='Number of channels per corr node prior to imaging',default=8)
     parser.add_argument('--realtimegp',action='store_true',help='sets gp flag')
+    parser.add_argument('--normfilter',action='store_true',help='use gaussian filters for search instead of boxcar filters')
     args = parser.parse_args()
 
     """

@@ -33,8 +33,10 @@ cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_T4_manager_savesearc
 echo "starting procserver, savesearch on..."
 systemctl --user start T4manager
 systemctl --user start procserver_search
+systemctl --user start rt_injector_test
 sleep 30
 systemctl --user start procserver_RX
+sed -i "7s|.*|gptime\=\"${gptime}\"|" /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/scripts/save_realtime_GP_data.sh
 systemctl --user start realtime_gp
 echo "observing for $obstime hours..."
 sleep ${obstime}h
@@ -42,6 +44,7 @@ echo "done observation, stopping procserver..."
 systemctl --user stop procserver_RX
 systemctl --user stop procserver_search
 systemctl --user stop T4manager
+systemctl --user stop rt_injector_test
 cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_proc_server_search /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/process_server/run_proc_server_search
 cp /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/tmp_run_T4_manager /home/ubuntu/msherman_nsfrb/DSA110-NSFRB-PROJECT/dsa110-nsfrb/dsaT4/run_T4_manager
 
@@ -54,6 +57,7 @@ systemctl --user start T4manager
 systemctl --user start procserver_search
 sleep 30
 systemctl --user start procserver_RX
+systemctl --user start rt_injector_test
 
 echo "copying data to /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/"
 sudo mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
@@ -73,11 +77,14 @@ do
 done
 
 echo "copying fast visibilities"
-sudo mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/fast_visibilities/
-sudo mv /dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/GP_observations_/* /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
+#sudo mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/fast_visibilities/
+#sudo mv /dataz/dsa110/nsfrb/dsa110-nsfrb-fast-visibilities/GP_observations_/* /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
+./clear_realtime_GP_data.sh
 
 sudo chown -R ubuntu:ubuntu /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
 sudo chmod -R +rwx /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/
 systemctl --user start clearvis
+
+mkdir /dataz/dsa110/nsfrb/dsa110-nsfrb-followup/REALTIME_GP_SEARCH/GP_candidates_${gptime}/applied_bf_weights/
 
 echo "ALL DONE"

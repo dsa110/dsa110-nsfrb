@@ -205,17 +205,23 @@ tdelays_frac_gpu_1 = copy.deepcopy(tdelays_frac_append)
 #make boxcar filters in advance
 widthtrials = np.array(2**np.arange(5),dtype=int)
 nwidths = len(widthtrials)
-def gen_boxcar_filter(widthtrials,truensamps,gridsize=1,nDMtrials=1): #note, you shouldn't need to set gridsize OR DM trials
+def gen_boxcar_filter(widthtrials,truensamps,gridsize=1,nDMtrials=1,normfilter=False): #note, you shouldn't need to set gridsize OR DM trials
     nwidths = len(widthtrials)
     boxcar = np.zeros((nwidths,gridsize,gridsize,truensamps,nDMtrials),dtype=np.float16)
     loc = int(truensamps//2)
     for i in range(nwidths):
         wid = widthtrials[i]
-        boxcar[i,:,:,:wid,:] = 1 #loc-wid//2:loc+wid-wid//2,:] = 1
+        if normfilter:
+            boxcar[i,:,:,:,:] = norm.pdf(np.arange(int(truensamps)),loc=0,scale=wid)[np.newaxis,np.newaxis,:,np.newaxis]
+            boxcar[i,:,:,:,:] *= wid/np.nansum(norm.pdf(np.arange(int(truensamps)),loc=0,scale=wid))
+        else:
+            boxcar[i,:,:,:wid,:] = 1 #loc-wid//2:loc+wid-wid//2,:] = 1
+        
+
 
     return boxcar
-full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps)
-full_boxcar_filter_imgdiff = gen_boxcar_filter(widthtrials,ngulps_per_file)
+full_boxcar_filter = gen_boxcar_filter(widthtrials,nsamps,normfilter=True)
+full_boxcar_filter_imgdiff = gen_boxcar_filter(widthtrials,ngulps_per_file,normfilter=True)
 full_boxcar_filter_gpu_0 = copy.deepcopy(full_boxcar_filter)
 full_boxcar_filter_gpu_1 = copy.deepcopy(full_boxcar_filter)
 
@@ -1926,7 +1932,7 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
     #if not QSETUP and not CONTEXTSETUP:
     #    CONTEXTSETUP = True
     #    torch.multiprocessing.set_start_method("spawn")
-    printlog("starting" + (" slow " if slow else " ") + "search process " + str(fullimg.img_id_isot) + "...",output_file=processfile,end='')
+    printlog("starting" + (" slow " if slow else " ") + "search process " + str(fullimg.img_id_isot) + "...",output_file=processfile)
 
 
 
@@ -1939,6 +1945,7 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
     DEC_axis= fullimg.DEC_axis#np.linspace(-gridsize//2,gridsize//2,gridsize)
     nsamps = fullimg.image_tesseract.shape[2]
     nchans = fullimg.image_tesseract.shape[3]
+    img_dec=fullimg.img_dec
     if imgdiff:
         time_axis = np.arange(nsamps)*tsamp_imgdiff
     else:
@@ -1957,7 +1964,7 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
     global last_frame_init_idx
     global last_frame_slow
     global last_frame_slow_init_idx
-    printlog("LAST FRAME: " + str(last_frame_init_idx) + str(last_frame.shape) + str(last_frame) + "...",output_file=processfile,end='')
+    printlog("LAST FRAME: " + str(last_frame_init_idx) + str(last_frame.shape) + str(last_frame) + "...",output_file=processfile)
     if fnrtest:
         printlog("load last frame from file for FNR mode",output_file=processfile)
         last_frame = get_last_frame()
@@ -2016,8 +2023,15 @@ def search_task(searchlock,fullimg,SNRthresh,subimgpix,model_weights,verbose,use
         attach['imgdiff']['tsamp'] = tsamp_imgdiff
 
     #print("starting process " + str(img_id) + "...")
+    printlog("AXIS SHAPES:"+str(len(fullimg.RA_axis)),output_file=processfile)
+    printlog("AXIS SHAPES:"+str(len(RA_axis)),output_file=processfile)
+    if len(RA_axis)==0:
+        searchlock.release()
+        printlog("INVALID SEARCH SHAPE",output_file=processfile)
+        return None,slow,imgdiff,0,0,fullimg.img_id_isot,fullimg.thash
+
     if cuda:
-        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,attach=attach,completeness=completeness,forfeit=forfeit,lockdev=lockdev) 
+        TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,total_noise = run_search_GPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(RA_axis[1]-RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,attach=attach,completeness=completeness,forfeit=forfeit,lockdev=lockdev) 
 
     else:
         TOAs,fullimg.image_tesseract_searched,fullimg.image_tesseract_binned,tmp,tmp,tmp,tmp,total_noise = run_search_CPU(fullimg.image_tesseract,SNRthresh=SNRthresh,RA_axis=RA_axis,DEC_axis=DEC_axis,time_axis=time_axis,canddict=dict(),usefft=usefft,multithreading=multithreading,nrows=nrows,ncols=ncols,output_file=output_file,threadDM=threadDM,samenoise=samenoise,cuda=cuda,space_filter=space_filter,kernel_size=kernel_size,exportmaps=exportmaps,append_frame=(False if imgdiff else append_frame),DMbatches=DMbatches,SNRbatches=SNRbatches,usejax=usejax,noiseth=noiseth,RA_cutoff=0 if nocutoff else get_RA_cutoff(fullimg.img_dec,T=(tsamp_slow if slow else tsamp)*nsamps,pixsize=np.abs(fullimg.RA_axis[1]-fullimg.RA_axis[0])),DM_trials=DM_trials,widthtrials=widthtrials,applySNthresh=False,slow=slow,imgdiff=imgdiff,completeness=completeness,forfeit=forfeit)

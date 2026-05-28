@@ -715,15 +715,21 @@ def main(args):
     failsafe_counter =0
     skipcorrs_bad = []
     skipcorrs_prev = []
+    repcorrs_bad = []
+    repcorrs_prev = []
     TNEXT=time.time()
     while True: # want to keep accepting connections
         skipcorrs_prev = skipcorrs_bad
         skipcorrs_bad = []
+
+        repcorrs_prev = repcorrs_bad
+        repcorrs_bad = []
         print((skipcorrs_prev,skipcorrs_bad))
         if failsafe_counter>=3 and ((time.time()-failsafe_timer)<args.timeout_FAILSAFE): 
             printlog("<"+str((time.time()-failsafe_timer))+">FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
             
             for s in servSockD_list: s.close()
+            time.sleep(120)
             raise RuntimeError("Failsafe condition reached, restarting...")
         elif failsafe_counter>=3 and ((time.time()-failsafe_timer)>=args.timeout_FAILSAFE):
             printlog("FAILSAFE CHECKUP",output_file=processfile)
@@ -739,6 +745,7 @@ def main(args):
         if False:#badcounter >= 16*args.BADITERS:
             printlog("BAD COUNTER FAILSAFE TRIGGERED, RESTARTING...",output_file=processfile)
             for s in servSockD_list: s.close()
+            time.sleep(120)
             raise RuntimeError("Failsafe condition reached, restarting...")
         printlog("DATAITER>>>"+str(len(readsockets)),output_file=processfile)
         while len(readsockets)<1 and ((not initflag) or (time.time() - t0 < args.timeout_RESTART)):#16 and (time.time()-t0 < (config.tsamp*config.nsamps/1000)):# and (not initflag or (time.time()-TSTARTUP)<3.1):
@@ -747,8 +754,8 @@ def main(args):
         if not initflag: t0 = time.time()
         if (time.time() - t0 >= args.timeout_RESTART):
             printlog(">>>RESTART HAPPENING, WAIT",output_file=processfile)
-            time.sleep(600)
             for s in servSockD_list: s.close()
+            time.sleep(600)
             raise RuntimeError("Failsafe condition reached, restarting...")
         """
         while np.any(QQUEUE.get()):
@@ -795,6 +802,7 @@ def main(args):
                     printlog(">>>RESTART HAPPENING, WAIT",output_file=processfile)
                     repret = None
                     for s in servSockD_list: s.close()
+                    time.sleep(600)
                     raise RuntimeError("Failsafe condition reached, restarting...")
                     #break
                 if ii==0:
@@ -816,6 +824,15 @@ def main(args):
 
                     else:
                         badcounter += 1
+                        if ii in repcorrs_prev and (len(repcorrs_prev)>1) and (len(repcorrs_bad)>1):
+                            printlog(">>>REPEATED CORRS GOT BAD DATA, restarting...")
+                            repret = None
+                            for s in servSockD_list: s.close()
+                            time.sleep(60)
+                            raise RuntimeError("Failsafe condition reached, restarting...")
+
+                        
+                        repcorrs_bad.append(ii)
                         #skipcorrs_bad.append(ii)
                         #time.sleep(args.timeout_SELECT)
                         """

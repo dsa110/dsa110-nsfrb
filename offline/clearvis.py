@@ -104,7 +104,8 @@ def main(args):
         with open(str(cand_dir) + "/cands_for_followup_isot.csv","r") as csvfile:
             rdr = csv.reader(csvfile)
             for row in rdr:
-                keepcands.append(row[0])
+                if len(row) >0:
+                    keepcands.append(row[0])
         for cdir in canddirs:
             #first check if file in keepcands
             candisot = os.path.basename(cdir)[:23]

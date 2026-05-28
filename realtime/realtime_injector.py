@@ -25,7 +25,7 @@ my_cnf = cnf.Conf(use_etcd=True)
 
 #sys.path.append(cwd+"/nsfrb/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/nsfrb/")
 #sys.path.append(cwd+"/")#"/home/ubuntu/proj/dsa110-shell/dsa110-nsfrb/")
-from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,tsamp
+from nsfrb.config import NUM_CHANNELS, AVERAGING_FACTOR, IMAGE_SIZE,fmin,fmax,c,pixsize,bmin,raw_datasize,tsamp,corrs
 #from nsfrb.imaging import inverse_uniform_image,uniform_image,inverse_revised_uniform_image,revised_uniform_image, uv_to_pix, revised_robust_image,get_ra
 from nsfrb.imaging import uv_to_pix
 from nsfrb.flagging import flag_vis,fct_SWAVE,fct_BPASS,fct_FRCBAND,fct_BPASSBURST
@@ -55,7 +55,7 @@ server in realtime.
 """
 
 #corr node names and frequencies
-corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+#corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
 sbs = ["sb00","sb01","sb02","sb03","sb04","sb05","sb06","sb07","sb08","sb09","sb10","sb11","sb12","sb13","sb14","sb15"]
 freqs = np.linspace(fmin,fmax,len(corrs))
 wavs = c/(freqs*1e6) #m
@@ -137,6 +137,14 @@ def update(args,current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT
         """
     return current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS
 
+injectdirectdict = dict()
+def directwatchsave(etcddict):
+    if etcddict['ISOT'] not in injectdirectdict.keys():
+        injectdirectdict[etcddict['ISOT']] = etcddict
+    return
+
+
+
 def main(args):
 
     verbose = args.verbose
@@ -147,6 +155,9 @@ def main(args):
     current_inject_time = -1
     int_time = time.time()
     int_onoff = True
+
+    if args.inject_direct:
+        ETCD.add_watch(ETCDKEY,directwatchsave)
     while True:
         if args.intermittent and time.time()-int_time >= args.waittime*60:
             int_onoff = not int_onoff
@@ -238,24 +249,20 @@ def main(args):
             current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS = update(args,current_inject_time,INJECT_INIT,INJECT_QUEUE,INJECT_TIMES,INJECT_PARAMS)
 
         else:
-            #push injection parameters to etcd
-            ETCD.put_dict(ETCDKEY,{"ID":ID,
-                               "dec":Dec,
-                               "fname":"injection_DM"+str(DM)+"_W"+str(width)+"_DEC"+str(args.dec)+"_SB",
-                               "injected":[False]*args.num_chans,
-                               "ack":[False]*args.num_chans,
-                               "inject_only":cleardataflag,
-                               "inject_flat":injectflatflag})
-    
-            #sleep...sort of
-            t1 = time.time()
-            acked = False
-            while time.time() - t1 < args.waittime*60:
-            
-                #check to see its been injected on all corr nodes
-                time.sleep(tsamp/1000)#args.waittime*60/90)
+            if args.inject_direct:
+                t1 = time.time()
+                acked = False
+                while len(injectdirectdict)==0:
+                    print(injectdirectdict)
+                    time.sleep(tsamp/1000)
+                    continue
+                
                 injection_dict = ETCD.get_dict(ETCDKEY)
-                if 'ISOT' in injection_dict.keys() and np.any(injection_dict['ack']) and not acked:
+                while injection_dict is None:
+                    time.sleep(tsamp/1000)
+                    injection_dict = ETCD.get_dict(ETCDKEY)
+                    
+                if (injection_dict is not None )and 'ISOT' in injection_dict.keys() and np.any(injection_dict['ack']) and not acked:
                     #write to csv
                     with open(inject_file,"a") as csvfile:
                         wr = csv.writer(csvfile,delimiter=',')
@@ -296,6 +303,70 @@ def main(args):
                                 print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
                                 os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
                     printlog("Done",output_file=inject_log_file)
+            
+                for k in injectdirectdict.keys():
+                    del injectdirectdict[k]
+            else:
+
+
+                #push injection parameters to etcd
+                ETCD.put_dict(ETCDKEY,{"ID":ID,
+                               "dec":Dec,
+                               "fname":"injection_DM"+str(DM)+"_W"+str(width)+"_DEC"+str(args.dec)+"_SB",
+                               "injected":[False]*args.num_chans,
+                               "ack":[False]*args.num_chans,
+                               "inject_only":cleardataflag,
+                               "inject_flat":injectflatflag})
+            
+                #sleep...sort of
+                t1 = time.time()
+                acked = False
+                while time.time() - t1 < args.waittime*60:
+            
+                    #check to see its been injected on all corr nodes
+                    time.sleep(tsamp/1000)#args.waittime*60/90)
+                    injection_dict = ETCD.get_dict(ETCDKEY)
+                    if (injection_dict is not None )and 'ISOT' in injection_dict.keys() and np.any(injection_dict['ack']) and not acked:
+                        #write to csv
+                        with open(inject_file,"a") as csvfile:
+                            wr = csv.writer(csvfile,delimiter=',')
+                            wr.writerow([injection_dict['ISOT'],DM,width,SNR])
+                        csvfile.close()
+                        if not np.all(injection_dict['injected']):
+                            printlog("Injection" + injection_dict['ISOT'] + " missing channels:" + str(np.arange(args.num_chans)[np.logical_not(np.array(injection_dict['injected']))]),output_file=inject_log_file)
+                        #delete injection
+                        #printlog("Removing injection " + str(ID),output_file=inject_log_file)
+                        #os.system("rm " + inject_dir +  "realtime_staging/" + "injection_" + str(ID) + "_sb*.npy")
+                        #break
+                        acked=True
+
+                        # read timestamp files and add to exclude table 
+                        printlog("updating exclude tables...",output_file=inject_log_file)
+                        s_table_list = glob.glob(table_dir + "/rt_speccal_timestamps_" + injection_dict['ISOT'][:10] +"*.json")
+                        if len(s_table_list)>0:
+                            for s_table_name in s_table_list:
+                                printlog(s_table_name,output_file=inject_log_file)
+                                f = open(s_table_name,"r")
+                                s_table = json.load(f)
+                                f.close()
+                                for k in s_table.keys():
+                                    print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                    os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                    print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                                    os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                        a_table_list = glob.glob(table_dir + "/rt_astrocal_timestamps_" + injection_dict['ISOT'][:10] +"*.json")
+                        if len(a_table_list)>0:
+                            for a_table_name in a_table_list:
+                                printlog(a_table_name,output_file=inject_log_file)
+                                f = open(a_table_name,"r")
+                                a_table = json.load(f)
+                                f.close()
+                                for k in a_table.keys():
+                                    print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                    os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd) + " --reason INJECTION")
+                                    print("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                                    os.system("python "+cwd+"/scripts/sensitivity/add_to_extable.py --name "+'"'+str(k)+'"'+" --mjd "+str(Time(injection_dict['ISOT'],format='isot').mjd + (tsamp*args.num_time_samples/1000/86400)) + " --reason INJECTION")
+                        printlog("Done",output_file=inject_log_file)
     return
 
 if __name__=="__main__":
@@ -326,5 +397,6 @@ if __name__=="__main__":
     parser.add_argument('--continuous',action='store_true',help='Continuously make injections')
     parser.add_argument('--intermittent',action='store_true',help='Continuously make injections for --waittime minutes, then stop for --waittime minutes')
     parser.add_argument('--dec',type=float,help='Declination',default=71.6)
+    parser.add_argument('--inject_direct',action='store_true',help='inject  automatically without checking etcd to coordinate')
     args = parser.parse_args()
     main(args)

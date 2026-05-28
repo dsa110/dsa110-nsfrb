@@ -9,6 +9,7 @@ from nsfrb.flagging import flag_vis
 from nsfrb.config import tsamp_slow,fmin,fmax,nchans,NUM_CHANNELS, CH0, CH_WIDTH, AVERAGING_FACTOR, IMAGE_SIZE, c, Lon,Lat, DM_tol_slow,DM_tol,table_dir,tsamp_imgdiff,candplotfile_slow,candplotfile_imgdiff,candplotfile,img_dir,freq_axis,freq_axis_fullres,raw_cand_dir,bad_antennas,flagged_antennas,lambdaref,pixperFWHM,remote_cand_dir,minDM,maxDM,fc,chanbw,final_cand_dir
 from nsfrb.config import T4A_cand_dir,T4B_cand_dir
 from nsfrb.config import tsamp as tsamp_ms
+from nsfrb.config import corrs
 from nsfrb import plotting as pl
 from nsfrb import pipeline
 from event import names
@@ -358,7 +359,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
     if args.GP:
         fname = fpath + "/nsfrb_sb00_" + str(fnum) +".out"
     else:
-        fname = vis_dir + "/lxd110h03/nsfrb_sb00_" + str(fnum) +".out"
+        fname = vis_dir + "/lxd110n03/nsfrb_sb00_" + str(fnum) +".out"
     printlog(fname,output_file=cutterfile)
     nchan_per_node=nchans_per_node = 8
     sb,mjd,dec = pipeline.read_raw_vis(fname,nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
@@ -377,7 +378,7 @@ def ffa_manage(d_future,image,nsamps,nchans,dec_obs,args,cutterfile,DM_trials_us
 
 
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+    #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     nbin = args.FFAbin
     if slow:
         nbin *= int(tsamp_slow//tsamp_ms)
@@ -683,6 +684,7 @@ def classify_manage(d_future,image,last_frame,searched_image,nsamps,nchans,dec_o
                         image_cut = image
                     printlog("ABOUT TO SMUSH INTO DATA ARRAY: "+str(image_cut.shape),output_file=cutterfile)
                     #np.save(inject_dir + cand_isot+"_classifier.npy",image_cut)
+                    image_cut[np.isnan(image_cut)] = 0
                     
                     data_array[j,:,:,:,:] = cc.get_subimage(image_cut-np.nanmedian(image_cut,2,keepdims=True),int(finalcands[j][0]),int(finalcands[j][1]),save=False,subimgpix=subimgpix)
                     printlog("cand shape:" + str(data_array[j,:,:,:].shape),output_file=cutterfile)
@@ -1249,7 +1251,7 @@ def sendtrigger_manage(d_future,image,searched_image,args,uv_diag,dec_obs,slow,i
         ETCD.put_dict(ETCD_T4VIS_KEY,triggerdata)
         time.sleep(3.35)
         printlog("COPYING FAST VIS FILES",output_file=cutterfile)
-        corrs=["h03", "hh04", "h05", "h06", "hh07", "h08", "hhh10", "h11", "hh12", "h14", "h15", "hh16", "h18", "h19", "h21", "h22"]
+        #corrs=["h03", "hh04", "h05", "h06", "hh07", "h08", "hhh10", "h11", "hh12", "h14", "h15", "hh16", "h18", "h19", "h21", "h22"]
         sbs = ["sb00","sb01","sb02","sb03","sb04","sb05","sb06","sb07","sb08","sb09","sb10","sb11","sb12","sb13","sb14","sb15"]
         for i in range(len(corrs)):
             printlog("rsync -avv --remove-source-files "+corrs[i]+".pro.pvt:/tmp/*"+sbs[i]+"*.out "+final_cand_dir + dirlabel + "/" + cand_isot + suff + "/" + triggerdata['trigname'] + "/fast_visibilities/",output_file=cutterfile)

@@ -65,7 +65,7 @@ from matplotlib.patches import Ellipse
 from nsfrb import pipeline
 from matplotlib import animation
 from astropy import units 
-from nsfrb.config import Lon,NUM_CHANNELS,flagged_antennas,flagged_corrs
+from nsfrb.config import Lon,NUM_CHANNELS,flagged_antennas,flagged_corrs,corrs
 from dsamfs import utils as pu
 from nsfrb import imaging
 from nsfrb.config import tsamp as tsamp_ms
@@ -196,11 +196,32 @@ def update_speccal_table(bright_nvssnames,bright_nvsscoords,bright_fnames,bright
             elif (not ofbimage) and ('.npy' in str(kk) and int(Time(str(kk)[-27:-4],format='isot').mjd) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int)):
                 print("mjd=",Time(str(kk)[-27:-4],format='isot').mjd,"excluded")
                 continue
-            if (not ofbimage) and (((str(k) not in ex_table) or (str(k) in ex_table and ('.npy' not in str(kk)) and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and ('.npy' not in str(kk)) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))))):
+            """if (not ofbimage) and (((str(k) not in ex_table) or (str(k) in ex_table and ('.npy' not in str(kk)) and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table  and ('.npy' not in str(kk)) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))))):
                 #if (str(k) not in ex_table) or (str(k) in ex_table and ('mjd' in tab[arraykey][k][kk].keys()) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))):
                 
                 #if a target is given, check that sources are within range
-                if len(tab[arraykey][k][kk]['meas_flux'])>0 and (len(target)==0 or (len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["nvss_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange))):
+                if len(tab[arraykey][k][kk]['meas_flux'])>0 and (len(target)==0 or (len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["nvss_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange))):"""
+            """if ((not ofbimage) and
+                    ((str(k) not in ex_table) or
+                        (str(k) in ex_table and
+                            ('.npy' not in str(kk)) and
+                            ('mjd' not in tab[arraykey][k][kk].keys())) or
+                        (str(k) in ex_table and
+                            ('.npy' not in str(kk)) and
+                            (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))) or
+                        (str(k) in ex_table and
+                            ('.npy' in str(kk)) and
+                            (not (int(Time(os.path.basename(kk)[6:-4],format='isot').mjd) in np.array(ex_times,dtype=int)[np.logical_or(np.array(ex_table)=='ALL',np.array(ex_table)==str(k))]) and not np.any(np.array(ex_times,dtype=int)[np.array(ex_table)==str(k)]==-1)))) and
+                        (tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th)):
+            """
+            if ((not ofbimage) and ((str(k) not in ex_table) or
+                    ((str(k) in ex_table) and 
+                    int(Time(os.path.basename(kk)[6:-4],format='isot').mjd) not in np.array(ex_times,dtype=int)[np.array(ex_table)=='ALL'] and
+                    (not np.any(np.abs(Time(os.path.basename(kk)[6:-4],format='isot').mjd - np.array(ex_times)[np.array(ex_table)==str(k)])*86400 < config.tsamp*25/1000)) and
+                    not np.any(np.array(ex_times,dtype=int)[np.array(ex_table)==str(k)]==-1)))):
+                if len(target)==0 or (len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and (('mjd' in tab[arraykey][k][kk].keys() and np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange) or ('.npy' in str(kk) and np.abs(targetMJD - int(Time(os.path.basename(kk)[6:-4],format='isot').mjd))*24<target_timerange))):
+
+
                     #print("Including ",k)
                     #allfluxs.append(tab[arraykey][k][kk]['meas_flux'])
                     allfluxs = np.concatenate([allfluxs,tab[arraykey][k][kk]['meas_flux']])
@@ -781,6 +802,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         fullex_table = json.load(f)
         ex_table = fullex_table['RFC_exclude']
         ex_times = fullex_table['RFC_MJD']
+        ex_reasons = fullex_table['RFC_reason']
         f.close()
     else:
         ex_table =  []
@@ -830,6 +852,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
         target_obstime = Time(targetMJD,format='mjd')
     for k in tab[arraykey].keys():
         for kk in tab[arraykey][k].keys():
+            print("")
             print(k,kk,tab[arraykey][k][kk]['RA_error_deg'],tab[arraykey][k][kk]['DEC_error_deg'],ofbimage)
             #print(str(kk)[-27:-4])
             if ofbimage and (not (int(tab[arraykey][k][kk]['mjd']) in np.array(ex_times,dtype=int)[np.logical_or(np.array(ex_table)=='ALL',np.array(ex_table)==str(k))]) and not np.any(np.array(ex_times,dtype=int)[np.array(ex_table)==str(k)]==-1)):
@@ -872,8 +895,33 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
             elif (not ofbimage) and ('.npy' in str(kk) and int(Time(str(kk)[-27:-4],format='isot').mjd) in (np.array(ex_times)[np.array(ex_table)=='ALL']).astype(int)):
                 print("mjd=",Time(str(kk)[-27:-4],format='isot').mjd,"excluded")
                 continue
-            if (not ofbimage) and ((str(k) not in ex_table) or (str(k) in ex_table and ('.npy' not in str(kk)) and ('mjd' not in tab[arraykey][k][kk].keys()) or (str(k) in ex_table and ('.npy' not in str(kk)) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400)))) and tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th):
-                if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and ('mjd' not in tab[arraykey][k][kk].keys() or np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange):
+            #print((not ofbimage),(str(k) not in ex_table),(str(k) in ex_table and ('.npy' not in str(kk)) and ('mjd' not in tab[arraykey][k][kk].keys())),(str(k) in ex_table and ('.npy' not in str(kk)) and (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))),(tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th))
+            """
+            if ((not ofbimage) and 
+                    ((str(k) not in ex_table) or
+                        (str(k) in ex_table and 
+                            ('.npy' not in str(kk)) and 
+                            ('mjd' not in tab[arraykey][k][kk].keys())) or 
+                        (str(k) in ex_table and 
+                            ('.npy' not in str(kk)) and 
+                            (np.all(np.array(ex_times)[np.logical_and(np.array(ex_table)==str(k),np.array(ex_times)!=-1)] - tab[arraykey][k][kk]['mjd'])>(5*60/86400))) or
+                        (str(k) in ex_table and 
+                            ('.npy' in str(kk)) and
+                            (not (int(Time(os.path.basename(kk)[6:-4],format='isot').mjd) in np.array(ex_times,dtype=int)[np.logical_or(np.array(ex_table)=='ALL',np.array(ex_table)==str(k))]) and not np.any(np.array(ex_times,dtype=int)[np.array(ex_table)==str(k)]==-1)))) and 
+                        (tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th)):
+            """
+            #print(int(Time(os.path.basename(kk)[6:-4],format='isot').mjd),np.array(ex_times,dtype=int)[np.logical_or(np.array(ex_table)=='ALL',np.array(ex_table)==str(k))],np.array(ex_reasons)[np.logical_or(np.array(ex_table)=='ALL',np.array(ex_table)==str(k))])
+            #print(np.array(ex_times)[np.array(ex_table)==str(k)])
+            #print(int(Time(os.path.basename(kk)[6:-4],format='isot').mjd) not in np.array(ex_times,dtype=int)[np.logical_or(np.array(ex_table)=='ALL',np.array(ex_table)==str(k))])
+            #print(not np.any(np.array(ex_times,dtype=int)[np.array(ex_table)==str(k)]==-1),Time(os.path.basename(kk)[6:-4]) )
+            #if 'pixoffsets' in tab[arraykey][k][kk].keys():
+            #print(np.abs(Time(os.path.basename(kk)[6:-4],format='isot').mjd - np.array(ex_times)[np.array(ex_table)==str(k)])*86400,len(tab[arraykey][k][kk]["pixoffsets"][0])*config.tsamp*25/1000)
+            if ((not ofbimage) and (tab[arraykey][k][kk]['RMS_fit_residual'] < resid_th) and ((str(k) not in ex_table) or
+                    ((str(k) in ex_table) and
+                    #(not np.any(np.abs(Time(os.path.basename(kk)[6:-4],format='isot').mjd - np.array(ex_times)[np.array(ex_table)==str(k)])*86400 < config.tsamp*25/1000)) and #int(Time(os.path.basename(kk)[6:-4],format='isot').mjd) not in np.array(ex_times,dtype=int)[np.array(ex_table)=='ALL'] and
+                    ('pixoffsets' not in tab[arraykey][k][kk].keys() or not np.any(np.abs(Time(os.path.basename(kk)[6:-4],format='isot').mjd - np.array(ex_times)[np.array(ex_table)==str(k)])*86400 < len(tab[arraykey][k][kk]["pixoffsets"][0])*config.tsamp*25/1000)) and
+                    not np.any(np.array(ex_times,dtype=int)[np.array(ex_table)==str(k)]==-1)))):
+                if len(target)>0 and np.abs(target_coord.dec.value - tab[arraykey][k][kk]["rfc_dec"])<target_decrange and (('mjd' in tab[arraykey][k][kk].keys() and np.abs(targetMJD - tab[arraykey][k][kk]['mjd'])*24<target_timerange) or ('.npy' in str(kk) and np.abs(targetMJD - int(Time(os.path.basename(kk)[6:-4],format='isot').mjd))*24<target_timerange)):
                     allposerrs.append(tab[arraykey][k][kk]['position_error_deg'])
                     allDECerrs.append(tab[arraykey][k][kk]['DEC_error_deg'])
                     allRAerrs.append(tab[arraykey][k][kk]['RA_error_deg'])
@@ -901,6 +949,7 @@ def update_astrocal_table(bright_nvssnames,bright_nvsscoords,bright_RAerrs_mas,b
                         allgulpoffset_times = np.concatenate([allgulpoffset_times,np.array(tab[arraykey][k][kk]["pixoffsets"][1])-tab[arraykey][k][kk]["pixoffsets"][1][0]])
                         allgulpresids = np.concatenate([allgulpresids,[tab[arraykey][k][kk]['RMS_fit_residual']]*len(tab[arraykey][k][kk]["pixoffsets"][0])])
                     allnames.append(k)
+   
     allposerrs = np.array(allposerrs)
     allRAerrs = np.array(allRAerrs)
     allDECerrs = np.array(allDECerrs)
@@ -1170,7 +1219,7 @@ def astrocal(args):
         reftime = Time(args.reftimeISOT,format='isot')
     print("Reference time:",reftime.isot)
     
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+    #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
     nchan_per_node=nchans_per_node = args.nchans_per_node
     test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
     fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
@@ -1569,7 +1618,7 @@ def astrocal(args):
     
                 dat = None
                 sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+                #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 copydir = vis_dir + bright_names[bright_idx].replace(" ","") + "/"
                 os.system("mkdir " + copydir)
                 for i in range(16):
@@ -2057,7 +2106,7 @@ def ofbimage_speccal(args):
                 #save
                 args_copy = copy.deepcopy(args)
                 print("*** STARTING ASTROCAL ***")
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+                #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 nchan_per_node=nchans_per_node = args.nchans_per_node
                 test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
                 fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
@@ -3394,7 +3443,7 @@ def speccal(args):
             min_gridsize = image_size
             copydir = vis_dir + bright_nvssnames[bright_idx].replace(" ","") + "/"
             sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-            corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+            #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
 
             if args.uselastimage and ((len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0) or (len(glob.glob(vis_dir + "/lxd110" + corrs[0] + "/nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out"))>0)):
                 if len(glob.glob(copydir + "nsfrb_sb" + sbs[0] + "_" + str(fnum) + ".out")) == 0:
@@ -3451,7 +3500,7 @@ def speccal(args):
 
                     dat = None
                     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-                    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+                    #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                     os.system("mkdir " + copydir)
                     for i in range(16):
                         try:
@@ -3786,7 +3835,7 @@ def speccal(args):
         print(completeness_searchdict)
         for k in completeness_searchdict.keys():
             print(k)
-            sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110h03/nsfrb_sb00_" + str(k) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
+            sb,mjd,dec = pipeline.read_raw_vis(vis_dir + "/lxd110n03/nsfrb_sb00_" + str(k) + ".out",nchan=nchan_per_node,nsamps=gulpsize,gulp=0,headersize=16,get_header=True)
             for g in completeness_searchdict[k]:
                 print("--",g)
                 if not args.completenessskipsearch:
@@ -3844,8 +3893,8 @@ def noiseest(args):
     Estimates noise from given file or most recent file
     """
     fnum = args.noisefnum
-    if fnum == -1 or len(glob.glob(vis_dir + "/lxd110h03/nsfrb_sb00_"+str(fnum)+".out"))==0:
-        fname = np.sort(glob.glob(vis_dir + "/lxd110h03/nsfrb_sb00_*.out"))[-2]
+    if fnum == -1 or len(glob.glob(vis_dir + "/lxd110n03/nsfrb_sb00_"+str(fnum)+".out"))==0:
+        fname = np.sort(glob.glob(vis_dir + "/lxd110n03/nsfrb_sb00_*.out"))[-2]
         fnum = int(fname[fname.index("sb00") + 5:fname.index(".out")])
 
     print("Estimating noise using fnum",fnum)
@@ -3866,7 +3915,7 @@ def noiseest(args):
 
 
     sbs=["0"+str(p) if p < 10 else str(p) for p in range(16)]
-    corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+    #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
 
     if args.randgulps:
         gulps = np.sort(np.random.choice(np.arange(90,dtype=int),ngulps,replace=False))
@@ -3975,7 +4024,7 @@ def main(args):
             if not args.update_only:
                 ofbimage_astrocal(args)
             else:
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+                #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 nchan_per_node=nchans_per_node = args.nchans_per_node
                 test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
                 fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))
@@ -4006,7 +4055,7 @@ def main(args):
     else:
         if (not args.astrocal_only and not args.speccal_only) or (args.astrocal_only and not args.speccal_only):
             if args.update_only:
-                corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
+                #corrs = ["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]
                 nchan_per_node=nchans_per_node = args.nchans_per_node
                 test, key_string, nant, nchan, npol, fobs, samples_per_frame, samples_per_frame_out, nint, nfreq_int, antenna_order, pt_dec, tsamp, fringestop, filelength_minutes, outrigger_delays, refmjd, subband = pu.parse_params(param_file=None)
                 fobs = (1E-3)*(np.reshape(freq_axis_fullres,(len(corrs)*nchans_per_node,int(NUM_CHANNELS/2/nchans_per_node))).mean(axis=1))

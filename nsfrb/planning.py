@@ -1106,7 +1106,7 @@ def VLAC_find_cal(mjd_obs=None,obs_name=None,datasize=4,nbase=4656,nchan=384,npo
     if mjd_obs is not None:
         tobs = Time(mjd_obs,format='mjd')
     elif obs_name is not None:
-        fname=vis_dir+"lxd110h03/nsfrb_sb00_"+str(obs_name)+".out"
+        fname=vis_dir+"lxd110n03/nsfrb_sb00_"+str(obs_name)+".out"
         dat_complex,sbnum,mjd_obs,dec = read_raw_vis(fname,datasize=datasize,nbase=nbase,nchan=nchan,npol=npol,nsamps=1,gulp=gulp,headersize=headersize)
         ra = get_ra(mjd_obs,dec)
         print("Retrieved MJD:",mjd_obs)
@@ -1155,7 +1155,7 @@ def VLAC_find_cal(mjd_obs=None,obs_name=None,datasize=4,nbase=4656,nchan=384,npo
 
 
 def find_object_file(ra,dec,headersize=12,datasize=4,nsamps=2,nchan=2,Lon=Lon):
-    allfiles = np.sort(glob.glob(vis_dir + "/lxd110h03/*out"))[::-1]
+    allfiles = np.sort(glob.glob(vis_dir + "/lxd110n03/*out"))[::-1]
     for f in allfiles:
         dat,sb,mjd,dec_f = read_raw_vis(f,headersize=headersize,datasize=datasize,gulp=0,nsamps=nsamps,nchan=nchan)
         ra_f = Time(mjd,format='mjd').sidereal_time('apparent', longitude=Lon*u.deg).to(u.deg).value
@@ -1524,7 +1524,7 @@ def magnetar_cat(mjd,dd,sep=2.0*u.deg):
 def find_fast_vis_label(mjd,tsamp=tsamp,nsamps=nsamps,path='',return_dec=False):
     #get list of all visibilities on h03
     if len(path) == 0:
-        allvisfiles = np.sort(glob.glob(vis_dir + "lxd110h03/*out"))
+        allvisfiles = np.sort(glob.glob(vis_dir + "lxd110n03/*out"))
     else:
         allvisfiles = np.sort(glob.glob(path + "/*sb00*.out"))
     found = 0

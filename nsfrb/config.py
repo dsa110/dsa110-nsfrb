@@ -213,3 +213,5 @@ SUBIMGORDER = []
 for i in range(NROWSUBIMG):
     for j in range(NROWSUBIMG):
         SUBIMGORDER.append((i,j))
+
+corrs = ["n03","n04","n05","n06","n07","n08","n10","n11","n12","n14","n15","n16","n18","n19", "n21","n22"] #["h03","h04","h05","h06","h07","h08","h10","h11","h12","h14","h15","hh16","h18","h19","h21","h22"]

@@ -43,7 +43,7 @@ def main(args):
         psets = json.load(jfile)
 
     mjd_now = Time.now().mjd + (args.buffersec/86400)
-    elev_now = get_elevation(Time(mjd_now,format='mjd')).value #+ (psets[i][0][0] - (69.04-90 + config.Lat))
+    elev_now =get_elevation(Time(mjd_now,format='mjd')).value #+ (psets[i][0][0] - (69.04-90 + config.Lat))
     print("current MJD:",mjd_now)
     print("current elevation:",elev_now)
 
@@ -82,6 +82,7 @@ def main(args):
         pset_ids = [int(k_)]
         if args.both:
             print("looking for plan to search other side of plane...")
+            foundboth = False
             for kk in psets.keys():
                 pset2 = psets[kk]
                 #print(np.array(pairkeys).flatten())
@@ -89,9 +90,11 @@ def main(args):
                     print(int(k_),int(kk))
                     pset += copy.deepcopy(pset2)
                     pset_ids.append(int(kk))
+                    foundboth = True
                     break
     
             print(pset,k_,kk)
+            print("<<",foundboth,">>")
 
         plt.figure()
         plt.plot(plane.icrs.ra.value,plane.icrs.dec.value,color='black')
@@ -112,9 +115,9 @@ def main(args):
                                                                        RM=int(startpos.ra.hms.m),
                                                                        RS=int(startpos.ra.hms.s)) +
                                    str("+" if startpos.dec>=0 else "-") +
-                                   '{DD:02d}d{DM:02d}m{DS:02d}s'.format(DD=int(startpos.dec.dms.d),
-                                                                       DM=int(startpos.dec.dms.m),
-                                                                       DS=int(startpos.dec.dms.s)))
+                                   '{DD:02d}d{DM:02d}m{DS:02d}s'.format(DD=np.abs(int(startpos.dec.dms.d)),
+                                                                       DM=np.abs(int(startpos.dec.dms.m)),
+                                                                       DS=np.abs(int(startpos.dec.dms.s))))
             gb_offset = np.abs(SkyCoord(ra=startra*u.deg,dec=startdec*u.deg,frame='icrs').galactic.b.value)
         
         
